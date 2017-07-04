@@ -34,7 +34,7 @@ exact details of the experiment's data.
 The jplotter selection commands take a stab at suiting the needs of a radio
 astronomer:
 
-```
+```sh
 # select a time range near the end of the experiment
 > time $end-1h to +2m20s
 
