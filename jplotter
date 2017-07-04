@@ -1,0 +1,19 @@
+#!/usr/bin/env python
+import jplotter, command, sys, os
+
+if '-v' in sys.argv:
+    print "$Id: jplotter,v 1.3 2014-08-08 15:38:40 jive_cc Exp $"
+    sys.exit( 0 )
+
+if '-h' in sys.argv:
+    print "Usage: {0} [-h] [-d] [-v]".format(os.path.basename(sys.argv[0]))
+    print """
+    where:
+        -h  print this message and exit"
+        -v  print version and exit
+        -d  turn on debug output [prints stack trace upon error]
+"""
+    sys.exit( 0 )
+
+# we run interactively from the commandline
+jplotter.run_plotter(command.readkbd("jcli"), debug=('-d' in sys.argv))
