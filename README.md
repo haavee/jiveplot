@@ -12,6 +12,7 @@ name but a few.
 
 Some key features:
 - the package focuses on powerful selection syntax
+- has built-in help for all commands
 - the ability to difference whole sets of plots, e.g. to visualize before-after changes or to
 compare output of different correlators
 - time- or frequency averaging of the data before plotting
