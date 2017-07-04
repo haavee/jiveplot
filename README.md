@@ -64,4 +64,4 @@ The package uses the [https://github.com/casacore/python-casacore](pyrap)
 Python binding to access data.
 
 It uses pgplot to visualize (it was faster and easier than matplotlib):
-[http://www.jive.eu/~verkout/ppgplot-1.4.tar.gz](Python) binding to pgplot
+[Python binding to pgplot](http://www.jive.eu/~verkout/ppgplot-1.4.tar.gz)
