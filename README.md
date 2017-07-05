@@ -7,7 +7,7 @@ radio-astronomical data contained in a MeasurementSet (`ms`).
 ## 5 second workflow
 
 After downloading and having the
-[[dependencies](https://github.com/haavee/jiveplot#Dependencies) installed
+[[dependencies](https://github.com/haavee/jiveplot#Dependencies)] installed
 type:
 
 ```bash
@@ -20,7 +20,7 @@ jcli>
 and you're in the command line environment. Then open a MS, select data,
 select what to plot and go.
 
-This README will not explain any further because there is a colourful [PDF cookbook/tutorial/explanation](https://github.com/haavee/jiveplot/jplotter-cookbook-draft-v2.pdf) with far more detail.
+This README will not explain any further because there is a colourful [PDF cookbook/tutorial/explanation](jplotter-cookbook-draft-v2.pdf) with far more detail.
 
 ## What can be visualized?
 
