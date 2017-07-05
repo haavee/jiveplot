@@ -7,7 +7,7 @@ radio-astronomical data contained in a MeasurementSet (`ms`).
 ## 5 second workflow
 
 After downloading and having the
-[[dependencies](https://github.com/haavee/jiveplot#Dependencies)] installed
+[[dependencies](https://github.com/haavee/jiveplot#dependencies)] installed
 type:
 
 ```bash
