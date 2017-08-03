@@ -2094,7 +2094,63 @@ def run_plotter(cmdsrc, **kwargs):
         mkcmd(rx=re.compile(r"^ckey\b.*$"), id="ckey",
               hlp=Help["ckey"],
               args=lambda x: all_or_nothing(re.sub("^ckey\s*", "", x)), cb=ckey_f) )
-        
+
+    # post-reading pre-plotting filtering
+    # this allows the user to filter data sets before plotting
+    # but after they've been yanked from disk
+    # [User request: "can we not display cross-pol phase in the phase panel of Amplitude+Phase plots?"]
+    #    (User == JayB)
+    #   commands:
+    #       > filter none
+    #       > filter p in [ll,rr]
+    #       > filter phase: bl ~ /wb*/ and sb in [1,2]
+    #       > filter 0: sb != 2
+    #   queries
+    #       > filter
+    #       > filter phase:
+    #       > filter 0:
+    rxFilter = re.compile(r"^filter(\s+(?P<idx>\d+|[a-zA-Z]+)\s*:)?(\s+(?P<filter>\S.*))?$")
+    def filter_fn(*args):
+        pt = j().getPlotType()
+        if not pt:
+            print "No plot type selected to operate on"
+            return
+        pref = plots.Plotters[pt]
+        mo   = rxFilter.match(args[0])
+        idx  = mo.group('idx')
+        filt = mo.group('filter')
+
+        # Verify that, if an index is specified, it is a sensible one
+        if idx:
+            try:
+                idx = int(idx)
+            except ValueError:
+                # no, definitely not an int, so better be a valid y-Axis specifier
+                try:
+                    idx = pref.yAxis.index(idx)
+                except ValueError:
+                    idx = len(pref.yAxis)
+            if idx<0 or idx>=len(pref.yAxis):
+                raise RuntimeError, "Invalid index {0}".format(mo.group('idx'))
+            idx = [idx]
+
+        # if idx still None, it's all y-Axes
+        if idx is None:
+            idx = range(len(pref.yAxis))
+
+        # command or query is defined by wether or not there is a filter string
+        if filt:
+            for i in idx:
+                pref.filter_f(i, filt)
+        prefix = lambda i: pplt("filter[{0}/{1}]:".format(pt, pref.yAxis[i]))
+        for i in idx:
+            print "{0} {1}".format(prefix(i), pref.filter_f(i))
+
+    c.addCommand( 
+            mkcmd(rx=rxFilter, id="filter", args = lambda x: x, cb=filter_fn,
+                  hlp="filter [expression]\n\tSet or display data set filter expression")
+        )
+
     # Marking points?
     #   commands:
     #       > mark none
@@ -2113,8 +2169,8 @@ def run_plotter(cmdsrc, **kwargs):
             return
         pref = plots.Plotters[pt]
         mo   = rxMark.match(args[0])
-        idx  = mo.group('idx')  if mo.group('idx')  else None
-        mark = mo.group('mark') if mo.group('mark') else None
+        idx  = mo.group('idx')
+        mark = mo.group('mark')
 
         # Verify that, if an index is specified, it is a sensible one
         if idx:
@@ -2138,7 +2194,7 @@ def run_plotter(cmdsrc, **kwargs):
             for i in idx:
                 pref.mark(i, mark)
         prefix = lambda i: pplt("mark[{0}/{1}]:".format(pt, pref.yAxis[i]))
-        for (i, tp) in enumerate(pref.yAxis):
+        for i in idx:
             print "{0} {1}".format(prefix(i), pref.mark(i))
 
     c.addCommand( 

@@ -1670,4 +1670,336 @@ def parse_ckey_expr(expr):
     return parse_ckey_expr_impl(state_type(tokenizer(expr)))
 
 
+#########################################################################################################
+#
+#   filter parser
+#
+#   Let the user filter datasets to plot based on dataset attribute value(s)
+#   *after* they've been read from disk but before they're plotted.
+#
+#   This can be useful if data reading takes a lot of time and then be able
+#   to (re)plot subset(s) of that data without having to re-read the raw data
+#   from disk
+#
+#########################################################################################################
 
+######  Our grammar
+
+# filter     = condition eof
+# condition  = condexpr {relop condition} | 'not' condition | '(' condition ')'
+# #condexpr   = attribute '~' (regex|text) | attribute compare expr | attribute 'in' list
+# condexpr   = attribute '~' (regex|text) | attribute compare number | attribute 'in' list
+# attribute  = 'P' | 'CH' | 'SB' | 'FQ' | 'BL' | 'TIME' | 'SRC' |
+#              'p' | 'ch' | 'sb' | 'fq' | 'bl' | 'time' | 'src'
+#
+# compare    = '=' | '>' | '>=' | '<' | '<=' ;
+# relop      = 'and' | 'or' ;
+# list       = '[' [value {',' value}] ']'
+# value      = number | text
+# regex      = '/' {anychar - '/'} '/' ['i']  ('i' is the case-insensitive match flag)
+# number     = digit { number }
+# digit      = [0-9]
+# text       = char { alpha }
+# char       = [a-zA-Z_]
+# alpha      = char | digit { alpha }
+#
+mk_attribute_getter = lambda a: lambda obj: getattr(obj, a.upper())
+
+def parse_filter_expr(qry, **kwargs):
+    # Helper functions
+
+    def mk_intrange(txt):
+        return hvutil.expand_string_range(txt, rchar='-')
+
+    # take a string and make a "^...$" regex out of it,
+    # doing escaping of regex special chars and 
+    # transforming "*" into ".*" and "?" into "."
+    # (basically shell regex => normal regex)
+    def pattern2regex(s):
+        s = reduce(lambda acc, x: re.sub(x, x, acc), ["\+", "\-", "\."], s)
+        s = reduce(lambda acc, (t, r): re.sub(t, r, acc), [("\*+", ".*"), ("\?", ".")], s)
+        return re.compile("^"+s+"$")
+
+    def regex2regex(s):
+        flagmap = {"i": re.I, None:0}
+        mo = re.match(r"(.)(?P<pattern>.+)\1(?P<flag>.)?", s)
+        if not mo:
+            raise RuntimeError,"'{0}' does not match the regex pattern /.../i?".format(s)
+        return re.compile(mo.group('pattern'), flagmap[mo.group('flag')])
+
+    # basic lexical elements
+    # These are the tokens for the tokenizer
+    tokens = [
+        # the attribute names we support
+        #(re.compile(r"\b(p|ch|sb|fq|bl|time|src)\b", re.I), value_t('attribute')),
+        (re.compile(r"\b(p|ch|sb|fq|bl|time|src)\b", re.I), xform_t('attribute', mk_attribute_getter)),
+        # operators
+        token_def(r"\bnot\b",                               operator_t('not')),
+        token_def(r"\bin\b",                                operator_t('in')),
+        token_def(r"\b(and|or)\b",                          operator_t('relop')),
+        token_def(r"(<=|>=|=|<|>)",                         operator_t('compare')),
+        token_def("~",                                      xform_t('regexmatch', lambda o, **k: lambda x, y: re.match(y, x) is not None)),
+        # parens + list stuff
+        token_def(r"\(",                                    simple_t('lparen')),
+        token_def(r"\)",                                    simple_t('rparen')),
+        token_def(r"\[",                                    simple_t('lbracket')),
+        token_def(r"\]",                                    simple_t('rbracket')),
+        token_def(r",",                                     simple_t('comma')),
+        # values + regex
+        int_token(),
+        token_def(r"/[^/]+/i?\b",                           xform_t('regex', regex2regex)),
+        token_def(r"[:@\#%!\.a-zA-Z0-9_?|]+",               value_t('text')),
+        # and whitespace
+        token_def(r"\s+",                                   ignore_t())
+    ]
+
+    tokenizer  = mk_tokenizer(tokens, **kwargs)
+
+    # The output of the parsing is a filter function that returns
+    # True or False given a dataset object
+
+    next    = lambda s: s.next()
+    tok     = lambda s: s.token
+    tok_tp  = lambda s: s.token.type
+    tok_val = lambda s: s.token.value
+
+    ######  Our grammar
+
+    # filter      = condition eof
+    def parse_filter(s):
+        if tok(s).type is None:
+            raise SyntaxError, "empty filter"
+
+        filter_f  = parse_condition(s) 
+        # "LIMIT"
+        #limit     = tok(s)
+        #if limit.type=='limit':
+        #    # we MUST be followed by an int
+        #    next(s)
+        #    ival = tok(s)
+        #    if ival.type!='int':
+        ##        raise SyntaxError, "Only an integer is allowed after limit, not %s" % ival
+        #    # consume the integer
+        #    next(s)
+        #    count = itertools.count()
+        #    limit.value = lambda x: itertools.takewhile(lambda obj: count.next()<ival.value, x)
+        #else:
+        #    limit.value = lambda x: x
+
+        # the only token left should be 'eof' AND, after consuming it,
+        # the stream should be empty. Anything else is a syntax error
+        try:
+            if tok(s).type is None:
+                next(s)
+        except StopIteration:
+            return filter_f
+        raise SyntaxError, "Tokens left after parsing %s" % tok(s)
+
+    def parse_paren(s):
+        lparen = tok(s)
+        if lparen.type!='lparen':
+            raise RuntimeError, "Entered parse_paren w/o left paren but %s" % lparen
+        depth   = s.depth
+        s.depth = s.depth + 1
+        # recurse into parsing the expression - and do NOT forget to consume the lparen!
+        expr    = parse_expr(next(s))
+        # now we should be back at the same depth AND we should be seeing rparen
+        rparen  = tok(s)
+        if rparen.type=='rparen':
+            s.depth = s.depth - 1
+            next(s)
+        return expr
+
+    # condition  = condexpr {relop condition} | 'not' condition | '(' condition ')'
+    # relop      = 'and' | 'or' ;
+    def parse_condition(s):
+        token = tok(s)
+
+        # Recurse if we need to
+        if token.type in ['lparen', 'rparen']:
+            lterm = parse_paren_condition(s)
+        # 'not' expr
+        elif token.type=='not':
+            # parse the next expr and negate it
+            # we MUST have a next one
+            condition = parse_condition(next(s))
+            if condition is None:
+                raise SyntaxError, "Missing expression after 'not' %s" % condition
+            lterm = lambda scan: operator.not_( condition(scan) )
+        else:
+            # it must be a condexpr
+            lterm = parse_cond_expr(s)
+
+        # If we now see a relop, we have to parse another condition
+        relop = tok(s)
+        if relop.type!='relop':
+            return lterm
+
+        # consume the relop & parse the condition
+        rterm = parse_condition(next(s))
+
+        if lterm is None:
+            raise SyntaxError, "Missing left-hand-condition to relational operator (%s)", relop
+        if rterm is None:
+            raise SyntaxError, "Missing right-hand-condition to relational operator (%s)", relop
+
+        # and return the combined operation
+        return lambda scan: relop.value(lterm(scan), rterm(scan))
+
+
+    # condexpr   = attribute '~' (regex|text) | attribute compare number | attribute 'in' list
+    # compare    = '=' | '>' | '>=' | '<' | '<=' ;
+    def parse_cond_expr(s):
+        attribute = tok(s)
+        # No matter what, we have a left and a right hand side
+        # separated by an operator
+        if not (attribute.type == 'attribute'):
+            raise SyntaxError, "Unexpected token {0}, expected attribute name".format( attribute.type )
+        # consume the attribute value
+        next(s)
+        # Now we must see a comparator
+        compare = tok(s)
+        if not compare.type in ['compare', 'regexmatch', 'in']:
+            raise SyntaxError, "Expected a comparison operator, regex match or 'in' keyword, got {0}".format( compare )
+        # consume the comparison
+        next(s)
+        # do some processing based on the type of operator
+        if compare.type=='in':
+            rterm  = parse_list(s)
+        elif compare.type=='compare':
+            #rterm = parse_expr(s)
+            # we only support numbers here
+            rterm = tok(s)
+            if not (rterm.type=='int'):
+                raise SyntaxError, "Unexpected token {0}, expected a number here".format( rterm )
+            # and consume the number
+            rterm = rterm.value
+            next(s)
+        else:
+            # must've been regexmatch
+            rterm = parse_rx(s)
+        # it better exist
+        if rterm is None:
+            raise SyntaxError, "Failed to parse right-hand-term of cond_expr (%s)" % tok(s)
+        print "HAVE rterm=",rterm
+        return lambda ds: compare.value(attribute.value(ds), rterm)
+
+    def parse_paren_condition(s):
+        lparen = tok(s)
+        if lparen.type!='lparen':
+            raise RuntimeError, "Entered parse_paren_condition w/o left paren but %s" % lparen
+        depth   = s.depth
+        s.depth = s.depth + 1
+        # recurse into parsing the expression - and do NOT forget to consume the lparen!
+        expr    = parse_condition(next(s))
+        # now we should be back at the same depth AND we should be seeing rparen
+        rparen  = tok(s)
+        if rparen.type=='rparen':
+            s.depth = s.depth - 1
+            next(s)
+        return expr
+
+    def parse_rx(s):
+        # we accept string, literal and regex and return an rx object
+        rx = tok(s)
+        if not rx.type in ['regex', 'text', 'literal']:
+            raise SyntaxError, "Failed to parse string matching regex (not regex, text or literal but %s)" % rx
+        # consume the token
+        next(s)
+        if rx.type=='literal':
+            # extract the pattern from the literal (ie strip the leading/trailing "'" characters)
+            rx.value = rx.value[1:-1]
+        if rx.type in ['text', 'literal']:
+           rx.value = pattern2regex(rx.value) 
+        return rx.value
+
+    def parse_list(s):
+        bracket = tok(s)
+        if bracket.type != 'lbracket':
+            raise SyntaxError, "Expected list-open bracket ('[') but found %s" % bracket
+        rv = []
+        # keep eating text + ',' until we read 'rbracket'
+        next(s)
+        while tok(s).type!='rbracket':
+            # if we end up here we KNOW we have a non-empty list because
+            # the next token after '[' was NOT ']'
+            # Thus if we need a comma, we could also be seeing ']'
+            needcomma        = len(rv)>0
+            #print " ... needcomma=",needcomma," current token=",tok(s)
+            if needcomma:
+                if tok(s).type=='rbracket':
+                    continue
+                if tok(s).type!='comma':
+                    raise SyntaxError, "Badly formed list at {0}".format(tok(s))
+                # and eat the comma
+                next(s)
+            # now we need a value. 'identifier' is also an acceptable blob of text
+            rv.extend( parse_list_item(s) )
+            #print "parse_list: ",rv
+        # and consume the rbracket (if not rbracket a syntax error is raised above)
+        next(s)
+        return rv
+
+    # always returns a list-of-items; suppose the list item was an irange
+    def parse_list_item(s):
+        t = tok(s)
+        # current token must be 'text' or 'irange'
+        if not t.type in ['text', 'irange', 'int', 'float', 'literal']:
+            raise SyntaxError, "Failure to parse list-item {0}".format(t)
+        next(s)
+        # for a literal, strip the leading and closing single quote
+        if t.type == 'literal':
+            t.value = t.value[1:-1]
+        return t.value if t.type == 'irange' else [t.value]
+
+    class state_type:
+        def __init__(self, tokstream):
+            self.tokenstream = tokstream
+            self.depth       = 0
+            self.next()
+
+        def next(self):
+            self.token       = self.tokenstream.next()
+            return self
+
+    tokenizer  = mk_tokenizer(tokens, **kwargs)
+    return parse_filter(state_type(tokenizer(qry)))
+
+
+
+
+
+
+
+
+# expr     = term '+' term | term '-' term | term '*' term | term '/' term | '(' expr ')'
+# term     = duration | number | property | external
+# duration = \d+ 'd'[\d+ 'h'][\d+ 'm'] [\d+ ['.' \d* ] 's'] |
+#                     \d+ 'h'[\d+ 'm'] [\d+ ['.' \d* ] 's'] |
+#                              \d+ 'm' [\d+ ['.' \d* ] 's'] |
+#                                        \d+ ['.' \d* ] 's'
+# number   = int|float
+# property = alpha char {alpha char | digit | '_'}    # will get property from scan object
+# external = '$' property                             # will look up value of property in global namespace
+
+
+
+# regex      = '/' {anychar - '/'} '/' ['i']  ('i' is the case-insensitive match flag)
+# identifier = alpha {character} 
+# anychar    = character | symbol
+# character  = alpha | digit 
+# alpha      = [a-zA-Z_] ;
+# digit      = [0-9] ;
+
+# selector = attribs {'=' colorkey}
+# attribs  = attrib {',' attrib}
+# attrib   = attrname {'[' attrvallist ']'}
+# attrname = 'P' | 'CH' | 'SB' | 'FQ' | 'BL' | 'TIME' | 'SRC' |
+#            'p' | 'ch' | 'sb' | 'fq' | 'bl' | 'time' | 'src'
+# attrvallist = attrval {',' attrvallist }
+# attrval     = number | string | regex
+# number      = [0-9]+
+# string      = 'text'
+# colorkey    = number
+# regex       = '/' text '/'
+# text        = all characters except the termination (http://stackoverflow.com/a/5455705/26083)

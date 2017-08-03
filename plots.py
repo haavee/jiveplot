@@ -195,7 +195,7 @@ Drawers = jenums.enum("Lines", "Points", "Both")
 ####      Base class for plotter objects
 ####
 ##########################################################
-
+noFilter = lambda x: True
 
 
 class Plotter(object):
@@ -217,6 +217,8 @@ class Plotter(object):
         self.defaultMarkerStr    = ["(none)"] * len(self.yAxis)
         self.defaultCkFun        = ckey_builtin
         self.defaultCkFunS       = "ckey_builtin"
+        self.defaultFilter       = [noFilter] * len(self.yAxis)
+        self.defaultFilterS      = ["(none)"] * len(self.yAxis)
 
         # dict mapping a specific drawer to a method call on self
         self.drawfuncs = { Drawers.Points: lambda dev, x, y, tp: self.drawPoints(dev, x, y, tp),
@@ -258,6 +260,8 @@ class Plotter(object):
         self.markerStr    = CP(self.defaultMarkerStr)
         self.ck_fun       = CP(self.defaultCkFun)
         self.ck_fun_s     = CP(self.defaultCkFunS)
+        self.filter_fun   = CP(self.defaultFilter)
+        self.filter_fun_s = CP(self.defaultFilterS)
         self.multiSubband = False
         self.lineWidth    = 2
         self.pointSize    = 4
@@ -393,6 +397,16 @@ class Plotter(object):
         else:
             self.marker[idx]    = plotiterator.partitioner(args[0])
             self.markerStr[idx] = CP(args[0])
+
+    def filter_f(self, idx, *args):
+        if not args:
+            return self.filter_fun_s[idx]
+        if args[0].lower()=="none":
+            self.filter_fun[idx]   = CP(noFilter)
+            self.filter_fun_s[idx] = CP("(none)")
+        else:
+            self.filter_fun[idx]   = parsers.parse_filter_expr( args[0] )
+            self.filter_fun_s[idx] = CP(args[0])
 
     def markedPointsForYAxis(self, idx, ds):
         return self.marker[idx](ds) if self.marker[idx] else []
@@ -559,7 +573,7 @@ class Quant2TimePlotter(Plotter):
                 for (subplot, ytype) in enumerate(self.yAxis):
                     # filter the data sets with current y-axis type
                     # Keep the indices because we need them twice
-                    datasets = filter(lambda x: x.TYPE==ytype, pref.keys())
+                    datasets = filter(lambda x: x.TYPE==ytype and self.filter_fun[subplot](x), pref.keys())
 
                     # the type may have been removed due to an expression/selection
                     if not datasets:
@@ -695,7 +709,7 @@ class GenXvsYPlotter(Plotter):
 
                 # filter the data sets with type yType
                 # Keep the indices because we need them twice
-                datasets = filter(lambda x: x.TYPE==self.yAxis[0], pref.keys())
+                datasets = filter(lambda x: x.TYPE==self.yAxis[0] and self.filter_fun[0](x), pref.keys())
 
                 # Set up the plotcoord for this plot, including
                 # world coordinate limits
@@ -836,7 +850,7 @@ class Quant2ChanPlotter(Plotter):
                 for (subplot, ytype) in enumerate(self.yAxis):
                     # filter the data sets with current y-axis type
                     # Keep the indices because we need them twice
-                    datasets = filter(lambda kv: kv[0].TYPE == ytype, pref.iteritems())
+                    datasets = filter(lambda kv: kv[0].TYPE == ytype and self.filter_fun[subplot](kv[0]), pref.iteritems())
     
                     # the specific type may have been removed?
                     if not datasets:
