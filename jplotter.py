@@ -8,9 +8,16 @@
 #  Rewrite from Ancient glish code to Python by H. Verkouter
 #   Dec 2012
 #
-#   $Id: jplotter.py,v 1.72 2017-04-26 12:27:17 jive_cc Exp $
+#   $Id: jplotter.py,v 1.73 2017/08/29 11:27:36 jive_cc Exp $
 #
 #   $Log: jplotter.py,v $
+#   Revision 1.73  2017/08/29 11:27:36  jive_cc
+#   HV: * Added post-processing-pre-display filtering of datasets to be plotted
+#         This allows e.g. per subplot (think: amp+phase) selection of things to
+#         plot - users wanted to display phase of parallel pols but amp of
+#         everything:
+#           pt anpchan; filter phase: p in [ll,rr];
+#
 #   Revision 1.72  2017-04-26 12:27:17  jive_cc
 #   HV: * ZsoltP + BenitoM: "in amplitude+phase plots it would be much
 #         better to have phase drawn with points and amplitude with lines"
