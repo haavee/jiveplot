@@ -36,6 +36,7 @@ def mk_tokenizer(tokens, **env):
             (mo, tok) = moList[0]
             pos      += (mo.end() - mo.start())
             # Ignore tokens that say they are nothing (e.g. whitespace)
+            #print "TOKEN: ",tok
             if tok is not None:
                 yield tok
         yield token_type(None, None)
@@ -877,8 +878,13 @@ def parse_duration(txt, **env):
 #   <term>      = <term> '*' <factor> | <term> '/' <factor> | <factor>
 #   <factor>    = <exponent> '^' <factor> | <exponent>
 #   <exponent>  = '-' <exponent> | <final>
-#   <final>     = <number> | <id> | <id> '(' <arglist> ')' | '(' <expr> ')'
+#   <final>     = <number> | <id> | <id> '(' <arglist> ')' | '(' <expr> ')' | <id> '[' <subscript> ']'
 #   <arglist>   = <empty> | <expr> {',' <expr> }
+#   <subscript> = <filter> {',' <filter> }
+#   <filter>    = <attribute> '=' <value>
+#   <attribute> = 'p' | 'ch' | 'sb' | 'src' | 'time' | 'bl' | 'fq'
+#                 'P' | 'CH' | 'SB' | 'SRC' | 'TIME' | 'BL' | 'FQ'
+#   <value>     = <int> | <alnum>  # may/should/will depend on type of attribute!
 #
 #   <number> = <int> | <float>
 #   <int>    = [0-9]+
@@ -909,15 +915,22 @@ def copy_attributes(outp, inp):
                 filter(lambda (nm, tp): not nm.startswith('__'), inspect.getmembers(inp, isAttr))))
     return outp
 
-def ds_flat_filter(value, tp=None):
-    rv = copy_attributes(plots.Dict(), value)
+def ds_flat_filter(value, tp=None, subscript=None):
+    rv                 = copy_attributes(plots.Dict(), value)
+    (mklabf, subquery) = (lambda x: x, lambda x: True) if subscript is None else subscript
     for ds in (value.keys() if tp is None else filter(lambda k: k.TYPE==tp, value.keys())):
+        # Do we accept this dataset?
+        if not subquery(ds):
+            continue
         dsref      = value[ds]
         # sort by x-value!
         (xs, ys)   = zip( *sorted(zip(dsref.xval, dsref.yval), key=operator.itemgetter(0)) )
         dsref.xval = numpy.array(xs)
         dsref.yval = numpy.array(ys)
-        rv[ds]     = value[ds]
+        # if anames is set, it means we've filtered/subindexed so we must create a new label with
+        # the indicated anames set to None [such that the crossmatching on those won't fail]
+        nds        = mklabf(ds)
+        rv[nds]    = value[ds]
     return rv
 
 
@@ -1001,6 +1014,7 @@ def mk_dataset(ds, an):
         ds.msname = copy.deepcopy(an)
     return ds
 
+
 def parse_dataset_expr(txt, datasets, **env):
     ident       = r"[a-zA-Z_][a-zA-Z0-9_]*"
     identifier  = NAMED("name", ident)+MAYBE(r"\."+NAMED("type", ident))
@@ -1014,15 +1028,22 @@ def parse_dataset_expr(txt, datasets, **env):
     tokens = [
         # keywords
         token_def(r"\b(store|load|as)\b",           keyword_t()),
+        # the attribute names
+        #(re.compile(r"\b(p|ch|sb|fq|bl|time|src)\b", re.I), value_t('attrname')),
+        (re.compile(r"\b(p|ch|sb|bl|src)\b", re.I), value_t('attrname')),
         # operators
         token_def(r"-|\+",                          operator_t('additive')),
         token_def(r"\*|/",                          operator_t('multiplicative')),
         token_def(r"\^",                            operator_t('exponent')),
         token_def(r",",                             simple_t('comma')),
+        token_def(r"=",                             simple_t('equal')),
         token_def(r"\(",                            simple_t('lparen')),
         token_def(r"\)",                            simple_t('rparen')),
+        token_def(r"\[",                            simple_t('lbracket')),
+        token_def(r"\]",                            simple_t('rbracket')),
         # identifiers (function call) and variables: <name>{.<type>} or <name>{.<type>}
-        token_def(identifier,                       xformmg_t('id',   lambda mo: mo.groupdict())),
+        token_def(identifier,                       xformmg_t('id',     lambda mo: mo.groupdict())),
+        token_def(ident,                            value_t('text')),
         #token_def(r"\$"+dsid,                       value_t('dsid')),
         # numbers
         number_token(),
@@ -1095,13 +1116,16 @@ def parse_dataset_expr(txt, datasets, **env):
         cur  = tok( s )
         name = None
         if cur.type == 'as':
-            # followed by an id
-            cur = tok( next(s) )
+            # eat up the 'as' keyword and expect an id
+            next(s)
+            cur = parse_id( s )
             if cur.type != 'id':
                 raise SyntaxError, "Unexpected token {0} [expected variable name]".format( cur.value )
             # verify that dsid does not address a subset $id.id but just $id
             if cur.value['type'] is not None:
                 raise SyntaxError, "Cannot store an expression as subset {0}".format( cur.value['type'] )
+            if 'filter' in cur.value:
+                raise SyntaxError, "Cannot store an expression as filtered subset of {0}".format( cur.value['name'] )
             name = cur.value['name']
         elif cur.type is not None:
             raise SyntaxError, "Unexpected token {0} [expected 'as' or nothing]".format( cur.value )
@@ -1144,6 +1168,87 @@ def parse_dataset_expr(txt, datasets, **env):
         if s.depth!=0:
             raise SyntaxError, "Unbalanced parenthesis"
         return mk_f( expr )
+
+
+    #@argprint
+    #   <name>{.<type>}{'[' <filter> ']'}
+    def parse_id(s):
+        print "parse_id"
+        # we should *at least* be looking at an 'id' token
+        cur = tok( s )
+        if cur.type != 'id':
+            raise SyntaxError, "Expected an identifier here"
+        # look ahead to see if we find '[' which would indicate subscripting/filtering
+        next(s)
+        if tok(s).type == 'lbracket':
+            cur.value['filter'] = parse_filter( s )
+        return cur
+
+    #@argprint
+    #   '[' <filter> ']' 
+    def parse_filter(s):
+        # check if we indeed are looking at start of filter/subscripting and if so eat up that token
+        if tok(s).type != 'lbracket':
+            raise RuntimeError, "Entered parse_filter() but not looking at '['?"
+        next(s)
+        # now we must see a comma separated list of <attr> = <value>
+        rv = []
+        while tok(s).type!='rbracket':
+            # if we end up here we KNOW we have a non-empty list because
+            # the next token after '[' was NOT ']'
+            # Thus if we need a comma, we could also be seeing ']'
+            needcomma        = len(rv)>0
+            if needcomma:
+                if tok(s).type=='rbracket':
+                    continue
+                if tok(s).type!='comma':
+                    raise SyntaxError, "Badly formed list at {0}".format(tok(s))
+                # and eat the comma
+                next(s)
+            # now we need a list item "<attr> = <value>"
+            rv.append( parse_list_item(s) )
+        # and consume the rbracket (if not rbracket a syntax error is raised above)
+        next(s)
+        # convert the list of attribute matchers into a single match fn
+        def mk_match_f(l):
+            def do_it(ds):
+                return all([cond(ds) for cond in l])
+            return do_it
+        def mk_lab_f(l):
+            def do_it(ds):
+                rv = copy.deepcopy(ds)
+                map(lambda y: setattr(rv, y, None), l)
+                return rv
+            return do_it
+        (anames, matchfns) = zip(*rv)
+        return (mk_lab_f(anames), mk_match_f(matchfns))
+
+    #@argprint
+    #  <attribute> '=' <value>
+    # returns function which matches label attribute value to <value>
+    def parse_list_item(s):
+        attrtype_dict  = { 'P':str,         'CH':int,         'SB':int,         'BL':re.compile, 'SRC':re.compile }
+        attrmatch_dict = { 'P':operator.eq, 'CH':operator.eq, 'SB':operator.eq, 'BL':re.match,   'SRC':re.match }
+        attrname = tok(s)
+        if attrname.type!='attrname':
+            raise SyntaxError, "Expected attribute name but found {0}".format( attrname.type )
+        attrname = attrname.value.upper()
+        # must see '='
+        if tok(next(s)).type!='equal':
+            raise SyntaxError, "Expected '=' but found {0}".format( tok(s).type )
+        # next we should see <int> or <alnum>
+        attrval = tok( next(s) )
+        if attrval.type not in ['id', 'number', 'text']:
+            raise SyntaxError, "Expected a number or text but found {0}".format( attrval.type )
+        # ok, eat that one up
+        next(s)
+        def mk_amatch_f(aname, aval):
+            # convert once
+            aval = attrtype_dict[aname](aval)
+            def do_it(ds):
+                return attrmatch_dict[aname](aval, getattr(ds, aname))
+            return do_it
+        return (attrname, mk_amatch_f(attrname, attrval.value if attrval.type in ['number','text'] else attrval.value['name']))
 
     #@argprint
     def parse_expr( s ):
@@ -1253,11 +1358,16 @@ def parse_dataset_expr(txt, datasets, **env):
             return mk_f(final.value)
         elif final.type=='id':
             # ok, we know we recognize the token, let's eat it up [this was the 'id']
-            next( s )
+            final = parse_id( s )
 
             # now, before returning something, check the new current token
             # if it happens to be 'lparen', we're looking at a functioncall!
             if tok(s).type=='lparen':
+                # if the id had a filter, then it cannot be a functioncall!
+                #   aap.phase[p=ll] (...)   should not parse
+                #   mod.fn (...)            might be ok: python "module.function" in stead of "variable.type"
+                if 'filter' in final.value:
+                    raise SyntaxError,"A subscripted variable cannot be used as function call?!"
                 # eat the paren, then parse the argument list
                 next( s )
                 arglist = parse_arglist(s, [])
@@ -1283,12 +1393,12 @@ def parse_dataset_expr(txt, datasets, **env):
                 # no functioncall, just variable addressment
                 def mk_f(nm):
                     def do_it(ds):
-                        nam = nm['name']
-                        typ = nm['type']
+                        nam  = nm['name']
+                        typ  = nm['type']
                         if nam not in ds:
                             raise RuntimeError, "Variable '{0}' does not exist".format(nam)
                         if isDataset(ds[nam]):
-                            return ds_flat_filter(ds[nam], typ)
+                            return ds_flat_filter(ds[nam], typ, nm.get('filter', None))
                         else:
                             return ds[nam][typ] if typ is not None else ds[nam]
                     return do_it
