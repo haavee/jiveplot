@@ -1389,7 +1389,9 @@ Example:
 
         > load foo - bar
 
-    In fact, any expression can be entered (see "help store").
+    In fact, any expression can be entered (see "help store"). It is now also
+    possible to subtract e.g. polarizations or subbands, even if that makes no
+    sense. See the extended subscript section below.
 
     A nice side effect is that the plots will be restored based on the
     *current* 'new plot' setting, which may be different from the 'new plot'
@@ -1416,6 +1418,45 @@ Example:
 
         $   load the plots back in and voila, they're reorganized
         > load foo
+
+Subscripting:
+
+    As explained under "help store", when combining variables that represent a
+    series of data sets, only those with matching property values are combined.
+
+    Under that scheme, subtracting polarizations from each other is impossible -
+    the polarization property of those data sets have different values and thus
+    would never be combined in an expression like this:
+        > load foo - bar
+
+    It is now possible to use variable subscripting to select a subset of data
+    sets from that variable and "erase" the property value:
+        > load foo[p=ll]
+    
+    The expression "foo[p=ll]" returns a temporary variable which contains the
+    list of data sets addressed by the variable "foo" but only those for which
+    the "P"(olarization) property has the value "LL". 
+
+    Because the property's value is "erased" after the selection, it becomes
+    possible to type in this:
+
+        > load foo[p=ll] - foo[p=rr]
+
+    Because now the two temporary values represent lists of plots with the same
+    values bar the polarizations. But since this property's value has been
+    erased they will not be compared and thus the expression will subtract the
+    right-hand polarization data from the left hand's.
+
+    The expression within '[' ... ']' can contain multiple, comma separated
+    selectors for the attributes:
+    
+        <expression> = '[' <condition> { ',' <condition> } ']'
+        <condition>  = <attribute> '=' <value> 
+        <attribute>  = "P", "CH", "SB", "SRC"
+        <value>      = <number> | <text>
+
+    The system knows that certain properties are text-valued and other numerical
+    valued. So "sb=aap" will fail, hopefully with a useful error message.
 
 """,
 
@@ -1563,7 +1604,102 @@ Examples:
     > draw phase:lines
     drawers[anptime]: amplitude:Both phase:Lines
 
-"""
+""",
 
+    ##################################################################
+    # filter
+    ##################################################################
+"filter":
+"""filter [[<panel>':'] <expression> | none]
+    set or display post-reading pre-plotting filter condition(s)
+
+Without arguments it displays the current filter(s) that have been set for the
+current plot type. With argument it (re)sets a filtering condition for (a
+subplot of) the current plot type. The filter condition is applied to the values
+of each data set's properties "P", "CH", "SB", "BL", "SRC"  (see the jplotter
+cookbook pdf for background).
+
+Using this command it possible to filter data sets to be plotted after they've
+been read from disk but before they're displayed. All data sets remain in memory
+but only the ones for which the filter condition is true will be plotted. The
+condition(s) can be set separately for different subplots of a multi-panel plot.
+
+This is particularly useful if a large-ish data set has been read from disk to
+prevent having to re-read the whole data set in case only a subset is to be
+displayed.
+
+Another use case is amplitude-and-phase versus channel plots: in the amplitude
+panel the users wanted to display all polarizations but in the phase panel only
+the parallel ones were deemed useful (cross baselines cross polarization
+products usually carry very low signal.)
+
+The <expression> follows the grammar below; examples follow after that. The
+syntax is mostly consistent with the syntax from the 'ckey' command or the
+'scan' selection's "where" clause.
+
+    An <expression> may be prefixed with
+    
+    <address>':'  
+        where <address> = '0' | '1' | 'amplitude' | 'phase' | 'real' | 'imaginary'
+        basically the address of the (sub)panel of a potentially multi-panel
+        plot. The numerical indices address from bottom panel to top.
+
+        If a plot type only has one panel (e.g. "amptime" - amplitude vs time)
+        then "0:" or "amplitude:" are still valid addresses but no observable
+        difference in behaviour of the command is expected compared to had it
+        been called with the address left out.
+
+    <expression> = <condition> { 'and'|'or' <expression> } |
+                   'not' <condition> | '(' <expression> ')'
+
+    <condition>  = <attribute> '~' <match>  | 
+                   <attribute> <compare> <value> |
+                   <attribute> 'in' <list>
+
+    <attribute>  = 'p' 'ch' 'sb' 'src' 'bl'
+
+    <list>       = '[' <list items> ']'
+    <match>      = '/'<regular expression>'/' | <text>
+    <compare>    = '<' '<=' '=' '>' '>='
+    <value>      = <number> | <text>
+
+The general idea of the filter command is that it is possible to express
+intentions like:
+
+    "if a data set's attribute X has a value which is one of the set [a,b,c]
+    then plot it", or
+
+    "if a data set's attribute Y has a value which is less than z then plot it"
+
+In the grammer, <number> and <text> are what you think they are: digits and
+characters (excluding white space). When attribute values are compared with
+<text> it is done case-insensitive. The <text> inside a <regex> is, arguably,
+the regular expression text and may contain embedded spaces. It may be suffixed
+by the character 'i' for case-insensitive regex matching. Regular <text> may be
+put inside single quotes to support embedded spaces.
+
+In human readable form this grammar reads:
+
+    An <expression> consists of one or more <conditions>.
+    
+    Each <condition> selects data sets for which this condition returns true. It
+    is possible to negate a <condition> using the 'not' operator.
+
+    It is possible to use logical operators 'and' and/or 'or' to join
+    <conditions>.
+
+    It is possible to use parentheses to combine multiple 'and'ed or 'or'ed
+    <conditions>.
+
+Examples:
+
+    # The second use case described above can be scripted like this.
+    # It is assumed that some data has been selected with all polarizations in.
+    # Select plot type with two panels, "amplitude" and "phase":
+    pt anpchan
+    # In the phase panel only display parallel hands of polarization
+    filter phase: p in [ll,rr]
+
+""",
 }
 

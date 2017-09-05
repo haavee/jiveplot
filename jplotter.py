@@ -2155,7 +2155,7 @@ def run_plotter(cmdsrc, **kwargs):
 
     c.addCommand( 
             mkcmd(rx=rxFilter, id="filter", args = lambda x: x, cb=filter_fn,
-                  hlp="filter [expression]\n\tSet or display data set filter expression")
+                  hlp=Help["filter"])
         )
 
     # Marking points?
