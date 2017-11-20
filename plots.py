@@ -1,5 +1,5 @@
 # the possible plottypes are defined here,
-import jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types
+import jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types, traceback
 
 AX       = jenums.Axes
 YTypes   = jenums.enum("amplitude", "phase", "real", "imag", "weight")
@@ -18,6 +18,20 @@ M        = lambda x: '*' if x is None else x   # M is for M(aybe)
 M2       = lambda k, v: k+"="+("*" if v is None else str(v))
 UNIQ     = lambda x: x if x else ""
 BASENAME = os.path.basename
+
+
+## a real pgplot 'context', usable in 'with ...' constructions
+class pgenv(object):
+    def __init__(self, plt):
+        self.plotter = plt
+
+    def __enter__(self):
+        self.plotter.pgsave()
+
+    def __exit__(self, tp, val, tb):
+        self.plotter.pgunsa()
+
+
 
 ## Keep track of the layout of a page in number-of-plots in X,Y direction
 class layout(object):

@@ -2314,7 +2314,8 @@ def run_plotter(cmdsrc, **kwargs):
         # redraw w/o refreshing or postprocessing
         e.select()
         # un-navigatable plotdevices get all plots in one go
-        j().drawFunc(e.plots, ppgplot, e.first, foo[o.curdev].navigable())
+        with plots.pgenv(ppgplot) as p:
+            j().drawFunc(e.plots, ppgplot, e.first, foo[o.curdev].navigable())
 
     c.addCommand( \
             mkcmd(rx=re.compile(r"^pl$"), hlp="pl:\n\tplot current selection with current plot properties", \
