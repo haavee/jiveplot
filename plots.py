@@ -1,5 +1,5 @@
 # the possible plottypes are defined here,
-import jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types, traceback
+import jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types
 
 AX       = jenums.Axes
 YTypes   = jenums.enum("amplitude", "phase", "real", "imag", "weight")
