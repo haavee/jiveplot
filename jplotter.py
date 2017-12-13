@@ -1550,9 +1550,10 @@ class jplotter:
         # from the current newPlot setting, find the plot and dataset axes
         # 1. find the axes that make up the plot label (data set label will be the rest)
         plotaxes = map(lambda (ax, nw): ax, filter(lambda (ax, nw): nw==True, np.iteritems()))
+        splitter = plots.label_splitter(plotaxes)
         # 2. Go through all of the plots and reorganize
         def proc_ds(acc, (l, dataset)):
-            (plot_l, dataset_l) = plots.split_label(l, plotaxes)
+            (plot_l, dataset_l) = splitter(l)
             #print "Unflatten: {0} => {1}  {2}".format(l, plot_l, dataset_l)
             #print "           {0} points".format( len(dataset.xval) )
             acc.setdefault(plot_l, plots.Dict())[ dataset_l ] = dataset
@@ -1605,7 +1606,7 @@ class jplotter:
         #   "[0]"-style indexing to get the first (the only) member out of the
         #   set ... [but we know there is only one member in the set; that's
         #   what we've filtered on! So convert to list and take the 0'th element
-        expand = lambda (k,v): (k, list(v)[0])
+        expand = lambda (k,v): (k, v.pop())
         uniq   = plots.label.format(map(expand, plotuniq)+map(expand, dsuniq))
         if uniq:
             plts.uniq = uniq
@@ -1615,7 +1616,9 @@ class jplotter:
 
         return plts
 
-    def doMinMax(self, plts):
+    def doMinMax(self, plts, **opts):
+        defaults = {'verbose': True}
+        defaults.update( **opts )
         #print "Enter MinMax / #plots = {0} {1}".format( len(plts), type(plts))
         ## Per plot we must compile the min/max of both X, Y axes
         plts.meta     = plots.Dict()
@@ -1658,7 +1661,8 @@ class jplotter:
                 mima(lref, mref.xlim, 'xlim')
                 mima(lref, mref.ylim, 'ylim')
         e = NOW();
-        print "min/max processing took\t{0:.3f}s                ".format( e-s )
+        if defaults['verbose']:
+            print "min/max processing took\t{0:.3f}s                ".format( e-s )
 
         if False:
             for k in plts.meta.keys():
@@ -1669,9 +1673,9 @@ class jplotter:
                 print "LIMITS[",k,"]/ x:",plts.limits[k].xlim," y:",plts.limits[k].ylim
         return plts
 
-    def drawFunc(self, plotar, dev, fst, onePage=None):
+    def drawFunc(self, plotar, dev, fst, onePage=None, **opts):
         plotter = plots.Plotters[plotar.plotType]
-        plotter.drawfunc(dev, plotar, fst, onePage)
+        plotter.drawfunc(dev, plotar, fst, onePage, **opts)
 
     def reset(self):
         self.msname              = None
@@ -1706,19 +1710,20 @@ def mk_output(pfx, items, maxlen):
 
 class environment(object):
     def __init__(self, uniq, devNm):
-        self.j        = jplotter(unique=uniq)
-        self.device   = None
+        self.j         = jplotter(unique=uniq)
+        self.device    = None
+        self.devNColor = 0
         # plots    = datasets organized per plot, ready for plotting
         #            (i.e. the "new plot" settings have been applied)
         # rawplots = the raw one-dimensional list of plots
-        self.plots    = None
-        self.rawplots = None
+        self.plots     = None
+        self.rawplots  = None
         # keep track of which kinds of post-processing need to be done
-        self.newRaw   = False # True if we have new rawplots
-        self.newPlots = False # True if someone re-subdivided rawplots => plots
-        self.first    = 0
-        self.devName  = devNm
-        self.wd       = os.getcwd()
+        self.newRaw    = False # True if we have new rawplots
+        self.newPlots  = False # True if someone re-subdivided rawplots => plots
+        self.first     = 0
+        self.devName   = devNm
+        self.wd        = os.getcwd()
         self.post_processing_mod = None
         self.post_processing_fn  = None
 
@@ -1730,14 +1735,13 @@ class environment(object):
                 (loci, hici) = ppgplot.pgqcir()
                 # for now, define at most 32 extra colours
                 # so we have 32 + 16 (predfined in PGPLOT) - 2 (black/white) = 46 colours
-                ncol = min(hici - loci, 32)
-                if ncol>0:
-                    # Generate extra colours and write them in the color index table
-                    map(lambda (ci, (r, g, b)): ppgplot.pgscr(ci, r, g, b), zip(itertools.count(loci), gencolors.getncol_rgb(ncol)))
-                    # set background to white and text to black
-                    ppgplot.pgscr(0, 1.0, 1.0, 1.0)
-                    ppgplot.pgscr(1, 0.0, 0.0, 0.0)
-                    pass
+                nExtra = min(hici - loci, 32)
+                # Generate extra colours and write them in the color index table
+                map(lambda (ci, (r, g, b)): ppgplot.pgscr(ci, r, g, b), zip(itertools.count(loci), gencolors.getncol_rgb(nExtra)))
+                # set background to white and text to black
+                ppgplot.pgscr(0, 1.0, 1.0, 1.0)
+                ppgplot.pgscr(1, 0.0, 0.0, 0.0)
+                self.devNColor = loci + nExtra
             except:
                 raise RuntimeError, "Sorry, failed to open device '{0}'".format(self.devName)
         ppgplot.pgslct(self.device)
@@ -2158,6 +2162,83 @@ def run_plotter(cmdsrc, **kwargs):
                   hlp=Help["filter"])
         )
 
+    # animation!
+    # animate the plots by some third axis (=combination of attribute values)
+    rxAnimate = re.compile(r"^animate\s+(?P<expr>\S.*)$")
+    def animate_fn(*args):
+        if not foo[o.curdev].navigable():
+            raise RuntimeError, "Animation only available on screen devices"
+        # the parser might be fed with keywords - we may have to check if they are available
+        tr = j().mappings.timeRange if j().mappings is not None else None
+        # parse the expression and loop over the plots
+        if tr:
+            cruft = parsers.parse_animate_expr(args[0], start=tr.start, end=tr.end, length=tr.end-tr.start, \
+                                                        mid=(tr.start+tr.end)/2.0, t_int=tr.inttm[0])
+        else:
+            cruft = parsers.parse_animate_expr(args[0])
+        # check what the parser gave us
+        # ( (dataset, filter), (groupby_f, sortfns) )
+        # if the dataset is not available, not much to do is there?
+        (ds_filter, grp_sort)  = cruft
+        (dataset_id, filter_f) = ds_filter
+        (groupby_f,  sort_f)   = grp_sort
+        e = env() 
+        if dataset_id is None:
+            # no dataset from memory so we'll have to refresh
+            refresh(e)
+            if not e.rawplots:
+                raise RuntimeError, "No plots created(yet)?"
+            the_plots = e.rawplots
+        else:
+            if dataset_id not in datasets:
+                raise RuntimeError, "The data set {0} does not exist".format(dataset_id)
+            the_plots = datasets[dataset_id]
+            if not parsers.isDataset(the_plots):
+                raise RuntimeError, "The variable {0} does not seem to refer to a set of plots"
+        keys = sort_f(filter(filter_f, the_plots.keys()))
+        if not keys:
+            raise RuntimeError, "After filtering there were no plots left to animate"
+        # Now we group_by and organize each set as plots
+        print "Preparing ", len(keys), " datasets for animation"
+        sequence = []
+        s_time = NOW()
+        for group_key, datakeyiter in itertools.groupby(keys, groupby_f): #groups:
+            tmp = j().processLabel( j().organizeAsPlots(parsers.ds_key_filter(the_plots, datakeyiter), j().getNewPlot()) )
+            if e.post_processing_fn:
+                e.post_processing_fn( tmp, j().mappings )
+            # rerun this because things may have changed
+            j().doMinMax(tmp, verbose=False)
+            sequence.append( tmp )
+        e_time = NOW()
+        print "Preparing animation took\t{0:.3f}s                ".format( e_time - s_time )
+        # loop indefinitely
+        fps = 3
+        try:
+            env().select()
+            dT = 1.0/fps
+            print "Press ^C to stop the animation [{0}fps]".format( fps )
+            while True:
+                for (page, page_plots) in enumerate(sequence):
+                    # we really would like to have all plots on one page
+                    # TODO: expand nx/ny to accomodate this?
+                    s = NOW()
+                    with plots.pgenv(ppgplot) as p:
+                        j().drawFunc(page_plots, ppgplot, 0, plots.AllInOne, ncol=env().devNColor)#foo[o.curdev].navigable())
+                    while True:
+                        nsec = (s + dT) - NOW()
+                        if nsec<=0:
+                            break
+                        time.sleep( nsec )
+                    # wait for next interval
+        except KeyboardInterrupt:
+            pass
+        return None
+
+    c.addCommand( 
+            mkcmd(rx=rxAnimate, id="animate", args = lambda x: x, cb=animate_fn,
+                  hlp=Help["animate"])
+        )
+
     # Marking points?
     #   commands:
     #       > mark none
@@ -2315,7 +2396,7 @@ def run_plotter(cmdsrc, **kwargs):
         e.select()
         # un-navigatable plotdevices get all plots in one go
         with plots.pgenv(ppgplot) as p:
-            j().drawFunc(e.plots, ppgplot, e.first, foo[o.curdev].navigable())
+            j().drawFunc(e.plots, ppgplot, e.first, foo[o.curdev].navigable(), ncol=e.devNColor)
 
     c.addCommand( \
             mkcmd(rx=re.compile(r"^pl$"), hlp="pl:\n\tplot current selection with current plot properties", \
@@ -2340,7 +2421,7 @@ def run_plotter(cmdsrc, **kwargs):
             raise RuntimeError, "Sorry, failed to open file '{0}'".format(e.wd +"/"+filenm if not filenm[0] == "/" else filenm)
         ppgplot.pgslct(f)
         ppgplot.pgask( False )
-        j().drawFunc(e.plots, ppgplot, 0)
+        j().drawFunc(e.plots, ppgplot, 0, ncol=e.devNColor)
         ppgplot.pgclos()
         e.select()
         print "Plots saved to [{0}]".format(filenm)

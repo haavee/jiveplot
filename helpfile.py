@@ -190,13 +190,14 @@ Example:
 
     > .... where field_id in [0, 13, 20-30:2]
 
-The '~' operator is specifically meant for string-valued fields, like the
-source name. The '~' means "string compare" rather than arithmetically compare.
-The '~' operator supports two types of operands, <string> or <regex>. The
-<regex> allows you full regular expression support, e.g. case insensitive
-mathing and partial pattern matching:
+The '~' and 'like' operators are specifically meant for string-valued fields,
+like the source name. The '~'/'like' means "string compare" rather than
+arithmetically compare.  The '~'/'like' operators support two types of operands,
+<string> or <regex>.  The <regex> allows you full regular expression support,
+e.g. case insensitive mathing and partial pattern matching:
 
-    <attribute> '~' <string> | <regex>
+    <attribute> '~'    <string> | <regex>
+    <attribute> 'like' <string> | <regex>
 
     <string> may be a (single)quoted string like 'string' or just characters.
       The string match will be case sensitive. 'string' may contain the shell
@@ -1671,7 +1672,7 @@ intentions like:
 
     "if a data set's attribute Y has a value which is less than z then plot it"
 
-In the grammer, <number> and <text> are what you think they are: digits and
+In the grammar, <number> and <text> are what you think they are: digits and
 characters (excluding white space). When attribute values are compared with
 <text> it is done case-insensitive. The <text> inside a <regex> is, arguably,
 the regular expression text and may contain embedded spaces. It may be suffixed
@@ -1699,6 +1700,60 @@ Examples:
     pt anpchan
     # In the phase panel only display parallel hands of polarization
     filter phase: p in [ll,rr]
+
+""",
+    ##################################################################
+    # animate
+    ##################################################################
+"animate":
+"""animate [<selection>] by <attribute> [, <attribute> ...]
+    animate current set of plots by e.g. 'time' for a movie
+
+Groups all the (selected) plots by distinct <attribute> value and cycles through
+those. A simple case would be:
+
+    > animate by time
+
+to make a time series ("movie") of the current data set. This can be used to see
+if a particular feature persists in time, say RFI in a amplitude-vs-channel
+plot.
+
+<selection> is an optional filter to subselect data from a stored dataset
+where the default is the currently loaded one:
+
+    > animate bl = efwb and sb = 2 by time
+
+The full syntax of the command is:
+
+    animate <selection> by <attributes>
+
+    # empty selection means "current"
+    <selection>  = "" | <dataset>
+    <attributes> = <attribute> { ',' <attribute> }
+
+    <dataset>    = {<identifier> ':'} <expression>
+    <identifier> = [a-zA-Z][0-9a-zA-Z]*   # alphanumeric variable name
+
+    <attribute>  = <attrname> { <sortorder> }
+    <attrname>   = 'time' | 'src' | 'bl' | 'p' | 'sb' | 'ch' | 'type'
+    <sortorder>  = 'asc' | 'desc'
+
+    <expression> = <expr> { 'and' <expression> | 'or' <expression> }
+    <expr>       = <condition> | '(' <expression> ')'
+    <condition>  = <attrname> <relop> <number> |
+                   <attrname> 'in' <list> |
+                   <attrname> 'like' <regex>
+                   <attrname> 'like' <text>
+    <relop>      = '<' | '<=' | '=' | '>' | '>=' 
+    <list>       = '[' <values> ']'
+    <values>     = <value> { ',' <values> }
+    <value>      = <number> | <text>
+    <text>       = ''' <characters> '''
+    <regex>      = '/' <text> '/'
+
+
+For the 'time' attribute the full time selection syntax can be used:
+    > animate unb_amptime: time > $end - 1h10s by sb
 
 """,
 }

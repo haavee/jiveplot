@@ -1,5 +1,6 @@
 # the possible plottypes are defined here,
 import jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types
+from label_v6 import label
 
 AX       = jenums.Axes
 YTypes   = jenums.enum("amplitude", "phase", "real", "imag", "weight")
@@ -32,7 +33,6 @@ class pgenv(object):
         self.plotter.pgunsa()
 
 
-
 ## Keep track of the layout of a page in number-of-plots in X,Y direction
 class layout(object):
     def __init__(self, nx, ny):
@@ -45,51 +45,7 @@ class layout(object):
     def __str__(self):
         return "{2} plots organized as {0} x {1}".format(self.nx, self.ny, self.nplots())
 
-class label:
-    #_attrs  = ["P", "CH", "SB", "FQ", "BL", "SRC", "TIME", "TYPE"]
-    _attrs   = [AX.P, AX.CH, AX.SB, AX.FQ, AX.BL, AX.SRC, AX.TIME, AX.TYPE]
 
-    # standardized field formatting
-    #  accept any iterable with (k,v) pairs
-    @classmethod
-    def format(self, kv):
-        # AX.TYPE are never part of the label.
-        # AX.CH AX.SB and AX.FQ are integers so they must be
-        #   disambiguated
-        #return "/".join(map(lambda (k,v): "{0}{1}".format(k, v) if k in [AX.CH, AX.SB, AX.FQ] else str(v), \
-        return "/".join(map(lambda (k,v): "{0}{1}".format(k, v) if k in [AX.CH, AX.SB] else str(v), \
-                            filter(lambda (k,v): not (k in [AX.TYPE]), kv)))
-
-    def __init__(self, kwdict, idxlst):
-        map(lambda a: setattr(self, a, kwdict[a] if a in idxlst else None), label._attrs)
-
-    ## translate this label into a key, e.g. for use in dicts
-    def key(self):
-        ## get all attributes whose name is all capitals and that are not None
-        return tuple(filter(lambda (a,v): not v is None, self.attrs(label._attrs)))
-        ##return tuple(filter(lambda (a, v): (not v is None) and label._rxAttr.match(a), inspect.getmembers(self)))
-
-    def attrs(self, which):
-        return map(lambda k: (k, getattr(self, k)), which)
-
-    def __hash__(self):
-        """ our hash function - take it from the key!"""
-        return hash(self.key())
-
-    def __cmp__(self, other):
-        return hash(other) - hash(self)
-
-    def __getitem__(self, attr):
-        return getattr(self, attr)
-
-    def __str__(self):
-        return label.format( self.key() )
-        # AX.TYPE are never part of the label.
-        # AX.CH AX.SB and AX.FQ are integers so they must be
-        #   disambiguated
-        #return "/".join(map(lambda (k,v): "{0}{1}".format(k, v) if k in [AX.CH, AX.SB] else str(v), \
-        #return "/".join(map(lambda (k,v): "{0}{1}".format(k, v) if k in [AX.CH, AX.SB, AX.FQ] else str(v), \
-        #                    filter(lambda (k,v): not (k in [AX.TYPE]), self.key())))
 
 # Take two labels and join them - i.e. to go from separate plot/data set labels 
 # to full data set label
@@ -98,7 +54,7 @@ def join_label(l1, l2):
     newlab = label({}, [])
     def attrval(a):
         # it's ok if _either_ of l1 or l2 has the attribute but not both
-        aval = filter(lambda x: not (x is None), [getattr(l1, a), getattr(l2, a)])
+        aval = filter(operator.truth, [getattr(l1, a), getattr(l2, a)])
         if len(aval)>1:
             raise RuntimeError, "Duplicate attribute value {0}: {1} {2}".format(a, aval[0], aval[1])
         return None if len(aval)==0 else aval[0] 
@@ -116,6 +72,11 @@ def split_label(l, inplot):
         return (pl, dsl)
     return reduce(reductor, label._attrs, (mk_lab(), mk_lab()))
 
+def label_splitter(inPlot):
+    inDataset = set(label._attrs) - set(inPlot)
+    def do_split(l):
+        return (label(l, inPlot), label(l, inDataset))
+    return do_split
 
 ## Colorkey functions. Take a data set label and produce a
 ## key such that for data sets having identical "keys"
@@ -123,22 +84,25 @@ def split_label(l, inplot):
 
 # the default colour index function: each key gets their 
 # own distinctive colour index
-def ckey_builtin(label, keycoldict):
+def ckey_builtin(label, keycoldict, **opts):
     key = str(label)
     ck  = keycoldict.get(key, None)
-    if ck is None:
-        # Never seen this label before - must allocate new colour!
-        # find values in the keycoldict and choose one that isn't there already
-        colours = sorted([v for (k,v) in keycoldict.iteritems()])
-        # skip colour 0 and 1 (black & white)
-        ck      = 2
-        if colours:
-            # find first unused colour index
-            while ck<=colours[-1]:
-                if ck not in colours:
-                    break
-                ck = ck + 1
-        keycoldict[key] = ck
+    if ck is not None:
+        return ck
+    if len(keycoldict)>=opts.get('ncol', 16):
+        return 1
+    # Never seen this label before - must allocate new colour!
+    # find values in the keycoldict and choose one that isn't there already
+    colours = sorted([v for (k,v) in keycoldict.iteritems()])
+    # skip colour 0 and 1 (black & white)
+    ck      = 2
+    if colours:
+        # find first unused colour index
+        while ck<=colours[-1]:
+            if ck not in colours:
+                break
+            ck = ck + 1
+    keycoldict[key] = ck
     return ck
 
 #### A function that returns functions that remap each subband's x-axis
@@ -472,8 +436,8 @@ class Plotter(object):
     #
 
     # return a colour index for the label
-    def colkey(self, dslab):
-        return self.ck_fun(dslab, self.ck_dict)
+    def colkey(self, dslab, **opts):
+        return self.ck_fun(dslab, self.ck_dict, **opts)
 
     def coldict(self):
         return self.ck_dict
@@ -502,6 +466,7 @@ class Plotter(object):
     def num_pages(self, plotar):
         return (len(plotar)/self.layout().nplots())+1
 
+AllInOne = type("AllInOne", (), {})()
 
 ##########################################################
 ####
@@ -512,9 +477,9 @@ class Quant2TimePlotter(Plotter):
     def __init__(self, ytypes, yscaling=None, yheights=None, **kwargs):
         super(Quant2TimePlotter, self).__init__("+".join(ytypes) + " versus time", jenums.Axes.TIME, ytypes, layout(1,4), yscaling=yscaling, yheights=yheights, **kwargs)
 
-    def drawfunc(self, device, plotar, first, onePage=None):
+    def drawfunc(self, device, plotar, first, onePage=None, **opts):
         # onePage == None? I.e. plot all. I.E. start from beginning!
-        if onePage is None:
+        if onePage in [None, AllInOne]:
             first = 0
 
         # Check for sensibility in caller.
@@ -524,7 +489,9 @@ class Quant2TimePlotter(Plotter):
             else:
                 raise RuntimeError, "No plots to plot"
 
-        layout = self.layout()
+        # make sure that the layout is such that we accomodate all plots on one page!
+        # for this style we allow the number of plots to grow in each direction
+        layout = growlayout(self.layout(), len(plotar), expandy=True) if onePage is AllInOne else self.layout()
 
         # Verbatim from amptimedrawer.g cf Huib style 
         device.pgscf( 2 )
@@ -627,7 +594,7 @@ class Quant2TimePlotter(Plotter):
                     for ds in datasets:
                         dsref = pref[ds]
                         # get the colour key for this data set
-                        device.pgsci( self.colkey(label(ds, plotar.dslabel)) )
+                        device.pgsci( self.colkey(label(ds, plotar.dslabel), **opts) )
                         for d in self.drawers[subplot]:
                             d(device, dsref.xval - day0hr, dsref.yval, -2 )
                         mp = self.markedPointsForYAxis(subplot, dsref)
@@ -665,16 +632,18 @@ class GenXvsYPlotter(Plotter):
         if colkey is not None:
             self.colkey_fn(colkey)
 
-    def drawfunc(self, device, plotar, first, onePage=None):
+    def drawfunc(self, device, plotar, first, onePage=None, **opts):
         # onePage == None? I.e. plot all. I.E. start from beginning!
-        if onePage is None:
+        if onePage in [None, AllInOne]:
             first = 0
 
         # Check for sensibility in caller.
         if first>=len(plotar):
             raise RuntimeError, "first plot ({0}) > #-of-plots ({1})".format(first, len(plotar))
 
-        layout = self.layout()
+        # make sure that the layout is such that we accomodate all plots on one page!
+        # for this style we allow the number of plots to grow in each direction
+        layout = growlayout(self.layout(), len(plotar), expandx=True, expandy=True) if onePage is AllInOne else self.layout()
 
         # Verbatim from ampchandrawer.g cf Huib style 
         device.pgscf( 2 )
@@ -755,7 +724,7 @@ class GenXvsYPlotter(Plotter):
                 for ds in datasets:
                     dsref = pref[ds]
                     # get the colour key for this data set
-                    device.pgsci( self.colkey(label(ds, plotar.dslabel)) )
+                    device.pgsci( self.colkey(label(ds, plotar.dslabel), **opts) )
                     # only one yAxis in this type of plot
                     for d in self.drawers[0]:
                         d(device, dsref.xval , dsref.yval, -2 )
@@ -789,9 +758,9 @@ class Quant2ChanPlotter(Plotter):
     def __init__(self, ytypes, yscaling=None, yheights=None, **kwargs):
         super(Quant2ChanPlotter, self).__init__("+".join(ytypes)+" versus channel", jenums.Axes.CH, ytypes, layout(2,4), yscaling=yscaling, yheights=yheights, **kwargs)
 
-    def drawfunc(self, device, plotar, first, onePage=None):
+    def drawfunc(self, device, plotar, first, onePage=None, **opts):
         # onePage == None? I.e. plot all. I.E. start from beginning!
-        if onePage is None:
+        if onePage in [None, AllInOne]:
             first = 0
 
         # Check for sensibility in caller.
@@ -801,13 +770,15 @@ class Quant2ChanPlotter(Plotter):
             else:
                 raise RuntimeError, "No plots to be plotted"
 
-        layout = self.layout()
+        # make sure that the layout is such that we accomodate all plots on one page!
+        # for this style we allow the number of plots to grow in each direction
+        layout = growlayout(self.layout(), len(plotar), expandx=True, expandy=True) if onePage is AllInOne else self.layout()
 
         # Verbatim from ampchandrawer.g cf Huib style 
         device.pgscf( 2 )
    
         # get the pagestyle
-        n        = min(len(plotar), layout.nplots()) if onePage else len(plotar)
+        n        = min(len(plotar), layout.nplots()) if onePage not in [None, AllInOne] else len(plotar)
         eachpage = pagestyle(layout, n, expandy=True, expandx=True)
 
         # Now we know how many plots/page so we can compute how many plots to do
@@ -865,7 +836,7 @@ class Quant2ChanPlotter(Plotter):
                     # filter the data sets with current y-axis type
                     # Keep the indices because we need them twice
                     datasets = filter(lambda kv: kv[0].TYPE == ytype and self.filter_fun[subplot](kv[0]), pref.iteritems())
-    
+
                     # the specific type may have been removed?
                     if not datasets:
                         continue
@@ -914,7 +885,7 @@ class Quant2ChanPlotter(Plotter):
                     # actually in the data set labels
                     for (lab, data) in datasets:
                         # get the colour key for this data set
-                        device.pgsci( self.colkey(label(lab, plotar.dslabel)) )
+                        device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
                         # get the actual x-axis values for the data set
                         xvals = xoffset.get(lab.SB, identity)( data.xval )
                         for d in self.drawers[subplot]:
@@ -940,7 +911,7 @@ class Quant2ChanPlotter(Plotter):
                         # channel number does not map (uniquely) to frequency any more
                         # because the user has overplotted >1 subband in one plot
                         device.pgsch( 0.5 )
-                        if not plotlabel.FQ is None and not plotlabel.SB is None:
+                        if plotlabel.FQ is not None and plotlabel.SB is not None:
                             if mysm is None:
                                 frqedge = "no freq info"
                             else:
@@ -994,6 +965,21 @@ def pagestyle(layout, nplots, expandx=None, expandy=None):
     page.yb     = 0.04 + page.footer
     page.yt     = 1.0 - page.header
     return page
+
+def growlayout(layout, nplots, expandx=None, expandy=None):
+    # make sure the new layout is such that all plots will be on one page
+    nlayout = copy.deepcopy( layout )
+    while nlayout.nplots()<nplots:
+        if expandx and expandy:
+            if nlayout.nx<nlayout.ny:
+                nlayout.nx = nlayout.nx + 1
+            else:
+                nlayout.ny = nlayout.ny + 1
+        elif expandx:
+            nlayout.nx = nlayout.nx + 1
+        else:
+            nlayout.ny = nlayout.ny + 1
+    return nlayout
 
 def issuenewpage(device):
    device.pgpage()
