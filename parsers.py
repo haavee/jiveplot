@@ -1543,7 +1543,7 @@ def parse_ckey_expr(expr):
     # our tokens
     tokens = [
         # the attribute names we support
-        (re.compile(r"\b(p|ch|sb|fq|bl|time|src)\b", re.I), value_t('attrname')),
+        (re.compile(r"\b(p|ch|sb|fq|bl|time|src)\b", re.I), xform_t('attrname', str.upper)),
         # attribute values
         #    @regex and text: we get the terminating start, end characters as well so must strip them off
         (mk_escaped_rx('/', "i?"),                          xform_t('regex', mk_regex)),
@@ -1694,7 +1694,7 @@ def parse_ckey_expr(expr):
                     return None
                 # create new label with all attributes
                 # taken from the conditions
-                nl = reduce(lambda acc, (nm, v): setattr(acc, nm, v) or acc, ms, plots.label({}, []))
+                nl = plots.label( dict(ms), map(lambda kv: kv[0], ms) )
                 # str representation is key
                 return colouridxfn(keycoldict, str(nl))
             return do_it
