@@ -1534,12 +1534,10 @@ class jplotter:
                     hvutil.range_repr(hvutil.find_consecutive_ranges(sel_.chanSel)) if sel_.chanSel else "*" + "]"
 
         # transform into plots.Dict() structure
-        tp   = type(numpy.ndarray([]))
-        asna = lambda x: x if isinstance(x, tp) else numpy.array(x)
         for (label, dataset) in pl.iteritems():
-            dsref = plotar2.setdefault(label, plots.Dict())
-            dsref.xval = asna(dataset.x)
-            dsref.yval = asna(dataset.y)
+            dsref      = plotar2.setdefault(label, plots.Dict())
+            dsref.xval = numpy.array(dataset.x)
+            dsref.yval = numpy.array(dataset.y)
         return plotar2
 
     def organizeAsPlots(self, plts, np):
@@ -1616,7 +1614,58 @@ class jplotter:
 
         return plts
 
+
     def doMinMax(self, plts, **opts):
+        defaults = {'verbose': True}
+        defaults.update( **opts )
+        #print "Enter MinMax / #plots = {0} {1}".format( len(plts), type(plts))
+        ## Per plot we must compile the min/max of both X, Y axes
+        DD            = collections.defaultdict
+        plts.meta     = DD(lambda: DD(plots.Dict))
+        plts.limits   = DD(plots.Dict)           
+
+        def reductor(acc, lds):
+            tref = acc[lds[0].TYPE]
+            lds1 = lds[1]
+            tref['xmin'].append( numpy.min(lds1.xval) )
+            tref['xmax'].append( numpy.max(lds1.xval) )
+            tref['ymin'].append( numpy.min(lds1.yval) )
+            tref['ymax'].append( numpy.max(lds1.yval) )
+            return acc
+
+        s = NOW()
+        glimits = DD(lambda: DD(list))
+        for plotlab in plts.keys():
+            for (tp, mdata) in reduce(reductor, plts[plotlab].iteritems(), DD(lambda: DD(list))).iteritems():
+                mref      = plts.meta[plotlab][tp]
+                mref.xlim = (min(mdata['xmin']), max(mdata['xmax']))
+                mref.ylim = (min(mdata['ymin']), max(mdata['ymax']))
+                # append to global limits
+                glimits[tp]['xmin'].append( mref.xlim[0] )
+                glimits[tp]['xmax'].append( mref.xlim[1] )
+                glimits[tp]['ymin'].append( mref.ylim[0] )
+                glimits[tp]['ymax'].append( mref.ylim[1] )
+        # and set them
+        for (tp, mdata) in glimits.iteritems():
+            mref      = plts.limits[tp]
+            mref.xlim = (min(mdata['xmin']), max(mdata['xmax']))
+            mref.ylim = (min(mdata['ymin']), max(mdata['ymax']))
+        e = NOW()
+
+        if defaults['verbose']:
+            print "min/max processing took\t{0:.3f}s                ".format( e-s )
+
+        if False:
+            for k in plts.meta.keys():
+                print "META[",k,"]"
+                for d in plts.meta[k].keys():
+                    print "   DS[",d,"]/ x:",plts.meta[k][d].xlim," y:",plts.meta[k][d].ylim
+            for k in plts.limits.keys():
+                print "LIMITS[",k,"]/ x:",plts.limits[k].xlim," y:",plts.limits[k].ylim
+        return plts
+
+    # old style min/max processing
+    def doMinMax_old(self, plts, **opts):
         defaults = {'verbose': True}
         defaults.update( **opts )
         #print "Enter MinMax / #plots = {0} {1}".format( len(plts), type(plts))
@@ -1632,9 +1681,9 @@ class jplotter:
 
         npminmax = lambda x: (numpy.amin(x), numpy.amax(x))
 
-        # Right. Need to do local/global min/max processing
-        #        And whilst we're at it - we're inspecting the labels as well -
-        #        compile a list of uniqe attributes
+#        # Right. Need to do local/global min/max processing
+#        #        And whilst we're at it - we're inspecting the labels as well -
+#        #        compile a list of uniqe attributes
         s = NOW()
         for plotlab in plts.keys():
             # process all data sets in the current plot

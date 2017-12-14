@@ -308,18 +308,19 @@ def m2d(ar):
         shp.insert(-1, 1)
     return ar.reshape( shp )
 
-
-def calibrate_speed(n):
-    l  = range(n)
-    s  = NOW()
-    t  = numpy.array(l, dtype=numpy.float32)
-    e  = NOW()
-    return (n, e-s)
-
 class dataset:
-    __slots__ = ['x', 'y', 'n', 'a']
-    __nparraytype   = type(numpy.array([]))
-    npperformance = calibrate_speed(100000)
+    __slots__ = ['x', 'y', 'n', 'a', 'sf']
+
+    @classmethod
+    def add_sumy(self, obj, xs, ys):
+        obj.y = obj.y + ys
+        obj.n = obj.n + 1
+
+    @classmethod
+    def init_sumy(self, obj, xs, ys):
+        obj.x  = numpy.array(xs)
+        obj.y  = numpy.array(ys)
+        obj.sf = dataset.add_sumy
 
     def __init__(self, x=None, y=None):
         if x is not None and len(x)!=len(y):
@@ -327,6 +328,7 @@ class dataset:
         self.x  = list() if x is None else x
         self.y  = list() if y is None else y
         self.n  = 0 if x is None else 1
+        self.sf = dataset.init_sumy if x is None else dataset.add_sumy
         self.a  = False
 
     def append(self, xv, yv):
@@ -335,13 +337,7 @@ class dataset:
 
     # integrate into the current buffer
     def sumy(self, xs, ys):
-        if self.n==0:
-            self.x  = xs
-            self.y  = ys
-            self.n  = 1
-        else:
-            self.y = self.y + ys
-            self.n = self.n + 1
+        self.sf(self, xs, ys)
 
     def average(self):
         if not self.a and self.n>1:
@@ -349,7 +345,7 @@ class dataset:
         self.a = True
 
     def is_numarray(self):
-        return isinstance(self.x, dataset.__nparraytype) and isinstance(self.y, dataset.__nparraytype)
+        return (type(self.x) is numpy.ndarray and type(self.y) is numpy.ndarray)
 
     def as_numarray(self):
         if self.is_numarray():
