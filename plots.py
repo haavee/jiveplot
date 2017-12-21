@@ -1090,6 +1090,30 @@ def getviewport(device, page, cvp, drawxlab, drawylab, subplot=None, height=None
 ## Return tuple of (xlims, ylims) with
 ## xlims = [<xmin>, <xmax>], ylims=[<ymin>, <ymax>]
 ##
+
+#  19 Dec 2017 MarkK comes to me saying the plots are borkened!
+#              Plotting ratios of two data sets that are basically equal (i.e.
+#              ratio==1.00000000...)  some of them are displayed as
+#              0.14000000xyz. First thought it was NaN clogging up the display
+#              but that didn't fix anything. 
+#
+#              Traced to here - "dy" (ylims[1] - ylims[0]) was ~3.147e-6 which
+#              is larger than the "dy" limit of 1e-6 (which I had arbitrarily
+#              set, apparently) but small enough to break PGPLOT plotting. So
+#              now we try to work out the machine epsilon and check if "dy" >
+#              few tens of epsilons and if it isn't then make the y-range
+#              artificially larger than the span of the data in the y-direction.
+#
+#              PGPLOT pgswin() takes "REAL" (aka float32) as parameters so
+#              probably we're running into some machine precision probs here if
+#              the range between Y2 and Y1 is too small. Of course this applies
+#              to X1 and X2 as well
+#
+#              Finding epsilon for a given IEEE floating point type:
+#              http://rstudio-pubs-static.s3.amazonaws.com/13303_daf1916bee714161ac78d3318de808a9.html
+F       = numpy.float32
+epsilon = abs((F(7)/F(3)) - (F(4)/F(3)) - F(1))
+
 def getXYlims(plotarray, ytype, curplotlabel, xscaling, yscaling):
         ## Process X-axis limits
         fixed = False
@@ -1104,30 +1128,30 @@ def getXYlims(plotarray, ytype, curplotlabel, xscaling, yscaling):
         xlims = list(xlims)
         dx = xlims[1] - xlims[0]
         # if x-range too small, safeguard against that?
-        # make sure dx is positive and non-zero. Note this
-        if dx<1.0e-6:
-            dx = 1
+        # make sure dx is positive and non-zero. SEE NOTE ABOVE
+        dx = max(dx, 100*epsilon)
         if not fixed:
-            xlims[0] = xlims[0] - 0.05*dx
-            xlims[1] = xlims[1] + 0.05*dx
+            mid      = (xlims[1] + xlims[0])/2
+            xlims[0] = mid - 0.55*dx
+            xlims[1] = mid + 0.65*dx
 
         ## Repeat for Y
         fixed = False
         if yscaling == Scaling.auto_local:
-            ylims = plotarray.meta[curplotlabel][ytype].ylim
+            ylims = list(plotarray.meta[curplotlabel][ytype].ylim)
         elif yscaling == Scaling.auto_global:
-            ylims = plotarray.limits[ytype].ylim
+            ylims = list(plotarray.limits[ytype].ylim)
         else:
-            ylims = copy.deepcopy(yscaling)
+            ylims = list(copy.deepcopy(yscaling))
             fixed = True
-        ylims = list(ylims)
+        #ylims = list(ylims)
         dy = ylims[1] - ylims[0]
-        # id. for y range
-        if dy<1.0e-6:
-            dy = 1
+        # id. for y range  (see NOTE above)
+        dy = max(dy, 100*epsilon)
         if not fixed:
-            ylims[0] = ylims[0] - 0.05*dy
-            ylims[1] = ylims[1] + 0.15*dy
+            mid      = (ylims[1] + ylims[0])/2
+            ylims[0] = mid - 0.55*dy
+            ylims[1] = mid + 0.65*dy
         return (xlims, ylims)
 
 # eachpage: contains the page layout
