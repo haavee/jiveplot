@@ -34,6 +34,10 @@ The command supports the following options:
                         which meta data to read (see the help of the 'uniq'
                         command)
 
+    readflags=t(rue)|f(alse)
+                        wether to read the FLAG+FLAG_ROW columns; see the 'show' command.
+                        Default: True
+
 Example:
 
     > ms X3c1.ms unique=f spw_order=by_id column=alma_phase_corr
@@ -1756,5 +1760,41 @@ For the 'time' attribute the full time selection syntax can be used:
     > animate unb_amptime: time > $end - 1h10s by sb
 
 """,
+
+
+    ##################################################################
+    # show
+    ##################################################################
+"show":
+"""show [flagged|unflagged|both]
+    display or change which datapoints are being plotted. Default: unflagged
+
+By default the FLAG_ROW and FLAG columns are read and OR'ed together to keep
+track of a data point's flagged status. Depending on the actual 'show' setting
+only points meeting that criterion are actually drawn on the screen. 
+By default only the unflagged data are displayed.
+
+Note that NaN/Inf data is /never/ displayed, wether they were flagged or
+unflagged.
+
+If processing the actual flags is not desired (for e.g. speed or
+not-interested reasons), this can be prohibited using the 'readflags=f' option
+when opening a MeasurementSet (see 'ms' command). In such a case all points
+are considered 'unflagged'.
+
+Flagged and unflagged data are drawn in different visual styles if 'Points'
+are being drawn - the shape of the marker is different. Certain plot types
+only draw 'Lines' by default (e.g. "ampchan") and there the flagged/unflagged
+points cannot be told apart unless the 'draw' command is used to change this.
+
+If marking is applied (see 'mark' command) then the marked points are
+displayed in (yet other) different visual styles between flagged/unflagged data
+points.
+
+Thus, if both types of data points are being displayed and marking is applied,
+then up to four (4) different markers will be drawn [obviously if there are no
+points meeting a criterion no marker of that kind will be drawn ...]
+
+"""
 }
 

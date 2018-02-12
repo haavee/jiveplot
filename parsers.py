@@ -928,15 +928,10 @@ def ds_flat_filter(value, tp=None, subscript=None):
         # Do we accept this dataset?
         if not subquery(ds):
             continue
-        dsref      = value[ds]
-        # sort by x-value!
-        (xs, ys)   = zip( *sorted(zip(dsref.xval, dsref.yval), key=operator.itemgetter(0)) )
-        dsref.xval = numpy.array(xs)
-        dsref.yval = numpy.array(ys)
         # if anames is set, it means we've filtered/subindexed so we must create a new label with
         # the indicated anames set to None [such that the crossmatching on those won't fail]
         nds        = mklabf(ds)
-        rv[nds]    = value[ds]
+        rv[nds]    = value[ds].sort()
     return rv
 
 def ds_key_filter(value, keys):
@@ -946,14 +941,15 @@ def ds_key_filter(value, keys):
     return rv
 
 dictType  = type({})
+#isDataset = lambda x: isinstance(x, plots.plt_dataset)
 isDataset = lambda x: isinstance(x, dictType)
 
 def normal_apply(l, f, r):
-    return (None, (l.xval, f(l.yval, r.yval)))
+    return (None, (l._xval, f(l._yval.data, r._yval.data)))
 
 def shortest_apply(l, f, r):
-    n = min(len(l.yval), len(r.yval))
-    return ("Truncated to {0} elements".format(n), (l.xval[:n], f(l.yval[:n], r.yval[:n])))
+    n = min(len(l._yval.data), len(r._yval.data))
+    return ("Truncated to {0} elements".format(n), (l._xval.data[:n], f(l._yval.data[:n], r._yval.data[:n])))
 
 isect_table = {
     # ( <lengths equal>, <one of 'm has length '1'>)
@@ -970,17 +966,17 @@ def do_isect(d0, f, d1):
     def app(acc, key):
         # make sure they're numarrays
         # [note: .as_numarray() does not create a new object, just returns 'self']
-        ds0 = d0[key]#.as_numarray()
-        ds1 = d1[key]#.as_numarray()
-        l0  = len(ds0.yval)
-        l1  = len(ds1.yval)
+        ds0 = d0[key]
+        ds1 = d1[key]
+        l0  = len(ds0._yval)
+        l1  = len(ds1._yval)
         # compare lengths (...) and decide what to do
         (msg, res) = isect_table[(l0==l1, l0==1 or l1==1)](ds0, f, ds1)
         if msg is not None:
             print "{0}: {1}".format(key, msg)
-        pref = acc.setdefault(key, plots.Dict())
-        pref.xval = res[0]
-        pref.yval = res[1]
+        # the new dataset has the combined flagged between the two participating datasets
+        nOutput    = len(res[0])
+        acc[ key ] = plots.plt_dataset(res[0], res[1], numpy.logical_or(ds0._m_flagged[:nOutput], ds1._m_flagged[:nOutput]))
         return acc
     return reduce(app, set(d0.keys()) & set(d1.keys()), copy_attributes(plots.Dict(), d0))
 
@@ -990,16 +986,15 @@ def immediate_apply(l, f, r):
 
 def do_iterate(d0, f, d1):
     # we know that either d0 or d1 is a dataset
-    d0isdata = isDataset(d0)
-    gen      = d0.iteritems() if d0isdata else d1.iteritems()
+    proto    = d0 if isDataset(d0) else d1
+    # from the prototype dataset 
     # apply in the correct order!
-    app      = (lambda d: f(d, d1)) if d0isdata else (lambda d: f(d0, d))
-    def reductor(acc, (k, ds)):
-        pref = acc.setdefault(k, plots.Dict())
-        pref.xval = ds.xval
-        pref.yval = app(ds.yval)
+    app      = (lambda d: f(d, d1)) if isDataset(d0) else (lambda d: f(d0, d))
+    def reductor(acc, k_ds):
+        (key, ds)  = k_ds
+        acc[ key ] = plots.plt_dataset(ds._xval.data, app(ds._yval.data), ds._yval.mask)
         return acc
-    return reduce(reductor, gen, copy_attributes(plots.Dict(), d0 if d0isdata else d1))
+    return reduce(reductor, proto.iteritems(), copy_attributes(plots.Dict(), proto))
 
 applicator_table = { 
     # infix:  lhs <operator> rhs
@@ -1015,6 +1010,7 @@ def applicator(d0, f, d1):
     # for both arguments we want a set of keys such that we can get the intersection
     # of identical keys. But that's only if both of 'm are datasets
     # otherwise it's either just numbers that are combined or one of them is a data set
+    print "Applicator/d0=",isDataset(d0)," d1=",isDataset(d1)
     return applicator_table[(isDataset(d0), isDataset(d1))](d0, f, d1)
 
 
@@ -1226,10 +1222,15 @@ def parse_dataset_expr(txt, datasets, **env):
                 return all([cond(ds) for cond in l])
             return do_it
         def mk_lab_f(l):
+            # label._attrs is the set of all attributes
+            # l is the list/set of attributes that we need to replace with None
+            # So what we do is construct the new label from the old one
+            # but tell it to only take the values not in l!
+            # (values not in the list of attributes to copy will be initialized to None by
+            #  the new label class)
+            attrs_to_copy = plots.label._attrs - set(l)
             def do_it(ds):
-                rv = copy.deepcopy(ds)
-                map(lambda y: setattr(rv, y, None), l)
-                return rv
+                return plots.label(ds, attrs_to_copy)
             return do_it
         (anames, matchfns) = zip(*rv)
         return (mk_lab_f(anames), mk_match_f(matchfns))

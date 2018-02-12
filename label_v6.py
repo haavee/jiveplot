@@ -19,6 +19,9 @@ _fmtDict  = dict((zip(_attrf, _fmt)))
 def getitem(o, a):
     return o[a]
 
+def getattr_v(o, a):
+    return getattr(o, a.value)
+
 class label(BaseClass):
     @classmethod
     def format(self, kv):
@@ -28,7 +31,7 @@ class label(BaseClass):
     _attrs    = set(_attrl)
 
     def __new__(_cls, kwdict, which):
-        accf = getitem if type(kwdict) is dict else getattr
+        accf = getitem if type(kwdict) is dict else getattr_v
         kwds = dict(((k, accf(kwdict,k)) for k in which))
         return tuple.__new__(_cls, map(kwds.pop, _attrl, _nones))
 
@@ -36,7 +39,7 @@ class label(BaseClass):
         return tuple(((_attrl[n], self[n]) for n in _nattrf if self[n] is not None))
 
     def attrs(self, which):
-        return tuple((w, getattr(self, w)) for w in which)
+        return tuple((w, getattr(self, w.value)) for w in which)
 
     def __repr__(self):
         return "/".join( [_fmt[n](_attrf[n], self[n]) for n in _nattrf if self[n] is not None] )

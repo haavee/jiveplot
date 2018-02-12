@@ -1,11 +1,12 @@
 # the possible plottypes are defined here,
-import jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types
-from label_v6 import label
+import enumerations, jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types, functional
+from label_v6   import label
 
 AX       = jenums.Axes
-YTypes   = jenums.enum("amplitude", "phase", "real", "imag", "weight")
-Scaling  = jenums.enum("auto_global", "auto_local")
-CKReset  = jenums.enum("newplot")
+FLAG     = jenums.Flagstuff
+YTypes   = enumerations.Enum("amplitude", "phase", "real", "imag", "weight")
+Scaling  = enumerations.Enum("auto_global", "auto_local")
+CKReset  = enumerations.Enum("newplot")
 
 CP       = copy.deepcopy
 
@@ -124,7 +125,9 @@ def mk_offset(datasets, attribute):
     def range_per_sb(acc, ds):
         (label, data) = ds
         attributeval  = getattr(label, attribute)
-        (mi, ma)      = (min(data.xval), max(data.xval))
+        (mi, ma) = (0, 0) if data.xlims is None else data.xlims
+        #(mi, ma) = (min(data.xval), max(data.xval))
+        # if either mi/ma is None that means there is no data
         (ami, ama)    = acc.get(attributeval, (mi, ma))
         acc.update( {attributeval: (min(mi, ami), max(ma, ama))} )
         return acc
@@ -132,8 +135,11 @@ def mk_offset(datasets, attribute):
     # process one entry from the {attrval1:(mi, ma), attrval2:(mi, ma), ...} dict
     # the accumulator is (dict(), current_xaxis_length)
     def offset_per_sb(acc, kv):
-        (offsetmap, curMax)  = acc
         (sb, (sbMin, sbMax)) = kv
+        # if the indicated subband has no min/max then no data was to be plotted for that one
+        if sbMin is None or sbMax is None:
+            return acc
+        (offsetmap, curMax)  = acc
         if curMax is None:
             # this is the first SB in the plot - this sets
             # the xmin/xmax and the x-axis transform is the identity transform
@@ -165,7 +171,89 @@ class Dict(dict):
 ## >>> l['key'] = 42    /* use dict method */
 ## >>> l.x = 12         /* set attribute x to value 12 */
 
-Drawers = jenums.enum("Lines", "Points", "Both")
+def normalize_mask(m):
+    if numpy.all(m):
+        return True
+    if numpy.any(m): # note: do not use "sum(m)" - that's wicket sl0w
+        return m
+    # not all && not any => none at all!
+    return False
+
+
+class minidataset(object):
+    __slots__ = ('xval', 'yval', 'xlims', 'ylims', 'xval_f', 'yval_f')
+    def __init__(self, xv, yv, xf, yf, xl, yl):
+        self.xval   = xv
+        self.yval   = yv
+        self.xval_f = xf
+        self.yval_f = yf
+        self.xlims  = xl
+        self.ylims  = yl
+
+class plt_dataset(object):
+    __slots__ = ('_xval', '_yval', '_xlims', '_ylims', 'isSorted', 'prevFlag', 'n', 'n_nan', '__xval', '__yval', '_m_flagged','_m_unflagged', '_m_nan')
+    _xformMap = { list:                      lambda a, m: numpy.ma.MaskedArray(numpy.array(a), mask=m),
+                  numpy.ndarray:             lambda a, m: numpy.ma.MaskedArray(a, mask=m),
+                  numpy.ma.core.MaskedArray: lambda a, m: numpy.ma.MaskedArray(a, mask=numpy.logical_or(a.mask, False if m is None else m))}
+
+    def __init__(self, x, y, m=None):
+        self._yval        = numpy.ma.array( plt_dataset._xformMap[type(y)](y, m) )
+        self._xval        = numpy.ma.array( numpy.array(x), mask=CP(self._yval.mask) )
+        # cache the masks so that switching between them is easy
+        self._m_flagged   = CP(self._yval.mask)
+        self._m_unflagged = ~self._m_flagged
+        self._m_nan       = ~numpy.isfinite(self._yval.data)
+        self.isSorted     = False
+
+    # sort by x-axis value. do that once
+    def sort(self):
+        if self.isSorted:
+            return self
+        # sort by x-value!
+        idxes             = numpy.argsort(self._xval.data, kind='heapsort')
+        self._xval        = self._xval[idxes]
+        self._yval        = self._yval[idxes]
+        # if any of the masks was an array those need to be remapped as well
+        self._m_flagged   = self._m_flagged[idxes]
+        self._m_unflagged = self._m_unflagged[idxes]
+        self._m_nan       = self._m_nan[idxes]
+        self.isSorted = True
+        return self
+
+    def getxy(self, m):
+        return (numpy.ma.array(self._xval.data, mask=m).compressed(), numpy.ma.array(self._yval.data, mask=m).compressed())
+
+    def prepare_for_display(self, flagSetting):
+        # prepare variables for unflagged x+y, flagged x+y and x+y min+max
+        (xu, yu, xf, yf) = [None]*4
+        (xi, xa, yi, ya) = [list(), list(), list(), list()]
+        # Depending on what to show, get those datapoints
+        if flagSetting in [FLAG.Unflagged, FLAG.Both]:
+            # reset to creation mask [and always block NaN & friends]
+            newMask    = numpy.logical_or(self._m_flagged, self._m_nan)
+            if not numpy.all(newMask):
+                # there are non-flagged entries
+                (xu, yu) = self.getxy( newMask )
+                xi.append( min(xu) )
+                xa.append( max(xu) )
+                yi.append( min(yu) )
+                ya.append( max(yu) )
+        if flagSetting in [FLAG.Flagged, FLAG.Both]:
+            newMask   = numpy.logical_or(self._m_unflagged, self._m_nan)
+            if not numpy.all(newMask):
+                # there are non-flagged entries
+                (xf, yf) = self.getxy( newMask )
+                xi.append( min(xf) )
+                xa.append( max(xf) )
+                yi.append( min(yf) )
+                ya.append( max(yf) )
+
+        # if the list(s) of min/max don't have any entries there were no points to display at all
+        # so only need to test one of 'm
+        return None if not xi else minidataset(xu, yu, xf, yf, (min(xi), max(xa)), (min(yi), max(ya)))
+
+
+Drawers = enumerations.Enum("Lines", "Points", "Both")
 
 
 ##########################################################
@@ -246,7 +334,7 @@ class Plotter(object):
         self.markerSize   = 6
         self.drawMethod   = CP([""]*len(self.yAxis))
         self.drawers      = CP([[]]*len(self.yAxis))
-        self.setDrawer(*self.defaultDrawer.split())
+        self.setDrawer(*str(self.defaultDrawer).split())
 
     # self.drawers    = [ [drawers-for-yaxis0], [drawers-for-yaxis1], ... ]
     # self.drawMethod = "yaxis0:method yaxis1:method ...."
@@ -298,7 +386,7 @@ class Plotter(object):
                     self.drawMethod[idx] = dm
             else:
                 raise RuntimeError, "You cannot mix qualified axis drawing methods with unqualified ones" 
-        return " ".join(map(":".join, zip(self.yAxis, self.drawMethod)))
+        return " ".join(map(":".join, zip(map(str,self.yAxis), self.drawMethod)))
 
     # want to fix the scale of the axes?
     #  can give either:
@@ -386,8 +474,8 @@ class Plotter(object):
             self.filter_fun[idx]   = parsers.parse_filter_expr( args[0] )
             self.filter_fun_s[idx] = CP(args[0])
 
-    def markedPointsForYAxis(self, idx, ds):
-        return self.marker[idx](ds) if self.marker[idx] else []
+    def markedPointsForYAxis(self, idx, x, y):
+        return self.marker[idx](x, y) if self.marker[idx] else []
 
     # Create a page label Dict with properties
     #   .left   .center and .right for page header display purposes
@@ -475,7 +563,7 @@ AllInOne = type("AllInOne", (), {})()
 ##########################################################
 class Quant2TimePlotter(Plotter):
     def __init__(self, ytypes, yscaling=None, yheights=None, **kwargs):
-        super(Quant2TimePlotter, self).__init__("+".join(ytypes) + " versus time", jenums.Axes.TIME, ytypes, layout(1,4), yscaling=yscaling, yheights=yheights, **kwargs)
+        super(Quant2TimePlotter, self).__init__("+".join(map(str,ytypes)) + " versus time", jenums.Axes.TIME, ytypes, layout(1,4), yscaling=yscaling, yheights=yheights, **kwargs)
 
     def drawfunc(self, device, plotar, first, onePage=None, **opts):
         # onePage == None? I.e. plot all. I.E. start from beginning!
@@ -517,7 +605,6 @@ class Quant2TimePlotter(Plotter):
 
             # retrieve the plotlabels. We count the plots numerically but address them in the plotar
             # (which, in reality, is a Dict() ...) by their key
-            #for (i, plotlabel) in hvutil.enumerateslice(plotar.keys(), first, last):
             for (i, plotlabel) in hvutil.enumerateslice(sorted(plotar.keys(), key=self.sortOrder), first, last):
                 #print "plot {0} '{1}' (first={2})".format(i, plotlabel.key(), first)
                 # <pnum> is the actual counter of the plots we're creating
@@ -554,11 +641,14 @@ class Quant2TimePlotter(Plotter):
                 for (subplot, ytype) in enumerate(self.yAxis):
                     # filter the data sets with current y-axis type
                     # Keep the indices because we need them twice
-                    datasets = filter(lambda x: x.TYPE==ytype and self.filter_fun[subplot](x), pref.keys())
+                    datasets = filter(lambda kv: kv[0].TYPE == ytype and self.filter_fun[subplot](kv[0]), pref.iteritems())
 
                     # the type may have been removed due to an expression/selection
                     if not datasets:
                         continue
+                    # get the limits of the plots in world coordinates
+                    (xlims, ylims) = getXYlims(plotar, ytype, plotlabel, self.xScale, self.yScale[subplot])
+
                     # drawing of the y-axis label depends on the current view port or
                     # the setting of the current panel
                     drawylab = cvp.x==0 or Scaling.auto_local in self.yScale
@@ -571,9 +661,6 @@ class Quant2TimePlotter(Plotter):
                     # and set character height
                     device.pgsch( 0.75 )
 
-                    # get the limits of the plots in world coordinates
-                    (xlims, ylims) = getXYlims(plotar, ytype, plotlabel, self.xScale, self.yScale[subplot])
-
                     # we subtract day0hr from all x-axis values so we must do that with
                     # the x-axis limits too
                     xlims = map(lambda x: x - day0hr, xlims)
@@ -583,27 +670,37 @@ class Quant2TimePlotter(Plotter):
                     device.pgswin( xlims[0], xlims[1], ylims[0], ylims[1] )
                     setboxes(device, cvp, drawxlab and subplot==0, drawylab, self.xAxis==jenums.Axes.TIME)
 
-                    # filter the data sets with type amplitude. 
-                    # Keep the indices because we need them twice
+                    # draw with lines
                     device.pgsls( 1 )
 
                     # first use: draw the data sets in the plots
                     olw = device.pgqlw()
                     if olw!=3:
                         device.pgslw(8)
-                    for ds in datasets:
-                        dsref = pref[ds]
+                    for (lab, data) in datasets:
                         # get the colour key for this data set
-                        device.pgsci( self.colkey(label(ds, plotar.dslabel), **opts) )
-                        for d in self.drawers[subplot]:
-                            d(device, dsref.xval - day0hr, dsref.yval, -2 )
-                        mp = self.markedPointsForYAxis(subplot, dsref)
-                        if mp:
-                            lw = device.pgqlw()
-                            device.pgslw(self.markerSize)
-                            device.pgpt( dsref.xval[mp] - day0hr, dsref.yval[mp], 7)
-                            device.pgslw(lw)
-                        self.doExtraCallbacks(device, dsref, xoffset=day0hr)
+                        device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
+                        # we know there's stuff to display so let's do that then
+                        # Any marked data points to display?
+                        (mu, mf) = (None, None)
+                        # Any unflagged data to display?
+                        if data.xval is not None:
+                            map(functional.ylppa(device, data.xval - day0hr, data.yval, -2), self.drawers[subplot])
+                            mu = self.markedPointsForYAxis(subplot, data.xval, data.yval)
+                        # Any flagged data to display?
+                        if data.xval_f is not None:
+                            map(functional.ylppa(device, data.xval_f - day0hr, data.yval_f, 5), self.drawers[subplot])
+                            mf = self.markedPointsForYAxis(subplot, data.xval_f, data.yval_f)
+                        # draw markers if necessary
+                        lw = device.pgqlw()
+                        device.pgslw(self.markerSize)
+                        if mu:
+                            device.pgpt( data.xval[mu] - day0hr, data.yval[mu], 7)
+                        if mf:
+                            device.pgpt( data.xval_f[mf] - day0hr, data.yval_f[mf], 27)
+                        device.pgslw(lw)
+                        # Any extra drawing commands?
+                        self.doExtraCallbacks(device, data, xoffset=day0hr)
                     device.pgslw(olw)
 
                     if subplot==0: 
@@ -628,7 +725,7 @@ class Quant2TimePlotter(Plotter):
 ##########################################################
 class GenXvsYPlotter(Plotter):
     def __init__(self, xtype, ytype, yscaling=None, lo=None, colkey=None):
-        super(GenXvsYPlotter, self).__init__(ytype+" versus "+xtype, xtype, [ytype], layout(2,4) if lo is None else lo, yscaling=yscaling)
+        super(GenXvsYPlotter, self).__init__(str(ytype)+" versus "+str(xtype), xtype, [ytype], layout(2,4) if lo is None else lo, yscaling=yscaling)
         if colkey is not None:
             self.colkey_fn(colkey)
 
@@ -692,7 +789,7 @@ class GenXvsYPlotter(Plotter):
 
                 # filter the data sets with type yType
                 # Keep the indices because we need them twice
-                datasets = filter(lambda x: x.TYPE==self.yAxis[0] and self.filter_fun[0](x), pref.keys())
+                datasets = filter(lambda kv: kv[0].TYPE == self.yAxis[0] and self.filter_fun[0](kv[0]), pref.iteritems())
 
                 # Set up the plotcoord for this plot, including
                 # world coordinate limits
@@ -711,9 +808,6 @@ class GenXvsYPlotter(Plotter):
                 # get limits of the plot in world coordinates
                 (xlims, ylims) = getXYlims(plotar, self.yAxis[0], plotlabel, self.xScale, self.yScale[0])
 
-                # compute delta y for later use
-                dy = ylims[1] - ylims[0]
-
                 device.pgswin( xlims[0], xlims[1], ylims[0], ylims[1] )
                 setboxes(device, cvp, drawxlab, drawylab, False)
 
@@ -721,20 +815,30 @@ class GenXvsYPlotter(Plotter):
                 # first use: draw the data sets in the plots
                 # remember the lowest subband if the subband number is
                 # actually in the data set labels
-                for ds in datasets:
-                    dsref = pref[ds]
+                for (lab, data) in datasets:
                     # get the colour key for this data set
-                    device.pgsci( self.colkey(label(ds, plotar.dslabel), **opts) )
-                    # only one yAxis in this type of plot
-                    for d in self.drawers[0]:
-                        d(device, dsref.xval , dsref.yval, -2 )
-                    mp = self.markedPointsForYAxis(0, dsref)
-                    if mp:
-                        lw = device.pgqlw()
-                        device.pgslw(self.markerSize)
-                        device.pgpt( dsref.xval[mp], dsref.yval[mp], 7)
-                        device.pgslw(lw)
-                    self.doExtraCallbacks(device, dsref)
+                    device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
+                    # we know there's stuff to display so let's do that then
+                    # Any marked data points to display?
+                    (mu, mf) = (None, None)
+                    # Any unflagged data to display?
+                    if data.xval is not None:
+                        # only one yAxis in this type of plot
+                        map(functional.ylppa(device, data.xval, data.yval, -2), self.drawers[0])
+                        mu = self.markedPointsForYAxis(0, data.xval, data.yval)
+                    # Any flagged data to display?
+                    if data.xval_f is not None:
+                        map(functional.ylppa(device, data.xval_f, data.yval_f, 5), self.drawers[0])
+                        mf = self.markedPointsForYAxis(0, data.xval_f, data.yval_f)
+                    # draw markers if necessary
+                    lw = device.pgqlw()
+                    device.pgslw(self.markerSize)
+                    if mu:
+                        device.pgpt( data.xval[mu], data.yval[mu], 7)
+                    if mf:
+                        device.pgpt( data.xval_f[mf], data.yval_f[mf], 27)
+                    device.pgslw(lw)
+                    self.doExtraCallbacks(device, data)
                 
                 # Add some more metadata
                 device.pgsci( 1 )
@@ -756,7 +860,7 @@ class GenXvsYPlotter(Plotter):
 ##########################################################
 class Quant2ChanPlotter(Plotter):
     def __init__(self, ytypes, yscaling=None, yheights=None, **kwargs):
-        super(Quant2ChanPlotter, self).__init__("+".join(ytypes)+" versus channel", jenums.Axes.CH, ytypes, layout(2,4), yscaling=yscaling, yheights=yheights, **kwargs)
+        super(Quant2ChanPlotter, self).__init__("+".join(map(str,ytypes))+" versus channel", jenums.Axes.CH, ytypes, layout(2,4), yscaling=yscaling, yheights=yheights, **kwargs)
 
     def drawfunc(self, device, plotar, first, onePage=None, **opts):
         # onePage == None? I.e. plot all. I.E. start from beginning!
@@ -831,6 +935,7 @@ class Quant2ChanPlotter(Plotter):
                 drawxlab = lastrow(eachpage, cvp, pnum, last-first) or self.xScale == Scaling.auto_local
 
                 ## Loop over the subplots
+
                 plotxlims = None
                 for (subplot, ytype) in enumerate(self.yAxis):
                     # filter the data sets with current y-axis type
@@ -886,16 +991,33 @@ class Quant2ChanPlotter(Plotter):
                     for (lab, data) in datasets:
                         # get the colour key for this data set
                         device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
-                        # get the actual x-axis values for the data set
-                        xvals = xoffset.get(lab.SB, identity)( data.xval )
-                        for d in self.drawers[subplot]:
-                            d(device, numpy.asarray(xvals), data.yval, -2 )
-                        mp = self.markedPointsForYAxis(subplot, data)
-                        if mp:
-                            lw = device.pgqlw()
-                            device.pgslw(self.markerSize)
-                            device.pgpt( xvals[mp], data.yval[mp], 7)
-                            device.pgslw(lw)
+                        # we know there's stuff to display so let's do that then
+                        # Any marked data points to display?
+                        (mu, mf) = (None, None)
+                        # may have had to transform the xvals, xu = x unflagged, xf = x flagged
+                        (xu, xf) = (None, None)
+                        # Any unflagged data to display?
+                        if data.xval is not None:
+                            xu = xoffset.get(lab.SB, identity)( data.xval )
+                            map(functional.ylppa(device, xu, data.yval, -2), self.drawers[subplot])
+                            # extract marked points based on world coordinates iso modified plot coords
+                            mu = self.markedPointsForYAxis(subplot, data.xval, data.yval)
+                        # Any flagged data to display?
+                        if data.xval_f is not None:
+                            xf = xoffset.get(lab.SB, identity)( data.xval_f )
+                            map(functional.ylppa(device, xf, data.yval_f, 5), self.drawers[subplot])
+                            # extract marked points based on world coordinates iso modified plot coords
+                            mf = self.markedPointsForYAxis(subplot, data.xval_f, data.yval_f)
+                        # draw markers if necessary
+                        lw = device.pgqlw()
+                        device.pgslw(self.markerSize)
+                        if mu:
+                            # if mu evaluates to True then xu is also not-None
+                            device.pgpt( xu[mu], data.yval[mu], 7)
+                        if mf:
+                            # id. for the flagged stuff
+                            device.pgpt( xf[mf], data.yval_f[mf], 27)
+                        device.pgslw(lw)
                         self.doExtraCallbacks(device, data)
                     
                     # Add some more metadata in subplot 0
@@ -1076,6 +1198,30 @@ def getviewport(device, page, cvp, drawxlab, drawylab, subplot=None, height=None
 ## Return tuple of (xlims, ylims) with
 ## xlims = [<xmin>, <xmax>], ylims=[<ymin>, <ymax>]
 ##
+
+#  19 Dec 2017 MarkK comes to me saying the plots are borkened!
+#              Plotting ratios of two data sets that are basically equal (i.e.
+#              ratio==1.00000000...)  some of them are displayed as
+#              0.14000000xyz. First thought it was NaN clogging up the display
+#              but that didn't fix anything. 
+#
+#              Traced to here - "dy" (ylims[1] - ylims[0]) was ~3.147e-6 which
+#              is larger than the "dy" limit of 1e-6 (which I had arbitrarily
+#              set, apparently) but small enough to break PGPLOT plotting. So
+#              now we try to work out the machine epsilon and check if "dy" >
+#              few tens of epsilons and if it isn't then make the y-range
+#              artificially larger than the span of the data in the y-direction.
+#
+#              PGPLOT pgswin() takes "REAL" (aka float32) as parameters so
+#              probably we're running into some machine precision probs here if
+#              the range between Y2 and Y1 is too small. Of course this applies
+#              to X1 and X2 as well
+#
+#              Finding epsilon for a given IEEE floating point type:
+#              http://rstudio-pubs-static.s3.amazonaws.com/13303_daf1916bee714161ac78d3318de808a9.html
+F       = numpy.float32
+epsilon = abs((F(7)/F(3)) - (F(4)/F(3)) - F(1))
+
 def getXYlims(plotarray, ytype, curplotlabel, xscaling, yscaling):
         ## Process X-axis limits
         fixed = False
@@ -1090,30 +1236,29 @@ def getXYlims(plotarray, ytype, curplotlabel, xscaling, yscaling):
         xlims = list(xlims)
         dx = xlims[1] - xlims[0]
         # if x-range too small, safeguard against that?
-        # make sure dx is positive and non-zero. Note this
-        if dx<1.0e-6:
-            dx = 1
+        # make sure dx is positive and non-zero. SEE NOTE ABOVE
+        dx = max(dx, 1)
         if not fixed:
-            xlims[0] = xlims[0] - 0.05*dx
-            xlims[1] = xlims[1] + 0.05*dx
+            mid      = (xlims[1] + xlims[0])/2
+            xlims[0] = mid - 0.55*dx
+            xlims[1] = mid + 0.65*dx
 
         ## Repeat for Y
         fixed = False
         if yscaling == Scaling.auto_local:
-            ylims = plotarray.meta[curplotlabel][ytype].ylim
+            ylims = list(plotarray.meta[curplotlabel][ytype].ylim)
         elif yscaling == Scaling.auto_global:
-            ylims = plotarray.limits[ytype].ylim
+            ylims = list(plotarray.limits[ytype].ylim)
         else:
-            ylims = copy.deepcopy(yscaling)
+            ylims = list(copy.deepcopy(yscaling))
             fixed = True
-        ylims = list(ylims)
         dy = ylims[1] - ylims[0]
-        # id. for y range
-        if dy<1.0e-6:
-            dy = 1
+        # id. for y range  (see NOTE above)
+        dy = max(dy, 100*epsilon)
         if not fixed:
-            ylims[0] = ylims[0] - 0.05*dy
-            ylims[1] = ylims[1] + 0.15*dy
+            mid      = (ylims[1] + ylims[0])/2
+            ylims[0] = mid - 0.55*dy
+            ylims[1] = mid + 0.65*dy
         return (xlims, ylims)
 
 # eachpage: contains the page layout
@@ -1241,6 +1386,17 @@ def printlegend(device, colcode, eachpage):
         device.pgptxt( xcapt, ycapt, 0.0, 0.0, label )
     device.pgsch( och )
 
+
+choicetab = {
+        # we don't have to cover (True, True) because
+        # that would mean that both .xval and .xval_f are None
+        # and that case is filtered out; datasets with no data at all
+        # are not sent to the drawing function ...
+        (False, False): lambda x, xf: min(x[0], xf[0]),
+        (True , False): lambda x, xf: xf[0],
+        (False, True ): lambda x, xf: x[0]
+        }
+
 def printsrcname(device, plotref, datasets, day0hr, yval, ystep):
     # device is the PGPLOT object
     # plotarray is reference to the current plot
@@ -1256,7 +1412,7 @@ def printsrcname(device, plotref, datasets, day0hr, yval, ystep):
     device.pgsci( 1 )
 
     seensrces = set()
-    for dskey in datasets:
+    for (dskey,_) in datasets:
         # If no 'SRC' in data set identifier, do nothing
         if dskey.SRC is None:
             continue
@@ -1264,7 +1420,9 @@ def printsrcname(device, plotref, datasets, day0hr, yval, ystep):
         if dskey.SRC in seensrces:
             continue
         # stagger them in groups of 3, covers 3 source phase ref
-        device.pgptxt( plotref[dskey].xval[0]-day0hr, yval + ystep * (len(seensrces)%3), 0.0, 0.0, dskey.SRC )
+        pref = plotref[dskey]
+        x0   = choicetab[(pref.xval is None, pref.xval_f is None)](pref.xval, pref.xval_f)
+        device.pgptxt( x0-day0hr, yval + ystep * (len(seensrces)%3), 0.0, 0.0, dskey.SRC )
         seensrces.add( dskey.SRC )
     device.pgsch( och )
 
@@ -1287,7 +1445,7 @@ Plotters  = {
         'ampchan': Quant2ChanPlotter([YTypes.amplitude], yscaling=[Scaling.auto_global], yheights=[0.97], drawer=Drawers.Lines),
         'phachan': Quant2ChanPlotter([YTypes.phase], yscaling=[[-185, 185]], yheights=[0.97], drawer=Drawers.Lines),
         'anpchan': Quant2ChanPlotter([YTypes.amplitude, YTypes.phase], yscaling=[Scaling.auto_global, [-185, 185]], \
-                                     yheights=[0.58, 0.38], drawer=Drawers.Lines+" "+Drawers.Points),
+                                     yheights=[0.58, 0.38], drawer=Drawers.Lines.value+" "+Drawers.Points.value),
         'rechan' : Quant2ChanPlotter([YTypes.real], yscaling=[Scaling.auto_global], yheights=[0.97], drawer=Drawers.Lines),
         'imchan' : Quant2ChanPlotter([YTypes.imag], yscaling=[Scaling.auto_global], yheights=[0.97], drawer=Drawers.Lines),
         'rnichan': Quant2ChanPlotter([YTypes.real, YTypes.imag], yscaling=[Scaling.auto_global, Scaling.auto_global],
@@ -1298,4 +1456,4 @@ Plotters  = {
 }
 
 
-Types = jenums.enum(*Plotters.keys())
+Types = enumerations.Enum(*Plotters.keys())

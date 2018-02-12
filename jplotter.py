@@ -395,10 +395,12 @@
 #
 import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, imp, time
 import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors
+from   functional import compose
 
-CP  = copy.deepcopy
-NOW = time.time
-AVG = jenums.Averaging
+CP   = copy.deepcopy
+NOW  = time.time
+AVG  = jenums.Averaging
+FLAG = jenums.Flagstuff
 
 pwidth = lambda p, w: "{0:{1}}".format(p, w)
 ppfx   = lambda p: pwidth(p, 10)
@@ -433,7 +435,7 @@ class jplotter:
                 if mo:
                     return bool( mo.group('yes') )
                 raise RuntimeError, "{0} is not a valid boolean expression".format(x)
-            (arguments, options) = hvutil.split_optarg(*args, **{'unique':as_bool})
+            (arguments, options) = hvutil.split_optarg(*args, **{'unique':as_bool, 'readflags':as_bool})
             if len(arguments)>1:
                 raise RuntimeError, "ms() takes only one or no parameters"
             # attempt to open the measurement set
@@ -444,6 +446,7 @@ class jplotter:
                 self.scanlist  = []
                 self.dirty     = True
                 self.selection = selection.selection()
+                self.readFlags = options.get('readflags', True)
             except Exception as E:
                 print E
         if self.msname:
@@ -1420,6 +1423,18 @@ class jplotter:
         print "{0} {1}".format(pplt("new plots on:"), 
                 hvutil.dictfold(lambda (ax,val), acc: acc+"{0} ".format(ax) if val else acc, "", self.selection.newPlot))
                 
+    def showSetting(self, *args):
+        if args and args[0]:
+            if len(args)>1:
+                raise RuntimeError("show only takes one argument, not {0}".format(len(args)))
+            # expect 'args' to be one of FLAG enums
+            newSetting = args[0].capitalize()
+            if newSetting not in FLAG:
+                raise RuntimeError("Unknown show setting {0}".format(args[0]))
+            if FLAG[newSetting] is not self._showSetting:
+                self._showSetting = FLAG[newSetting]
+                self.npmodify     = self.npmodify + 1
+        print "{0} {1}{2}".format(pplt("show:"), self._showSetting, " ({0:s} + {1:s})".format(FLAG.Flagged, FLAG.Unflagged) if self._showSetting is FLAG.Both else "")
 
     ## raw TaQL string manipulation ..
     def taqlStr(self, *args):
@@ -1468,7 +1483,7 @@ class jplotter:
         ## Create the plots!
         with plotiterator.Iterators[self.selection.plotType] as p:
             s = NOW()
-            pl = p.makePlots(self.msname, self.selection, self.mappings)
+            pl = p.makePlots(self.msname, self.selection, self.mappings, readflags=self.readFlags)
             e = NOW()
         print "Data munching took\t{0:.3f}s".format( e-s )
 
@@ -1527,17 +1542,15 @@ class jplotter:
             else:
                 se = map_.timeRange
                 timerngs = "{0}->{1}".format(ms2util.as_time(se.start), ms2util.as_time(se.end))
-            plotar2.comment = plotar2.comment + "[" + ("" if sel_.solint is None else str(sel_.solint)+"s") +" " + sel_.averageTime + " avg'ed " + timerngs + "]"
+            plotar2.comment = plotar2.comment + "[" + ("" if sel_.solint is None else str(sel_.solint)+"s") +" " + str(sel_.averageTime) + " avg'ed " + timerngs + "]"
 
         if sel_.averageChannel != AVG.None:
-            plotar2.comment = plotar2.comment + "[" + sel_.averageChannel + "averaged channels " + \
+            plotar2.comment = plotar2.comment + "[" + str(sel_.averageChannel) + "averaged channels " + \
                     hvutil.range_repr(hvutil.find_consecutive_ranges(sel_.chanSel)) if sel_.chanSel else "*" + "]"
 
         # transform into plots.Dict() structure
         for (label, dataset) in pl.iteritems():
-            dsref      = plotar2.setdefault(label, plots.Dict())
-            dsref.xval = numpy.array(dataset.x)
-            dsref.yval = numpy.array(dataset.y)
+            plotar2[label] = plots.plt_dataset(dataset.x, dataset.y, dataset.m)
         return plotar2
 
     def organizeAsPlots(self, plts, np):
@@ -1554,7 +1567,10 @@ class jplotter:
             (plot_l, dataset_l) = splitter(l)
             #print "Unflatten: {0} => {1}  {2}".format(l, plot_l, dataset_l)
             #print "           {0} points".format( len(dataset.xval) )
-            acc.setdefault(plot_l, plots.Dict())[ dataset_l ] = dataset
+            ds = dataset.prepare_for_display( self._showSetting )
+            if ds is None:
+                return acc
+            acc.setdefault(plot_l, plots.Dict())[ dataset_l ] = ds
             return acc
         rv = parsers.copy_attributes(plots.Dict(), plts)
         return reduce(proc_ds, plts.iteritems(), rv)
@@ -1618,38 +1634,46 @@ class jplotter:
     def doMinMax(self, plts, **opts):
         defaults = {'verbose': True}
         defaults.update( **opts )
-        #print "Enter MinMax / #plots = {0} {1}".format( len(plts), type(plts))
-        ## Per plot we must compile the min/max of both X, Y axes
+        ## Per plot we must compile the min/max of both X, Y axes per type
+        #   meta[ <plot> ][ <type> ]{'xmin': ... , 'xmax': ..., 'ymin':..., 'ymax':...}
+        #       contains the x/y range per plot per type, based on all datasets in the plot
+        #   limits[ <type> ]{'xmin':..., 'xmax':..., 'ymin':..., 'ymax':...}
+        #       contains the global x/y range per type across all plots
         DD            = collections.defaultdict
         plts.meta     = DD(lambda: DD(plots.Dict))
-        plts.limits   = DD(plots.Dict)           
+        plts.limits   = DD(plots.Dict)
 
+        what_to_show = self._showSetting
         def reductor(acc, lds):
             tref = acc[lds[0].TYPE]
             lds1 = lds[1]
-            tref['xmin'].append( numpy.min(lds1.xval) )
-            tref['xmax'].append( numpy.max(lds1.xval) )
-            tref['ymin'].append( numpy.min(lds1.yval) )
-            tref['ymax'].append( numpy.max(lds1.yval) )
+            # We *know* that xlims/ylims exist because datasets that do not have
+            # any points in them are filtered out in organizeAsPlots()
+            xl         = lds1.xlims
+            yl         = lds1.ylims
+            tref[ 0 ].append( xl[0] ) # xmin
+            tref[ 1 ].append( xl[1] ) # xmax
+            tref[ 2 ].append( yl[0] ) # ymin
+            tref[ 3 ].append( yl[1] ) # ymax
             return acc
 
         s = NOW()
-        glimits = DD(lambda: DD(list))
+        glimits = DD(lambda: (list(), list(), list(), list()))
         for plotlab in plts.keys():
-            for (tp, mdata) in reduce(reductor, plts[plotlab].iteritems(), DD(lambda: DD(list))).iteritems():
+            for (tp, mdata) in reduce(reductor, plts[plotlab].iteritems(), DD(lambda: (list(), list(), list(), list()))).iteritems():
                 mref      = plts.meta[plotlab][tp]
-                mref.xlim = (min(mdata['xmin']), max(mdata['xmax']))
-                mref.ylim = (min(mdata['ymin']), max(mdata['ymax']))
+                mref.xlim = (min(mdata[0]), max(mdata[1]))
+                mref.ylim = (min(mdata[2]), max(mdata[3]))
                 # append to global limits
-                glimits[tp]['xmin'].append( mref.xlim[0] )
-                glimits[tp]['xmax'].append( mref.xlim[1] )
-                glimits[tp]['ymin'].append( mref.ylim[0] )
-                glimits[tp]['ymax'].append( mref.ylim[1] )
+                glimits[tp][ 0 ].append( mref.xlim[0] )
+                glimits[tp][ 1 ].append( mref.xlim[1] )
+                glimits[tp][ 2 ].append( mref.ylim[0] )
+                glimits[tp][ 3 ].append( mref.ylim[1] )
         # and set them
         for (tp, mdata) in glimits.iteritems():
             mref      = plts.limits[tp]
-            mref.xlim = (min(mdata['xmin']), max(mdata['xmax']))
-            mref.ylim = (min(mdata['ymin']), max(mdata['ymax']))
+            mref.xlim = (min(mdata[0]), max(mdata[1]))
+            mref.ylim = (min(mdata[2]), max(mdata[3]))
         e = NOW()
 
         if defaults['verbose']:
@@ -1664,67 +1688,13 @@ class jplotter:
                 print "LIMITS[",k,"]/ x:",plts.limits[k].xlim," y:",plts.limits[k].ylim
         return plts
 
-    # old style min/max processing
-    def doMinMax_old(self, plts, **opts):
-        defaults = {'verbose': True}
-        defaults.update( **opts )
-        #print "Enter MinMax / #plots = {0} {1}".format( len(plts), type(plts))
-        ## Per plot we must compile the min/max of both X, Y axes
-        plts.meta     = plots.Dict()
-        plts.limits   = plots.Dict()
-
-        ## this helper functions takes a reference to the current
-        ## axis min/max and a data set's minmax and updates accordingly
-        mima_ = lambda l1, l2: (min(l1[0], l2[0]), max(l1[1], l2[1]))
-        mima  = lambda obj, dslim, attr : \
-                    setattr(obj, attr, dslim) if hasattr(obj, attr)==False else setattr(obj, attr, mima_(getattr(obj, attr), dslim))
-
-        npminmax = lambda x: (numpy.amin(x), numpy.amax(x))
-
-#        # Right. Need to do local/global min/max processing
-#        #        And whilst we're at it - we're inspecting the labels as well -
-#        #        compile a list of uniqe attributes
-        s = NOW()
-        for plotlab in plts.keys():
-            # process all data sets in the current plot
-            for dslab in plts[plotlab].keys():
-                # In the meta data per plot, we keep, per type, the X/Y limits
-                mref = plts.meta.setdefault(plotlab, plots.Dict())
-                mref = mref.setdefault(dslab.TYPE,   plots.Dict())
-
-                ds   = plts[plotlab][dslab]
-
-                # now update the min/max stuff
-                # first: for the plot level ...
-                #     <type> = Y-axis type, some plots produce >1 type of
-                #              value [amp+pha, re+im]
-                #  <plots>.meta[ <plotlabel> ][ <type> ].xlim = [xmin, xmax]
-                #  <plots>.meta[ <plotlabel> ][ <type> ].ylim = [ymin, ymax]
-                mima(mref, npminmax(ds.xval), 'xlim')
-                mima(mref, npminmax(ds.yval), 'ylim')
-
-                # ... and the global (and we keep it per type)
-                # <plots>.limits[ <type> ].xlim = [xmin, xmax]
-                # <plots>.limits[ <type> ].ylim = [ymin, ymax]
-                lref  = plts.limits.setdefault(dslab.TYPE, plots.Dict())
-                mima(lref, mref.xlim, 'xlim')
-                mima(lref, mref.ylim, 'ylim')
-        e = NOW();
-        if defaults['verbose']:
-            print "min/max processing took\t{0:.3f}s                ".format( e-s )
-
-        if False:
-            for k in plts.meta.keys():
-                print "META[",k,"]"
-                for d in plts.meta[k].keys():
-                    print "   DS[",d,"]/ x:",plts.meta[k][d].xlim," y:",plts.meta[k][d].ylim
-            for k in plts.limits.keys():
-                print "LIMITS[",k,"]/ x:",plts.limits[k].xlim," y:",plts.limits[k].ylim
-        return plts
-
     def drawFunc(self, plotar, dev, fst, onePage=None, **opts):
         plotter = plots.Plotters[plotar.plotType]
+        s = NOW()
         plotter.drawfunc(dev, plotar, fst, onePage, **opts)
+        e = NOW();
+        if opts.get('verbose', True):
+            print "drawing took\t{0:.3f}s                ".format( e-s )
 
     def reset(self):
         self.msname              = None
@@ -1735,6 +1705,8 @@ class jplotter:
         self.averaging           = AVG.None
         self.selection           = selection.selection()
         self.mappings            = ms2mappings.mappings()
+        self._showSetting        = FLAG.Unflagged
+        self.readFlags           = True
 
 
     def markedDirty(self, *args):
@@ -1996,7 +1968,7 @@ def run_plotter(cmdsrc, **kwargs):
         def p(x):
             print x
         # compute longest plot type name
-        longest = max( map(len, plots.Types) )
+        longest = max( map(compose(len, str), plots.Types) )
         map(lambda x : p("{0:{1}} => {2}".format(x, longest, plots.Plotters[x].description())), plots.Types)
     c.addCommand( \
         mkcmd(rx=re.compile(r"^lp$"), hlp=Help["lp"], \
@@ -2261,7 +2233,7 @@ def run_plotter(cmdsrc, **kwargs):
         e_time = NOW()
         print "Preparing animation took\t{0:.3f}s                ".format( e_time - s_time )
         # loop indefinitely
-        fps = 3
+        fps = 0.7#3
         try:
             env().select()
             dT = 1.0/fps
@@ -2272,7 +2244,7 @@ def run_plotter(cmdsrc, **kwargs):
                     # TODO: expand nx/ny to accomodate this?
                     s = NOW()
                     with plots.pgenv(ppgplot) as p:
-                        j().drawFunc(page_plots, ppgplot, 0, plots.AllInOne, ncol=env().devNColor)#foo[o.curdev].navigable())
+                        j().drawFunc(page_plots, ppgplot, 0, plots.AllInOne, ncol=env().devNColor)
                     while True:
                         nsec = (s + dT) - NOW()
                         if nsec<=0:
@@ -2356,7 +2328,7 @@ def run_plotter(cmdsrc, **kwargs):
     def plot_props():
         j().plotType()
         pt = j().getPlotType()
-        if not pt is None:
+        if pt is not None:
             layout_f()
             mark_fn("mark")
         j().averageTime()
@@ -2364,6 +2336,7 @@ def run_plotter(cmdsrc, **kwargs):
         j().solint()
         j().weightThreshold()
         j().newPlot()
+        j().showSetting()
 
     c.addCommand( \
         mkcmd(rx=re.compile(r"^pp$"), hlp=Help["pp"], \
@@ -2423,7 +2396,10 @@ def run_plotter(cmdsrc, **kwargs):
         # either would warrant making a new plot/dataset array
         if (e.newRaw or j().newPlotChanged()) and e.rawplots:
             e.newRaw   = False # pre-reset this flag to prevent it rmaining set after e.g. an exeption below
-            e.plots    = j().processLabel( j().organizeAsPlots(e.rawplots, j().getNewPlot()) )
+            tmp = j().processLabel( j().organizeAsPlots(e.rawplots, j().getNewPlot()) )
+            if not tmp:
+                raise RuntimeError("WARNING: no plots generated")
+            e.plots    = tmp
             e.first    = 0
             e.newPlots = True
         # if we have a new set of plots created ... we must run the postprocessing, if any
@@ -2450,6 +2426,13 @@ def run_plotter(cmdsrc, **kwargs):
     c.addCommand( \
             mkcmd(rx=re.compile(r"^pl$"), hlp="pl:\n\tplot current selection with current plot properties", \
             cb=lambda : do_plot(env()), id="pl") )
+
+
+    # control what to show: flagged, unflagged, both
+    c.addCommand( \
+            mkcmd(rx=re.compile(r"^show(\s\S+)?$"), hlp=Help["show"], \
+            args=lambda x: re.sub("^show\s*", "", x), \
+            cb=lambda *args: j().showSetting(*args), id="show") )
 
     # produce a hardcopy postscript file
     rxExt = re.compile(r"^.+\.ps(?P<ft>/v?cps)?$", re.I)
