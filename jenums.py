@@ -22,30 +22,9 @@
 # they're like enums only infinitely better
 
 # http://stackoverflow.com/questions/36932/whats-the-best-way-to-implement-an-enum-in-python
-#def enum(*sequential, **named):
-      #enums = dict(zip(sequential, range(len(sequential))), **named)
-      #return type('Enum', (), enums)
-class enum(object):
-    def __init__(self, *seq):
-        self.enums = seq
-        for e in self.enums:
-            setattr(self, e, e)
+import enumerations
 
-    # you can iterate over the enum to find out all defined values
-    def __iter__(self):
-        class enumiter(object):
-            def __init__(self,enuminst):
-                self.iterable = enuminst
-                self.iter     = iter(enuminst.enums)
-            def next(self):
-                return getattr(self.iterable, self.iter.next())
-        return enumiter(self)
-
-    def __getitem__(self, idx):
-        if idx in self.enums:
-            return idx
-        raise IndexError,"{0} does not exist".format(idx)
-
-Type      = enum('Unknown', 'Lag', 'Spectral')
-Axes      = enum('P', 'CH', 'SB', 'FQ', 'BL', 'SRC', 'TIME', 'TYPE')
-Averaging = enum('None', 'Scalar', 'Vector', 'Vectornorm')
+Type      = enumerations.Enum('Unknown', 'Lag', 'Spectral')
+Axes      = enumerations.Enum('P', 'CH', 'SB', 'FQ', 'BL', 'SRC', 'TIME', 'TYPE')
+Averaging = enumerations.Enum('None', 'Scalar', 'Vector', 'Vectornorm')
+Flagstuff = enumerations.Enum('Unflagged', 'Flagged', 'Both')

@@ -17,7 +17,7 @@ class token_type(object):
         self.position = kwargs.get('position', -1)
 
     def __str__(self):
-        return "(tp={0}, val={1}, pos={2})".format(self.type, self.value, self.position)
+        return "(type={0}, val={1}, pos={2})".format(self.type, self.value, self.position)
 
     def __repr__(self):
         return str(self)
@@ -101,6 +101,8 @@ ignore_t   = lambda      : lambda o, **k: None
 keyword_t  = lambda      : lambda o, **k: token_type(o.group(0), **k)
 simple_t   = lambda tp   : lambda o, **k: token_type(tp, **k)
 value_t    = lambda tp   : lambda o, **k: token_type(tp, o.group(0), **k)
+# extract a given match group
+extract_t  = lambda tp, g: lambda o, **k: token_type(tp, o.group(g), **k)
 # xform    = transform match group 0 [ie the whole regex match]
 xform_t    = lambda tp, f: lambda o, **k: token_type(tp, f(o.group(0)), **k)
 # xformmg  = transform the match object; ie you have access to all match groups
@@ -199,7 +201,7 @@ def parse_scan(qry, **kwargs):
         int_token(),
         # Operators that just stand for themselves
         #token_def("~",                        simple_t('regexmatch')),
-        token_def("~",                        xform_t('regexmatch', lambda o, **k: lambda x, y: not re.match(y, x) is None)),
+        token_def(r"(~|\blike\b)",            xform_t('regexmatch', lambda o, **k: lambda x, y: not re.match(y, x) is None)),
         token_def(r"(<=|>=|=|<|>)",           operator_t('compare')),
         token_def(r"-|\+|\*|/",               operator_t('operator')),
         token_def(r"\(",                      simple_t('lparen')),
@@ -565,7 +567,11 @@ def parse_scan(qry, **kwargs):
             else:
                 order.type = 'asc'
             # create a sorting function
-            rv.append( lambda l: sorted(l, key=operator.attrgetter(item.value), reverse=(order.type=='desc')) )
+            def mk_sf(attr, order):
+                def do_it(x):
+                    return sorted(x, key=operator.attrgetter(attr), reverse=(order=='desc'))
+                return do_it
+            rv.append( mk_sf(item.value, order.type) )
 
             #if we don't see a comma next, we break
             if tok(s).type!='comma':
@@ -922,27 +928,28 @@ def ds_flat_filter(value, tp=None, subscript=None):
         # Do we accept this dataset?
         if not subquery(ds):
             continue
-        dsref      = value[ds]
-        # sort by x-value!
-        (xs, ys)   = zip( *sorted(zip(dsref.xval, dsref.yval), key=operator.itemgetter(0)) )
-        dsref.xval = numpy.array(xs)
-        dsref.yval = numpy.array(ys)
         # if anames is set, it means we've filtered/subindexed so we must create a new label with
         # the indicated anames set to None [such that the crossmatching on those won't fail]
         nds        = mklabf(ds)
-        rv[nds]    = value[ds]
+        rv[nds]    = value[ds].sort()
     return rv
 
+def ds_key_filter(value, keys):
+    rv = copy_attributes(plots.Dict(), value)
+    for k in keys:
+        rv[k] = value[k]
+    return rv
 
 dictType  = type({})
+#isDataset = lambda x: isinstance(x, plots.plt_dataset)
 isDataset = lambda x: isinstance(x, dictType)
 
 def normal_apply(l, f, r):
-    return (None, (l.xval, f(l.yval, r.yval)))
+    return (None, (l._xval, f(l._yval.data, r._yval.data)))
 
 def shortest_apply(l, f, r):
-    n = min(len(l.yval), len(r.yval))
-    return ("Truncated to {0} elements".format(n), (l.xval[:n], f(l.yval[:n], r.yval[:n])))
+    n = min(len(l._yval.data), len(r._yval.data))
+    return ("Truncated to {0} elements".format(n), (l._xval.data[:n], f(l._yval.data[:n], r._yval.data[:n])))
 
 isect_table = {
     # ( <lengths equal>, <one of 'm has length '1'>)
@@ -959,17 +966,17 @@ def do_isect(d0, f, d1):
     def app(acc, key):
         # make sure they're numarrays
         # [note: .as_numarray() does not create a new object, just returns 'self']
-        ds0 = d0[key]#.as_numarray()
-        ds1 = d1[key]#.as_numarray()
-        l0  = len(ds0.yval)
-        l1  = len(ds1.yval)
+        ds0 = d0[key]
+        ds1 = d1[key]
+        l0  = len(ds0._yval)
+        l1  = len(ds1._yval)
         # compare lengths (...) and decide what to do
         (msg, res) = isect_table[(l0==l1, l0==1 or l1==1)](ds0, f, ds1)
         if msg is not None:
             print "{0}: {1}".format(key, msg)
-        pref = acc.setdefault(key, plots.Dict())
-        pref.xval = res[0]
-        pref.yval = res[1]
+        # the new dataset has the combined flagged between the two participating datasets
+        nOutput    = len(res[0])
+        acc[ key ] = plots.plt_dataset(res[0], res[1], numpy.logical_or(ds0._m_flagged[:nOutput], ds1._m_flagged[:nOutput]))
         return acc
     return reduce(app, set(d0.keys()) & set(d1.keys()), copy_attributes(plots.Dict(), d0))
 
@@ -979,16 +986,15 @@ def immediate_apply(l, f, r):
 
 def do_iterate(d0, f, d1):
     # we know that either d0 or d1 is a dataset
-    d0isdata = isDataset(d0)
-    gen      = d0.iteritems() if d0isdata else d1.iteritems()
+    proto    = d0 if isDataset(d0) else d1
+    # from the prototype dataset 
     # apply in the correct order!
-    app      = (lambda d: f(d, d1)) if d0isdata else (lambda d: f(d0, d))
-    def reductor(acc, (k, ds)):
-        pref = acc.setdefault(k, plots.Dict())
-        pref.xval = ds.xval
-        pref.yval = app(ds.yval)
+    app      = (lambda d: f(d, d1)) if isDataset(d0) else (lambda d: f(d0, d))
+    def reductor(acc, k_ds):
+        (key, ds)  = k_ds
+        acc[ key ] = plots.plt_dataset(ds._xval.data, app(ds._yval.data), ds._yval.mask)
         return acc
-    return reduce(reductor, gen, copy_attributes(plots.Dict(), d0 if d0isdata else d1))
+    return reduce(reductor, proto.iteritems(), copy_attributes(plots.Dict(), proto))
 
 applicator_table = { 
     # infix:  lhs <operator> rhs
@@ -1004,6 +1010,7 @@ def applicator(d0, f, d1):
     # for both arguments we want a set of keys such that we can get the intersection
     # of identical keys. But that's only if both of 'm are datasets
     # otherwise it's either just numbers that are combined or one of them is a data set
+    print "Applicator/d0=",isDataset(d0)," d1=",isDataset(d1)
     return applicator_table[(isDataset(d0), isDataset(d1))](d0, f, d1)
 
 
@@ -1215,10 +1222,15 @@ def parse_dataset_expr(txt, datasets, **env):
                 return all([cond(ds) for cond in l])
             return do_it
         def mk_lab_f(l):
+            # label._attrs is the set of all attributes
+            # l is the list/set of attributes that we need to replace with None
+            # So what we do is construct the new label from the old one
+            # but tell it to only take the values not in l!
+            # (values not in the list of attributes to copy will be initialized to None by
+            #  the new label class)
+            attrs_to_copy = plots.label._attrs - set(l)
             def do_it(ds):
-                rv = copy.deepcopy(ds)
-                map(lambda y: setattr(rv, y, None), l)
-                return rv
+                return plots.label(ds, attrs_to_copy)
             return do_it
         (anames, matchfns) = zip(*rv)
         return (mk_lab_f(anames), mk_match_f(matchfns))
@@ -1532,7 +1544,7 @@ def parse_ckey_expr(expr):
     # our tokens
     tokens = [
         # the attribute names we support
-        (re.compile(r"\b(p|ch|sb|fq|bl|time|src)\b", re.I), value_t('attrname')),
+        (re.compile(r"\b(p|ch|sb|fq|bl|time|src)\b", re.I), xform_t('attrname', str.upper)),
         # attribute values
         #    @regex and text: we get the terminating start, end characters as well so must strip them off
         (mk_escaped_rx('/', "i?"),                          xform_t('regex', mk_regex)),
@@ -1558,7 +1570,7 @@ def parse_ckey_expr(expr):
     def parse_ckey_expr_impl(s):
         # the wrapper function that generates the color index for a given label
         def mk_ckey_fn(lst):
-            def do_it(label, keycoldict):
+            def do_it(label, keycoldict, **opts):
                 # run the label through all the filters and see if something sticks
                 #print "parse_ckey_expr:ckey_fn label={0}".format( str(label) )
                 cks = filter(lambda x: x is not None, [ck(label, keycoldict) for ck in lst])
@@ -1683,7 +1695,7 @@ def parse_ckey_expr(expr):
                     return None
                 # create new label with all attributes
                 # taken from the conditions
-                nl = reduce(lambda acc, (nm, v): setattr(acc, nm, v) or acc, ms, plots.label({}, []))
+                nl = plots.label( dict(ms), map(lambda kv: kv[0], ms) )
                 # str representation is key
                 return colouridxfn(keycoldict, str(nl))
             return do_it
@@ -1848,7 +1860,7 @@ def parse_filter_expr(qry, **kwargs):
         token_def(r"\bin\b",                                operator_t('in')),
         token_def(r"\b(and|or)\b",                          operator_t('relop')),
         token_def(r"(<=|>=|=|<|>)",                         operator_t('compare')),
-        token_def("~",                                      xform_t('regexmatch', lambda o, **k: lambda x, y: re.match(y, x) is not None)),
+        token_def(r"(~|\blike\b)",                          xform_t('regexmatch', lambda o, **k: lambda x, y: re.match(y, x) is not None)),
         # parens + list stuff
         token_def(r"\(",                                    simple_t('lparen')),
         token_def(r"\)",                                    simple_t('rparen')),
@@ -2075,6 +2087,511 @@ def parse_filter_expr(qry, **kwargs):
     tokenizer  = mk_tokenizer(tokens, **kwargs)
     return parse_filter(state_type(tokenizer(qry)))
 
+
+#########################################################################################################
+#
+#   animation parser
+#
+#   Let the user animate datasets based on dataset attribute value(s)
+#   *after* they've been read from disk 
+#
+#########################################################################################################
+
+######  Our grammar
+
+#    animate <selection> by <attributes> <eof>
+#    (The 'animate' keyword is taken to be matched out in the command parser)
+#
+#    # empty selection means "current"
+#    <selection>  = "" | <dataset>
+#    <attributes> = <attribute> { ',' <attribute> }
+#
+#    <dataset>    = {<identifier> ':'} <expression>
+#    <identifier> = [a-zA-Z][0-9a-zA-Z]*   # alphanumeric variable name
+#
+#    <attribute>  = <attrname> { <sortorder> }
+#    <attrname>   = 'time' | 'src' | 'bl' | 'p' | 'sb' | 'ch' | 'type'
+#    <sortorder>  = 'asc' | 'desc'
+#
+#    <expression> = <expr> { 'and' <expression> | 'or' <expression> }
+#    <expr>       = <condition> | 'not' <expression> | '(' <expression> ')'
+#    <condition>  = <attrname> <relop> <value> |
+#                   <attrname> 'in' <list> |
+#                   <attrname> 'like' <regex> |
+#                   <attrname> 'like' <text>
+#    <relop>      = '<' | '<=' | '=' | '>' | '>=' 
+#    <list>       = '[' <listitems> ']' | <intrange>
+#    <listitems>  = <listitem> {',' <listitems> }
+#    <listitem>   = <value> | <intrange>
+#    <intrange>   = <int>':'<int>
+#    <value>      = <number> | <text> 
+#    <text>       = ''' <characters> '''
+#    <regex>      = '/' <text> '/'
+
+
+
+
+# condition  = condexpr {relop condition} | 'not' condition | '(' condition ')'
+# #condexpr   = attribute '~' (regex|text) | attribute compare expr | attribute 'in' list
+# condexpr   = attribute '~' (regex|text) | attribute compare number | attribute 'in' list
+# attribute  = 'P' | 'CH' | 'SB' | 'FQ' | 'BL' | 'TIME' | 'SRC' |
+#              'p' | 'ch' | 'sb' | 'fq' | 'bl' | 'time' | 'src'
+#
+# compare    = '=' | '>' | '>=' | '<' | '<=' ;
+# relop      = 'and' | 'or' ;
+# list       = '[' [value {',' value}] ']'
+# value      = number | text
+# regex      = '/' {anychar - '/'} '/' ['i']  ('i' is the case-insensitive match flag)
+# number     = digit { number }
+# digit      = [0-9]
+# text       = char { alpha }
+# char       = [a-zA-Z_]
+# alpha      = char | digit { alpha }
+#
+
+
+def parse_animate_expr(qry, **kwargs):
+    # Helper functions
+
+    def mk_intrange(txt):
+        return hvutil.expand_string_range(txt, rchar='-')
+
+    # take a string and make a "^...$" regex out of it,
+    # doing escaping of regex special chars and 
+    # transforming "*" into ".*" and "?" into "."
+    # (basically shell regex => normal regex)
+    def pattern2regex(s):
+        s = reduce(lambda acc, x: re.sub(x, x, acc), ["\+", "\-", "\."], s)
+        s = reduce(lambda acc, (t, r): re.sub(t, r, acc), [("\*+", ".*"), ("\?", ".")], s)
+        return re.compile("^"+s+"$")
+
+    def regex2regex(s):
+        flagmap = {"i": re.I, None:0}
+        mo = re.match(r"(.)(?P<pattern>.+)\1(?P<flag>.)?", s)
+        if not mo:
+            raise RuntimeError,"'{0}' does not match the regex pattern /.../i?".format(s)
+        return re.compile(mo.group('pattern'), flagmap[mo.group('flag')])
+
+    # basic lexical elements
+    # These are the tokens for the tokenizer
+    tokens = [
+        token_def(r"\b(animate|by|asc|desc)\b",    keyword_t()),
+        # the attribute names we support
+        #(re.compile(r"\b(p|ch|sb|fq|bl|time|src|type)\b", re.I), xform_t('attribute', mk_attribute_getter)),
+        (re.compile(r"\b(p|ch|sb|fq|bl|time|src|type)\b", re.I), xform_t('attribute', str.upper)),
+        #(re.compile(r"\b(p|ch|sb|fq|bl|time|src|type)\b", re.I), value_t('attribute')),
+        # Date + time formats
+        datetime_token(YMD,     TIME),
+        datetime_token(YMD,     HMS),
+        datetime_token(DMY,     TIME),
+        datetime_token(DMY,     HMS),
+        datetime_token(DMY_EUR, TIME),
+        datetime_token(DMY_EUR, HMS),
+        # Relative day offset - note: assume that the global variable
+        # 'start' is set correctly ...
+        token_def(RELDAY+TIME,  datetime_t(mk_seconds)),
+        token_def(RELDAY+HMS,   datetime_t(mk_seconds)),
+        # Time durations
+        token_def(RELDAY+DUR3,  datetime_t(mk_seconds)),
+        token_def(RELDAY+DUR2,  datetime_t(mk_seconds)),
+        token_def(RELDAY+DUR1,  datetime_t(mk_seconds)),
+        token_def(DUR4,         xformmg_t('duration', mk_seconds)),
+        token_def(DUR3,         xformmg_t('duration', mk_seconds)),
+        token_def(DUR2,         xformmg_t('duration', mk_seconds)),
+        token_def(DUR1,         xformmg_t('duration', mk_seconds)),
+        # operators
+        token_def(r"\bnot\b",                               operator_t('not')),
+        token_def(r"\bin\b",                                operator_t('in')),
+        token_def(r"\b(and|or)\b",                          operator_t('relop')),
+        token_def(r"(<=|>=|=|<|>)",                         operator_t('compare')),
+        token_def(r"(~|\blike\b)",                          xform_t('regexmatch', lambda o, **k: lambda x, y: re.match(y, x) is not None)),
+        # parens + list stuff
+        token_def(r"\(",                                    simple_t('lparen')),
+        token_def(r"\)",                                    simple_t('rparen')),
+        token_def(r"\[",                                    simple_t('lbracket')),
+        token_def(r"\]",                                    simple_t('rbracket')),
+        token_def(r",",                                     simple_t('comma')),
+        token_def(r":",                                     simple_t('colon')),
+        token_def(r"-|\+|\*|/",                             operator_t('operator')),
+        # values + regex
+        int_token(),
+        token_def(r"/[^/]+/i?\b",                           xform_t('regex', regex2regex)),
+        token_def(r"\$(?P<sym>[a-zA-Z][a-zA-Z_]*)",         resolve_t('external', 'sym')),
+        token_def(r"'([^']*)'",                             extract_t('literal', 1)),
+        token_def(r"[a-zA-Z][a-zA-Z0-9_]*",                 value_t('identifier')),
+        token_def(r"\S+",                                   value_t('text')),
+        #token_def(r"[:@\#%!\.\*\+\-a-zA-Z0-9_?|]+",         value_t('text')),
+        # and whitespace
+        token_def(r"\s+",                                   ignore_t())
+    ]
+
+    tokenizer  = mk_tokenizer(tokens, **kwargs)
+
+    # The output of the parsing is a filter function that returns
+    # True or False given a dataset object
+
+    next    = lambda s: s.next()
+    tok     = lambda s: s.token
+    tok_tp  = lambda s: s.token.type
+    tok_val = lambda s: s.token.value
+
+    ######  Our grammar
+
+    # animate      = 'animate' [<selection>] 'by' <attributes> <eof>
+    def parse_animate(s):
+        if tok(s).type != 'animate':
+            raise SyntaxError,"The animate expression does not start with the keyword 'animate' but with {0}".format(tok(s))
+        # skip that one
+        next(s)
+        # now we may see a selection
+        selection_f = parse_selection(s)
+        # check mismatched parentheses in the expression(s)
+        if s.depth!=0:
+            raise SyntaxError, "Mismatched parentheses"
+        # now we MUST see the 'by' keyword
+        if tok(s).type!='by':
+            raise SyntaxError,"Unexpected token {0}, expected the 'by' keyword".format(tok(s))
+        # and skip that one
+        next(s)
+        # now we must parse the <attributes>
+        groupby_f = parse_attributes(s)
+        # the only token left should be 'eof' AND, after consuming it,
+        # the stream should be empty. Anything else is a syntax error
+        try:
+            if tok(s).type is None:
+                next(s)
+        except StopIteration:
+            return (selection_f, groupby_f)
+        raise SyntaxError, "(at least one)token left after parsing: {0}".format(tok(s))
+    
+    #    <selection>  = "" | <dataset>
+    def parse_selection(s):
+        # try to parse the dataset identifier, if it is None then there was none
+        # and we default to "_"
+        dataset_id = parse_dataset_id(s)
+        #if dataset_id is None:
+        #    dataset_id = '_'
+        # now we may see an expression
+        filter_f = parse_expression(s)
+        # build a filtering function on the indicated dataset
+        return (dataset_id, filter_f)
+
+    #    <dataset>    = {<identifier> ':'} <expression>
+    #    Note: let's allow 'attribute' here as well - the ':' following
+    #          the dataset_id would be the disambiguator between
+    #          data set identifier and attribute name?
+    def parse_dataset_id(s):
+        # if we don't see an identifier that means there's no identifier at all
+        dataset_id = tok(s)
+        if dataset_id.type not in[ 'identifier', 'attribute']:
+            return None
+        # if we see attribute we need to peek ahead to see if the disambiguating ':' is there
+        if dataset_id.type == 'attribute' and s.peek().type!='colon':
+            # rite, not a data set id
+            return None
+        dataset_id = dataset_id.value
+        # eat it up and then we MUST see ':'
+        next(s)
+        if tok(s).type != 'colon':
+            raise SyntaxError, "Expected ':' following data set identifier"
+        # consume and return the actual identifier
+        next(s)
+        return dataset_id
+
+    #    <expression> = <expr> { 'and' <expression> | 'or' <expression> }
+    #    <expr>       = <condition> | 'not' <expression> | '(' <expression> ')'
+    #    <condition>  = <attrname> <relop> <number> |
+    def parse_expression(s):
+        left = parse_expr(s)
+        if left is None:
+            return None
+        # OK. We have a left hand side
+        # if we're looking at a relop we may have to parse a right hand side
+        if tok(s).type != 'relop':
+            return left
+        # ok looking at relop, save it for later use and move on
+        relop = tok(s).value
+        # now we MUST see a right hand side
+        right = parse_expression( next(s) )
+        if right is None:
+            raise SyntaxError, "Missing right hand side to logical operator and or or"
+        def mk_f(l, op, r):
+            def do_it(ds):
+                return op(l(ds), r(ds))
+            return do_it
+        return mk_f(left, relop, right)
+
+    def parse_expr(s):
+        # depending on what token we're looking at choose the appropriate action
+        tp = tok(s).type
+        if tp == 'attribute':
+            # depending on the type of the attribute ...
+            return parse_cond_expr(s)
+            #return parse_cond_expr(s)
+        if tp == 'not':
+            # consume the 'not' and return whatever is following
+            f = parse_expression( next(s) )
+            return lambda ds: not f(ds)
+        if tp == 'lparen':
+            # remove the '('
+            s.depth = s.depth + 1
+            expr = parse_expression( next(s) )
+            # now we MUST see ')' [and if we do skip it]
+            if tok(s).type != 'rparen':
+                raise SyntaxError, "Mismatched parenthesis"
+            s.depth = s.depth - 1
+            next(s)
+            if expr is None:
+                raise SyntaxError, "An empty expression is not an expression"
+            return expr
+        return None
+
+    # term     = duration | number | external
+    def parse_time_term(s):
+        term = tok(s)
+        # The easy bits first
+        if term.type in ['number', 'external', 'duration', 'datetime']:
+            # all's well - eat this term
+            next(s)
+            return term.value
+        return None
+    # support datetime or an expression involving datetime?
+    # expr     = term | expr '+' expr | expr '-' expr | expr '*' expr | expr '/' expr | '(' expr ')' | '-' expr
+    def parse_time_cond(s, unary=False):
+        t = tok(s)
+        depth = s.depth
+
+        print "parse_time_cond/tok=", t, " depth=", depth
+        if t.type == 'lparen':
+            s.depth = s.depth + 1
+            lterm   = parse_time_cond( next(s) )
+            # now we MUST see ')' [and if we do skip it]
+            if tok(s).type != 'rparen':
+                raise SyntaxError, "Mismatched parenthesis"
+            s.depth = s.depth - 1
+            next(s)
+            if lterm is None:
+                raise SyntaxError, "An empty expression is not an expression"
+            return lterm
+        elif t.type=='operator' and t.value is mk_operator('-'):
+            # unary '-'
+            tmpexpr = parse_time_cond(next(s), unary=True)
+            lterm   = operator.neg( tmpexpr )
+        else:
+            print "parsing time term?"
+            lterm = parse_time_term(s)
+            print "  yields: ",lterm
+
+        # If we see an operator, we must parse the right-hand-side
+        # (our argument is the left-hand-side
+        # Well ... not if we're doing unary parsing!
+        # if we saw unary '-' then we should parse parens and terms up until
+        # the next operator
+        oper = tok(s)
+        if oper.type=='operator':
+            if unary:
+                return lterm
+            if lterm is None:
+                raise SyntaxError, "No left-hand-side to operator {0}".format(oper)
+            rterm = parse_time_cond(next(s))
+            if rterm is None:
+                raise SyntaxError, "No right-hand-side to operator {0}".format(oper)
+            return oper.value(lterm, rterm)
+        elif oper.type in ['int', 'float', 'duration', 'datetime']:
+            # negative numbers as right hand side are not negative numbers
+            # but are operator '-'!
+            # so, subtracting a number means adding the negative value (which we already
+            # have god)
+            # Consume the number and return the operator add
+            next(s)
+            return operator.add(lterm, oper.value)
+        # neither parens, terms, operators?
+        return lterm
+
+    # condexpr   = attribute '~' (regex|text) | attribute compare number | attribute 'in' list
+    # compare    = '=' | '>' | '>=' | '<' | '<=' ;
+    def parse_cond_expr(s):
+        attribute = tok(s)
+        # No matter what, we have a left and a right hand side
+        # separated by an operator
+        if not (attribute.type == 'attribute'):
+            raise SyntaxError, "Unexpected token {0}, expected attribute name".format( attribute.type )
+        # consume the attribute value
+        next(s)
+        # Now we must see a comparator
+        # for the time attribute 'regexmatch' and 'in' don't make sense
+        compare = tok(s)
+        if not compare.type in (['compare'] if attribute.value == 'TIME' else ['compare', 'regexmatch', 'in']):
+            raise SyntaxError, "Invalid comparison operator {0} for attribute {1}".format( compare, attribute.value )
+        # consume the comparison
+        next(s)
+        # do some processing based on the type of operator
+        if compare.type=='in':
+            rterm  = parse_list(s)
+        elif compare.type=='compare':
+            # we must compare to a value
+            # take care of when attribute is 'time'
+            if attribute.value == 'TIME':
+                rterm = parse_time_cond(s)
+            else:
+                rterm = parse_value(s)
+        else:
+            # must've been regexmatch
+            rterm = parse_rx(s)
+        # it better exist
+        if rterm is None:
+            raise SyntaxError, "Failed to parse right-hand-term of cond_expr (%s)" % tok(s)
+        return lambda ds: compare.value(mk_attribute_getter(attribute.value)(ds), rterm)
+
+    #    <value>      = <number> | <text> 
+    def parse_value(s):
+        value = tok(s)
+        if value.type not in ['int', 'text', 'identifier']:
+            raise SyntaxError, "Unsupported value type - only int or text allowed here, not {0}".format( value )
+        # consume the value and return it
+        next(s)
+        return value.value
+
+    def parse_rx(s):
+        # we accept string, literal, identifier and regex and return an rx object
+        rx = tok(s)
+        if not rx.type in ['regex', 'text', 'literal']:
+            raise SyntaxError, "Failed to parse string matching regex (not regex, text or literal but %s)" % rx
+        # consume the token
+        next(s)
+        if rx.type in ['text', 'literal']:
+           rx.value = pattern2regex(rx.value) 
+        return rx.value
+
+    #    <list>       = '[' <values> ']' | <intrange>
+    def parse_list(s):
+        # could be actual list or int range
+        if tok(s).type == 'lbracket':
+            return parse_list_list(s)
+        elif tok(s).type == 'int':
+            return parse_int_range(s)
+        # unexpected token
+        raise SyntaxError, "Unexpected token {0} - not a list or int range".format(tok(s))
+
+    def parse_int_range(s):
+        # we *must* be looking at 'int'
+        start = tok(s)
+        if start.type != 'int':
+            raise SyntaxError, "Expected an integer here, not a {0}".format(start)
+        next(s)
+        # now we must see colon
+        if tok(s).type != 'colon':
+            raise SyntaxError, "Expected ':' to form integer range"
+        # eat up
+        next(s)
+        end = tok(s)
+        if start.type != 'int':
+            raise SyntaxError, "Expected an integer here, not a {0}".format(end)
+        # don't forget to consume the number
+        next(s)
+        return range(start.value, end.value+1)
+
+    def parse_list_list(s):
+        bracket = tok(s)
+        if bracket.type != 'lbracket':
+            raise SyntaxError, "Expected list-open bracket ('[') but found %s" % bracket
+        rv = []
+        # keep eating text + ',' until we read 'rbracket'
+        next(s)
+        while tok(s).type!='rbracket':
+            # if we end up here we KNOW we have a non-empty list because
+            # the next token after '[' was NOT ']'
+            # Thus if we need a comma, we could also be seeing ']'
+            needcomma        = len(rv)>0
+            #print " ... needcomma=",needcomma," current token=",tok(s)
+            if needcomma:
+                if tok(s).type=='rbracket':
+                    continue
+                if tok(s).type!='comma':
+                    raise SyntaxError, "Badly formed list at {0}".format(tok(s))
+                # and eat the comma
+                next(s)
+            # now we need a value. 'identifier' is also an acceptable blob of text
+            rv.extend( parse_list_item(s) )
+            #print "parse_list: ",rv
+        # and consume the rbracket (if not rbracket a syntax error is raised above)
+        next(s)
+        return rv
+
+    # always returns a list-of-items; suppose the list item was an irange
+    def parse_list_item(s):
+        t = tok(s)
+        # current token must be 'text' or 'irange'
+        if not t.type in ['text', 'irange', 'int', 'float', 'literal']:
+            raise SyntaxError, "Failure to parse list-item {0}".format(t)
+        next(s)
+        return t.value if t.type == 'irange' else [t.value]
+
+    
+    #    <attributes> = <attribute> { ',' <attribute> }
+    #    <attribute>  = <attrname> { <sortorder> }
+    #    <attrname>   = 'time' | 'src' | 'bl' | 'p' | 'sb' | 'ch' | 'type'
+    #    <sortorder>  = 'asc' | 'desc'
+    def parse_attributes(s):
+        groupby = set()
+        sortfns = []
+        while True:
+            item = tok(s)
+            if item.type!='attribute':
+                raise SyntaxError, "Unexpected token {0}, expected an attribute".format(item)
+            # check that the same attribute does not get mentioned twice
+            if item.value in groupby:
+                raise RuntimeError, "The attribute type {0} is mentioned more than once".format(item.value)
+            groupby.add( item.value )
+            # Peek at the next token. If it's asc/desc take that into account
+            next(s)
+            order = tok(s)
+            if order.type in ['asc', 'desc']:
+                order = order.type
+                # consume it
+                next(s)
+            else:
+                # default to asc
+                order = 'asc'
+            # create a sorting function
+            def mk_sf(attr, order):
+                def do_it(x):
+                    return sorted(x, key=operator.attrgetter(attr), reverse=(order=='desc'))
+                return do_it
+            sortfns.append( mk_sf(item.value, order) )
+
+            #if we don't see a comma next, we break
+            if tok(s).type!='comma':
+                break
+            # consume the comma
+            next(s)
+        # primary sort key is now first in list but for the sorting to work in steps
+        # (see https://wiki.python.org/moin/HowTo/Sorting ) we must apply the sorting
+        # functions in reverse order
+        return (operator.attrgetter(*groupby), lambda x: reduce(lambda acc, sortfn: sortfn(acc), reversed(sortfns), x))
+
+
+    class state_type:
+        def __init__(self, tokstream):
+            self.tokenstream = tokstream
+            self.depth       = 0
+            self.lookAhead   = []
+            self.next()
+
+        def peek(self):
+            self.lookAhead.append( self.tokenstream.next() )
+            return self.lookAhead[-1]
+
+        def next(self):
+            if self.lookAhead:
+                self.token     = self.lookAhead.pop(0) #self.lookAhead[0]
+                #self.lookAhead = None
+            else:
+                self.token     = self.tokenstream.next()
+            return self
+
+    tokenizer  = mk_tokenizer(tokens, **kwargs)
+    return parse_animate(state_type(tokenizer(qry)))
 
 
 

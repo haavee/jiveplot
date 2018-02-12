@@ -1,10 +1,12 @@
 # the possible plottypes are defined here,
-import jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types
+import enumerations, jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types, functional
+from label_v6   import label
 
 AX       = jenums.Axes
-YTypes   = jenums.enum("amplitude", "phase", "real", "imag", "weight")
-Scaling  = jenums.enum("auto_global", "auto_local")
-CKReset  = jenums.enum("newplot")
+FLAG     = jenums.Flagstuff
+YTypes   = enumerations.Enum("amplitude", "phase", "real", "imag", "weight")
+Scaling  = enumerations.Enum("auto_global", "auto_local")
+CKReset  = enumerations.Enum("newplot")
 
 CP       = copy.deepcopy
 
@@ -32,7 +34,6 @@ class pgenv(object):
         self.plotter.pgunsa()
 
 
-
 ## Keep track of the layout of a page in number-of-plots in X,Y direction
 class layout(object):
     def __init__(self, nx, ny):
@@ -45,51 +46,7 @@ class layout(object):
     def __str__(self):
         return "{2} plots organized as {0} x {1}".format(self.nx, self.ny, self.nplots())
 
-class label:
-    #_attrs  = ["P", "CH", "SB", "FQ", "BL", "SRC", "TIME", "TYPE"]
-    _attrs   = [AX.P, AX.CH, AX.SB, AX.FQ, AX.BL, AX.SRC, AX.TIME, AX.TYPE]
 
-    # standardized field formatting
-    #  accept any iterable with (k,v) pairs
-    @classmethod
-    def format(self, kv):
-        # AX.TYPE are never part of the label.
-        # AX.CH AX.SB and AX.FQ are integers so they must be
-        #   disambiguated
-        #return "/".join(map(lambda (k,v): "{0}{1}".format(k, v) if k in [AX.CH, AX.SB, AX.FQ] else str(v), \
-        return "/".join(map(lambda (k,v): "{0}{1}".format(k, v) if k in [AX.CH, AX.SB] else str(v), \
-                            filter(lambda (k,v): not (k in [AX.TYPE]), kv)))
-
-    def __init__(self, kwdict, idxlst):
-        map(lambda a: setattr(self, a, kwdict[a] if a in idxlst else None), label._attrs)
-
-    ## translate this label into a key, e.g. for use in dicts
-    def key(self):
-        ## get all attributes whose name is all capitals and that are not None
-        return tuple(filter(lambda (a,v): not v is None, self.attrs(label._attrs)))
-        ##return tuple(filter(lambda (a, v): (not v is None) and label._rxAttr.match(a), inspect.getmembers(self)))
-
-    def attrs(self, which):
-        return map(lambda k: (k, getattr(self, k)), which)
-
-    def __hash__(self):
-        """ our hash function - take it from the key!"""
-        return hash(self.key())
-
-    def __cmp__(self, other):
-        return hash(other) - hash(self)
-
-    def __getitem__(self, attr):
-        return getattr(self, attr)
-
-    def __str__(self):
-        return label.format( self.key() )
-        # AX.TYPE are never part of the label.
-        # AX.CH AX.SB and AX.FQ are integers so they must be
-        #   disambiguated
-        #return "/".join(map(lambda (k,v): "{0}{1}".format(k, v) if k in [AX.CH, AX.SB] else str(v), \
-        #return "/".join(map(lambda (k,v): "{0}{1}".format(k, v) if k in [AX.CH, AX.SB, AX.FQ] else str(v), \
-        #                    filter(lambda (k,v): not (k in [AX.TYPE]), self.key())))
 
 # Take two labels and join them - i.e. to go from separate plot/data set labels 
 # to full data set label
@@ -98,7 +55,7 @@ def join_label(l1, l2):
     newlab = label({}, [])
     def attrval(a):
         # it's ok if _either_ of l1 or l2 has the attribute but not both
-        aval = filter(lambda x: not (x is None), [getattr(l1, a), getattr(l2, a)])
+        aval = filter(operator.truth, [getattr(l1, a), getattr(l2, a)])
         if len(aval)>1:
             raise RuntimeError, "Duplicate attribute value {0}: {1} {2}".format(a, aval[0], aval[1])
         return None if len(aval)==0 else aval[0] 
@@ -116,6 +73,11 @@ def split_label(l, inplot):
         return (pl, dsl)
     return reduce(reductor, label._attrs, (mk_lab(), mk_lab()))
 
+def label_splitter(inPlot):
+    inDataset = set(label._attrs) - set(inPlot)
+    def do_split(l):
+        return (label(l, inPlot), label(l, inDataset))
+    return do_split
 
 ## Colorkey functions. Take a data set label and produce a
 ## key such that for data sets having identical "keys"
@@ -123,22 +85,25 @@ def split_label(l, inplot):
 
 # the default colour index function: each key gets their 
 # own distinctive colour index
-def ckey_builtin(label, keycoldict):
+def ckey_builtin(label, keycoldict, **opts):
     key = str(label)
     ck  = keycoldict.get(key, None)
-    if ck is None:
-        # Never seen this label before - must allocate new colour!
-        # find values in the keycoldict and choose one that isn't there already
-        colours = sorted([v for (k,v) in keycoldict.iteritems()])
-        # skip colour 0 and 1 (black & white)
-        ck      = 2
-        if colours:
-            # find first unused colour index
-            while ck<=colours[-1]:
-                if ck not in colours:
-                    break
-                ck = ck + 1
-        keycoldict[key] = ck
+    if ck is not None:
+        return ck
+    if len(keycoldict)>=opts.get('ncol', 16):
+        return 1
+    # Never seen this label before - must allocate new colour!
+    # find values in the keycoldict and choose one that isn't there already
+    colours = sorted([v for (k,v) in keycoldict.iteritems()])
+    # skip colour 0 and 1 (black & white)
+    ck      = 2
+    if colours:
+        # find first unused colour index
+        while ck<=colours[-1]:
+            if ck not in colours:
+                break
+            ck = ck + 1
+    keycoldict[key] = ck
     return ck
 
 #### A function that returns functions that remap each subband's x-axis
@@ -160,7 +125,9 @@ def mk_offset(datasets, attribute):
     def range_per_sb(acc, ds):
         (label, data) = ds
         attributeval  = getattr(label, attribute)
-        (mi, ma)      = (min(data.xval), max(data.xval))
+        (mi, ma) = (0, 0) if data.xlims is None else data.xlims
+        #(mi, ma) = (min(data.xval), max(data.xval))
+        # if either mi/ma is None that means there is no data
         (ami, ama)    = acc.get(attributeval, (mi, ma))
         acc.update( {attributeval: (min(mi, ami), max(ma, ama))} )
         return acc
@@ -168,8 +135,11 @@ def mk_offset(datasets, attribute):
     # process one entry from the {attrval1:(mi, ma), attrval2:(mi, ma), ...} dict
     # the accumulator is (dict(), current_xaxis_length)
     def offset_per_sb(acc, kv):
-        (offsetmap, curMax)  = acc
         (sb, (sbMin, sbMax)) = kv
+        # if the indicated subband has no min/max then no data was to be plotted for that one
+        if sbMin is None or sbMax is None:
+            return acc
+        (offsetmap, curMax)  = acc
         if curMax is None:
             # this is the first SB in the plot - this sets
             # the xmin/xmax and the x-axis transform is the identity transform
@@ -201,7 +171,89 @@ class Dict(dict):
 ## >>> l['key'] = 42    /* use dict method */
 ## >>> l.x = 12         /* set attribute x to value 12 */
 
-Drawers = jenums.enum("Lines", "Points", "Both")
+def normalize_mask(m):
+    if numpy.all(m):
+        return True
+    if numpy.any(m): # note: do not use "sum(m)" - that's wicket sl0w
+        return m
+    # not all && not any => none at all!
+    return False
+
+
+class minidataset(object):
+    __slots__ = ('xval', 'yval', 'xlims', 'ylims', 'xval_f', 'yval_f')
+    def __init__(self, xv, yv, xf, yf, xl, yl):
+        self.xval   = xv
+        self.yval   = yv
+        self.xval_f = xf
+        self.yval_f = yf
+        self.xlims  = xl
+        self.ylims  = yl
+
+class plt_dataset(object):
+    __slots__ = ('_xval', '_yval', '_xlims', '_ylims', 'isSorted', 'prevFlag', 'n', 'n_nan', '__xval', '__yval', '_m_flagged','_m_unflagged', '_m_nan')
+    _xformMap = { list:                      lambda a, m: numpy.ma.MaskedArray(numpy.array(a), mask=m),
+                  numpy.ndarray:             lambda a, m: numpy.ma.MaskedArray(a, mask=m),
+                  numpy.ma.core.MaskedArray: lambda a, m: numpy.ma.MaskedArray(a, mask=numpy.logical_or(a.mask, False if m is None else m))}
+
+    def __init__(self, x, y, m=None):
+        self._yval        = numpy.ma.array( plt_dataset._xformMap[type(y)](y, m) )
+        self._xval        = numpy.ma.array( numpy.array(x), mask=CP(self._yval.mask) )
+        # cache the masks so that switching between them is easy
+        self._m_flagged   = CP(self._yval.mask)
+        self._m_unflagged = ~self._m_flagged
+        self._m_nan       = ~numpy.isfinite(self._yval.data)
+        self.isSorted     = False
+
+    # sort by x-axis value. do that once
+    def sort(self):
+        if self.isSorted:
+            return self
+        # sort by x-value!
+        idxes             = numpy.argsort(self._xval.data, kind='heapsort')
+        self._xval        = self._xval[idxes]
+        self._yval        = self._yval[idxes]
+        # if any of the masks was an array those need to be remapped as well
+        self._m_flagged   = self._m_flagged[idxes]
+        self._m_unflagged = self._m_unflagged[idxes]
+        self._m_nan       = self._m_nan[idxes]
+        self.isSorted = True
+        return self
+
+    def getxy(self, m):
+        return (numpy.ma.array(self._xval.data, mask=m).compressed(), numpy.ma.array(self._yval.data, mask=m).compressed())
+
+    def prepare_for_display(self, flagSetting):
+        # prepare variables for unflagged x+y, flagged x+y and x+y min+max
+        (xu, yu, xf, yf) = [None]*4
+        (xi, xa, yi, ya) = [list(), list(), list(), list()]
+        # Depending on what to show, get those datapoints
+        if flagSetting in [FLAG.Unflagged, FLAG.Both]:
+            # reset to creation mask [and always block NaN & friends]
+            newMask    = numpy.logical_or(self._m_flagged, self._m_nan)
+            if not numpy.all(newMask):
+                # there are non-flagged entries
+                (xu, yu) = self.getxy( newMask )
+                xi.append( min(xu) )
+                xa.append( max(xu) )
+                yi.append( min(yu) )
+                ya.append( max(yu) )
+        if flagSetting in [FLAG.Flagged, FLAG.Both]:
+            newMask   = numpy.logical_or(self._m_unflagged, self._m_nan)
+            if not numpy.all(newMask):
+                # there are non-flagged entries
+                (xf, yf) = self.getxy( newMask )
+                xi.append( min(xf) )
+                xa.append( max(xf) )
+                yi.append( min(yf) )
+                ya.append( max(yf) )
+
+        # if the list(s) of min/max don't have any entries there were no points to display at all
+        # so only need to test one of 'm
+        return None if not xi else minidataset(xu, yu, xf, yf, (min(xi), max(xa)), (min(yi), max(ya)))
+
+
+Drawers = enumerations.Enum("Lines", "Points", "Both")
 
 
 ##########################################################
@@ -282,7 +334,7 @@ class Plotter(object):
         self.markerSize   = 6
         self.drawMethod   = CP([""]*len(self.yAxis))
         self.drawers      = CP([[]]*len(self.yAxis))
-        self.setDrawer(*self.defaultDrawer.split())
+        self.setDrawer(*str(self.defaultDrawer).split())
 
     # self.drawers    = [ [drawers-for-yaxis0], [drawers-for-yaxis1], ... ]
     # self.drawMethod = "yaxis0:method yaxis1:method ...."
@@ -334,7 +386,7 @@ class Plotter(object):
                     self.drawMethod[idx] = dm
             else:
                 raise RuntimeError, "You cannot mix qualified axis drawing methods with unqualified ones" 
-        return " ".join(map(":".join, zip(self.yAxis, self.drawMethod)))
+        return " ".join(map(":".join, zip(map(str,self.yAxis), self.drawMethod)))
 
     # want to fix the scale of the axes?
     #  can give either:
@@ -422,8 +474,8 @@ class Plotter(object):
             self.filter_fun[idx]   = parsers.parse_filter_expr( args[0] )
             self.filter_fun_s[idx] = CP(args[0])
 
-    def markedPointsForYAxis(self, idx, ds):
-        return self.marker[idx](ds) if self.marker[idx] else []
+    def markedPointsForYAxis(self, idx, x, y):
+        return self.marker[idx](x, y) if self.marker[idx] else []
 
     # Create a page label Dict with properties
     #   .left   .center and .right for page header display purposes
@@ -472,8 +524,8 @@ class Plotter(object):
     #
 
     # return a colour index for the label
-    def colkey(self, dslab):
-        return self.ck_fun(dslab, self.ck_dict)
+    def colkey(self, dslab, **opts):
+        return self.ck_fun(dslab, self.ck_dict, **opts)
 
     def coldict(self):
         return self.ck_dict
@@ -502,6 +554,7 @@ class Plotter(object):
     def num_pages(self, plotar):
         return (len(plotar)/self.layout().nplots())+1
 
+AllInOne = type("AllInOne", (), {})()
 
 ##########################################################
 ####
@@ -510,11 +563,11 @@ class Plotter(object):
 ##########################################################
 class Quant2TimePlotter(Plotter):
     def __init__(self, ytypes, yscaling=None, yheights=None, **kwargs):
-        super(Quant2TimePlotter, self).__init__("+".join(ytypes) + " versus time", jenums.Axes.TIME, ytypes, layout(1,4), yscaling=yscaling, yheights=yheights, **kwargs)
+        super(Quant2TimePlotter, self).__init__("+".join(map(str,ytypes)) + " versus time", jenums.Axes.TIME, ytypes, layout(1,4), yscaling=yscaling, yheights=yheights, **kwargs)
 
-    def drawfunc(self, device, plotar, first, onePage=None):
+    def drawfunc(self, device, plotar, first, onePage=None, **opts):
         # onePage == None? I.e. plot all. I.E. start from beginning!
-        if onePage is None:
+        if onePage in [None, AllInOne]:
             first = 0
 
         # Check for sensibility in caller.
@@ -524,7 +577,9 @@ class Quant2TimePlotter(Plotter):
             else:
                 raise RuntimeError, "No plots to plot"
 
-        layout = self.layout()
+        # make sure that the layout is such that we accomodate all plots on one page!
+        # for this style we allow the number of plots to grow in each direction
+        layout = growlayout(self.layout(), len(plotar), expandy=True) if onePage is AllInOne else self.layout()
 
         # Verbatim from amptimedrawer.g cf Huib style 
         device.pgscf( 2 )
@@ -550,7 +605,6 @@ class Quant2TimePlotter(Plotter):
 
             # retrieve the plotlabels. We count the plots numerically but address them in the plotar
             # (which, in reality, is a Dict() ...) by their key
-            #for (i, plotlabel) in hvutil.enumerateslice(plotar.keys(), first, last):
             for (i, plotlabel) in hvutil.enumerateslice(sorted(plotar.keys(), key=self.sortOrder), first, last):
                 #print "plot {0} '{1}' (first={2})".format(i, plotlabel.key(), first)
                 # <pnum> is the actual counter of the plots we're creating
@@ -587,11 +641,14 @@ class Quant2TimePlotter(Plotter):
                 for (subplot, ytype) in enumerate(self.yAxis):
                     # filter the data sets with current y-axis type
                     # Keep the indices because we need them twice
-                    datasets = filter(lambda x: x.TYPE==ytype and self.filter_fun[subplot](x), pref.keys())
+                    datasets = filter(lambda kv: kv[0].TYPE == ytype and self.filter_fun[subplot](kv[0]), pref.iteritems())
 
                     # the type may have been removed due to an expression/selection
                     if not datasets:
                         continue
+                    # get the limits of the plots in world coordinates
+                    (xlims, ylims) = getXYlims(plotar, ytype, plotlabel, self.xScale, self.yScale[subplot])
+
                     # drawing of the y-axis label depends on the current view port or
                     # the setting of the current panel
                     drawylab = cvp.x==0 or Scaling.auto_local in self.yScale
@@ -604,9 +661,6 @@ class Quant2TimePlotter(Plotter):
                     # and set character height
                     device.pgsch( 0.75 )
 
-                    # get the limits of the plots in world coordinates
-                    (xlims, ylims) = getXYlims(plotar, ytype, plotlabel, self.xScale, self.yScale[subplot])
-
                     # we subtract day0hr from all x-axis values so we must do that with
                     # the x-axis limits too
                     xlims = map(lambda x: x - day0hr, xlims)
@@ -616,27 +670,37 @@ class Quant2TimePlotter(Plotter):
                     device.pgswin( xlims[0], xlims[1], ylims[0], ylims[1] )
                     setboxes(device, cvp, drawxlab and subplot==0, drawylab, self.xAxis==jenums.Axes.TIME)
 
-                    # filter the data sets with type amplitude. 
-                    # Keep the indices because we need them twice
+                    # draw with lines
                     device.pgsls( 1 )
 
                     # first use: draw the data sets in the plots
                     olw = device.pgqlw()
                     if olw!=3:
                         device.pgslw(8)
-                    for ds in datasets:
-                        dsref = pref[ds]
+                    for (lab, data) in datasets:
                         # get the colour key for this data set
-                        device.pgsci( self.colkey(label(ds, plotar.dslabel)) )
-                        for d in self.drawers[subplot]:
-                            d(device, dsref.xval - day0hr, dsref.yval, -2 )
-                        mp = self.markedPointsForYAxis(subplot, dsref)
-                        if mp:
-                            lw = device.pgqlw()
-                            device.pgslw(self.markerSize)
-                            device.pgpt( dsref.xval[mp] - day0hr, dsref.yval[mp], 7)
-                            device.pgslw(lw)
-                        self.doExtraCallbacks(device, dsref, xoffset=day0hr)
+                        device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
+                        # we know there's stuff to display so let's do that then
+                        # Any marked data points to display?
+                        (mu, mf) = (None, None)
+                        # Any unflagged data to display?
+                        if data.xval is not None:
+                            map(functional.ylppa(device, data.xval - day0hr, data.yval, -2), self.drawers[subplot])
+                            mu = self.markedPointsForYAxis(subplot, data.xval, data.yval)
+                        # Any flagged data to display?
+                        if data.xval_f is not None:
+                            map(functional.ylppa(device, data.xval_f - day0hr, data.yval_f, 5), self.drawers[subplot])
+                            mf = self.markedPointsForYAxis(subplot, data.xval_f, data.yval_f)
+                        # draw markers if necessary
+                        lw = device.pgqlw()
+                        device.pgslw(self.markerSize)
+                        if mu:
+                            device.pgpt( data.xval[mu] - day0hr, data.yval[mu], 7)
+                        if mf:
+                            device.pgpt( data.xval_f[mf] - day0hr, data.yval_f[mf], 27)
+                        device.pgslw(lw)
+                        # Any extra drawing commands?
+                        self.doExtraCallbacks(device, data, xoffset=day0hr)
                     device.pgslw(olw)
 
                     if subplot==0: 
@@ -661,20 +725,22 @@ class Quant2TimePlotter(Plotter):
 ##########################################################
 class GenXvsYPlotter(Plotter):
     def __init__(self, xtype, ytype, yscaling=None, lo=None, colkey=None):
-        super(GenXvsYPlotter, self).__init__(ytype+" versus "+xtype, xtype, [ytype], layout(2,4) if lo is None else lo, yscaling=yscaling)
+        super(GenXvsYPlotter, self).__init__(str(ytype)+" versus "+str(xtype), xtype, [ytype], layout(2,4) if lo is None else lo, yscaling=yscaling)
         if colkey is not None:
             self.colkey_fn(colkey)
 
-    def drawfunc(self, device, plotar, first, onePage=None):
+    def drawfunc(self, device, plotar, first, onePage=None, **opts):
         # onePage == None? I.e. plot all. I.E. start from beginning!
-        if onePage is None:
+        if onePage in [None, AllInOne]:
             first = 0
 
         # Check for sensibility in caller.
         if first>=len(plotar):
             raise RuntimeError, "first plot ({0}) > #-of-plots ({1})".format(first, len(plotar))
 
-        layout = self.layout()
+        # make sure that the layout is such that we accomodate all plots on one page!
+        # for this style we allow the number of plots to grow in each direction
+        layout = growlayout(self.layout(), len(plotar), expandx=True, expandy=True) if onePage is AllInOne else self.layout()
 
         # Verbatim from ampchandrawer.g cf Huib style 
         device.pgscf( 2 )
@@ -723,7 +789,7 @@ class GenXvsYPlotter(Plotter):
 
                 # filter the data sets with type yType
                 # Keep the indices because we need them twice
-                datasets = filter(lambda x: x.TYPE==self.yAxis[0] and self.filter_fun[0](x), pref.keys())
+                datasets = filter(lambda kv: kv[0].TYPE == self.yAxis[0] and self.filter_fun[0](kv[0]), pref.iteritems())
 
                 # Set up the plotcoord for this plot, including
                 # world coordinate limits
@@ -742,9 +808,6 @@ class GenXvsYPlotter(Plotter):
                 # get limits of the plot in world coordinates
                 (xlims, ylims) = getXYlims(plotar, self.yAxis[0], plotlabel, self.xScale, self.yScale[0])
 
-                # compute delta y for later use
-                dy = ylims[1] - ylims[0]
-
                 device.pgswin( xlims[0], xlims[1], ylims[0], ylims[1] )
                 setboxes(device, cvp, drawxlab, drawylab, False)
 
@@ -752,20 +815,30 @@ class GenXvsYPlotter(Plotter):
                 # first use: draw the data sets in the plots
                 # remember the lowest subband if the subband number is
                 # actually in the data set labels
-                for ds in datasets:
-                    dsref = pref[ds]
+                for (lab, data) in datasets:
                     # get the colour key for this data set
-                    device.pgsci( self.colkey(label(ds, plotar.dslabel)) )
-                    # only one yAxis in this type of plot
-                    for d in self.drawers[0]:
-                        d(device, dsref.xval , dsref.yval, -2 )
-                    mp = self.markedPointsForYAxis(0, dsref)
-                    if mp:
-                        lw = device.pgqlw()
-                        device.pgslw(self.markerSize)
-                        device.pgpt( dsref.xval[mp], dsref.yval[mp], 7)
-                        device.pgslw(lw)
-                    self.doExtraCallbacks(device, dsref)
+                    device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
+                    # we know there's stuff to display so let's do that then
+                    # Any marked data points to display?
+                    (mu, mf) = (None, None)
+                    # Any unflagged data to display?
+                    if data.xval is not None:
+                        # only one yAxis in this type of plot
+                        map(functional.ylppa(device, data.xval, data.yval, -2), self.drawers[0])
+                        mu = self.markedPointsForYAxis(0, data.xval, data.yval)
+                    # Any flagged data to display?
+                    if data.xval_f is not None:
+                        map(functional.ylppa(device, data.xval_f, data.yval_f, 5), self.drawers[0])
+                        mf = self.markedPointsForYAxis(0, data.xval_f, data.yval_f)
+                    # draw markers if necessary
+                    lw = device.pgqlw()
+                    device.pgslw(self.markerSize)
+                    if mu:
+                        device.pgpt( data.xval[mu], data.yval[mu], 7)
+                    if mf:
+                        device.pgpt( data.xval_f[mf], data.yval_f[mf], 27)
+                    device.pgslw(lw)
+                    self.doExtraCallbacks(device, data)
                 
                 # Add some more metadata
                 device.pgsci( 1 )
@@ -787,11 +860,11 @@ class GenXvsYPlotter(Plotter):
 ##########################################################
 class Quant2ChanPlotter(Plotter):
     def __init__(self, ytypes, yscaling=None, yheights=None, **kwargs):
-        super(Quant2ChanPlotter, self).__init__("+".join(ytypes)+" versus channel", jenums.Axes.CH, ytypes, layout(2,4), yscaling=yscaling, yheights=yheights, **kwargs)
+        super(Quant2ChanPlotter, self).__init__("+".join(map(str,ytypes))+" versus channel", jenums.Axes.CH, ytypes, layout(2,4), yscaling=yscaling, yheights=yheights, **kwargs)
 
-    def drawfunc(self, device, plotar, first, onePage=None):
+    def drawfunc(self, device, plotar, first, onePage=None, **opts):
         # onePage == None? I.e. plot all. I.E. start from beginning!
-        if onePage is None:
+        if onePage in [None, AllInOne]:
             first = 0
 
         # Check for sensibility in caller.
@@ -801,13 +874,15 @@ class Quant2ChanPlotter(Plotter):
             else:
                 raise RuntimeError, "No plots to be plotted"
 
-        layout = self.layout()
+        # make sure that the layout is such that we accomodate all plots on one page!
+        # for this style we allow the number of plots to grow in each direction
+        layout = growlayout(self.layout(), len(plotar), expandx=True, expandy=True) if onePage is AllInOne else self.layout()
 
         # Verbatim from ampchandrawer.g cf Huib style 
         device.pgscf( 2 )
    
         # get the pagestyle
-        n        = min(len(plotar), layout.nplots()) if onePage else len(plotar)
+        n        = min(len(plotar), layout.nplots()) if onePage not in [None, AllInOne] else len(plotar)
         eachpage = pagestyle(layout, n, expandy=True, expandx=True)
 
         # Now we know how many plots/page so we can compute how many plots to do
@@ -860,12 +935,13 @@ class Quant2ChanPlotter(Plotter):
                 drawxlab = lastrow(eachpage, cvp, pnum, last-first) or self.xScale == Scaling.auto_local
 
                 ## Loop over the subplots
+
                 plotxlims = None
                 for (subplot, ytype) in enumerate(self.yAxis):
                     # filter the data sets with current y-axis type
                     # Keep the indices because we need them twice
                     datasets = filter(lambda kv: kv[0].TYPE == ytype and self.filter_fun[subplot](kv[0]), pref.iteritems())
-    
+
                     # the specific type may have been removed?
                     if not datasets:
                         continue
@@ -914,17 +990,34 @@ class Quant2ChanPlotter(Plotter):
                     # actually in the data set labels
                     for (lab, data) in datasets:
                         # get the colour key for this data set
-                        device.pgsci( self.colkey(label(lab, plotar.dslabel)) )
-                        # get the actual x-axis values for the data set
-                        xvals = xoffset.get(lab.SB, identity)( data.xval )
-                        for d in self.drawers[subplot]:
-                            d(device, numpy.asarray(xvals), data.yval, -2 )
-                        mp = self.markedPointsForYAxis(subplot, data)
-                        if mp:
-                            lw = device.pgqlw()
-                            device.pgslw(self.markerSize)
-                            device.pgpt( xvals[mp], data.yval[mp], 7)
-                            device.pgslw(lw)
+                        device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
+                        # we know there's stuff to display so let's do that then
+                        # Any marked data points to display?
+                        (mu, mf) = (None, None)
+                        # may have had to transform the xvals, xu = x unflagged, xf = x flagged
+                        (xu, xf) = (None, None)
+                        # Any unflagged data to display?
+                        if data.xval is not None:
+                            xu = xoffset.get(lab.SB, identity)( data.xval )
+                            map(functional.ylppa(device, xu, data.yval, -2), self.drawers[subplot])
+                            # extract marked points based on world coordinates iso modified plot coords
+                            mu = self.markedPointsForYAxis(subplot, data.xval, data.yval)
+                        # Any flagged data to display?
+                        if data.xval_f is not None:
+                            xf = xoffset.get(lab.SB, identity)( data.xval_f )
+                            map(functional.ylppa(device, xf, data.yval_f, 5), self.drawers[subplot])
+                            # extract marked points based on world coordinates iso modified plot coords
+                            mf = self.markedPointsForYAxis(subplot, data.xval_f, data.yval_f)
+                        # draw markers if necessary
+                        lw = device.pgqlw()
+                        device.pgslw(self.markerSize)
+                        if mu:
+                            # if mu evaluates to True then xu is also not-None
+                            device.pgpt( xu[mu], data.yval[mu], 7)
+                        if mf:
+                            # id. for the flagged stuff
+                            device.pgpt( xf[mf], data.yval_f[mf], 27)
+                        device.pgslw(lw)
                         self.doExtraCallbacks(device, data)
                     
                     # Add some more metadata in subplot 0
@@ -940,7 +1033,7 @@ class Quant2ChanPlotter(Plotter):
                         # channel number does not map (uniquely) to frequency any more
                         # because the user has overplotted >1 subband in one plot
                         device.pgsch( 0.5 )
-                        if not plotlabel.FQ is None and not plotlabel.SB is None:
+                        if plotlabel.FQ is not None and plotlabel.SB is not None:
                             if mysm is None:
                                 frqedge = "no freq info"
                             else:
@@ -994,6 +1087,21 @@ def pagestyle(layout, nplots, expandx=None, expandy=None):
     page.yb     = 0.04 + page.footer
     page.yt     = 1.0 - page.header
     return page
+
+def growlayout(layout, nplots, expandx=None, expandy=None):
+    # make sure the new layout is such that all plots will be on one page
+    nlayout = copy.deepcopy( layout )
+    while nlayout.nplots()<nplots:
+        if expandx and expandy:
+            if nlayout.nx<nlayout.ny:
+                nlayout.nx = nlayout.nx + 1
+            else:
+                nlayout.ny = nlayout.ny + 1
+        elif expandx:
+            nlayout.nx = nlayout.nx + 1
+        else:
+            nlayout.ny = nlayout.ny + 1
+    return nlayout
 
 def issuenewpage(device):
    device.pgpage()
@@ -1129,7 +1237,7 @@ def getXYlims(plotarray, ytype, curplotlabel, xscaling, yscaling):
         dx = xlims[1] - xlims[0]
         # if x-range too small, safeguard against that?
         # make sure dx is positive and non-zero. SEE NOTE ABOVE
-        dx = max(dx, 100*epsilon)
+        dx = max(dx, 1)
         if not fixed:
             mid      = (xlims[1] + xlims[0])/2
             xlims[0] = mid - 0.55*dx
@@ -1144,7 +1252,6 @@ def getXYlims(plotarray, ytype, curplotlabel, xscaling, yscaling):
         else:
             ylims = list(copy.deepcopy(yscaling))
             fixed = True
-        #ylims = list(ylims)
         dy = ylims[1] - ylims[0]
         # id. for y range  (see NOTE above)
         dy = max(dy, 100*epsilon)
@@ -1279,6 +1386,17 @@ def printlegend(device, colcode, eachpage):
         device.pgptxt( xcapt, ycapt, 0.0, 0.0, label )
     device.pgsch( och )
 
+
+choicetab = {
+        # we don't have to cover (True, True) because
+        # that would mean that both .xval and .xval_f are None
+        # and that case is filtered out; datasets with no data at all
+        # are not sent to the drawing function ...
+        (False, False): lambda x, xf: min(x[0], xf[0]),
+        (True , False): lambda x, xf: xf[0],
+        (False, True ): lambda x, xf: x[0]
+        }
+
 def printsrcname(device, plotref, datasets, day0hr, yval, ystep):
     # device is the PGPLOT object
     # plotarray is reference to the current plot
@@ -1294,7 +1412,7 @@ def printsrcname(device, plotref, datasets, day0hr, yval, ystep):
     device.pgsci( 1 )
 
     seensrces = set()
-    for dskey in datasets:
+    for (dskey,_) in datasets:
         # If no 'SRC' in data set identifier, do nothing
         if dskey.SRC is None:
             continue
@@ -1302,7 +1420,9 @@ def printsrcname(device, plotref, datasets, day0hr, yval, ystep):
         if dskey.SRC in seensrces:
             continue
         # stagger them in groups of 3, covers 3 source phase ref
-        device.pgptxt( plotref[dskey].xval[0]-day0hr, yval + ystep * (len(seensrces)%3), 0.0, 0.0, dskey.SRC )
+        pref = plotref[dskey]
+        x0   = choicetab[(pref.xval is None, pref.xval_f is None)](pref.xval, pref.xval_f)
+        device.pgptxt( x0-day0hr, yval + ystep * (len(seensrces)%3), 0.0, 0.0, dskey.SRC )
         seensrces.add( dskey.SRC )
     device.pgsch( och )
 
@@ -1325,7 +1445,7 @@ Plotters  = {
         'ampchan': Quant2ChanPlotter([YTypes.amplitude], yscaling=[Scaling.auto_global], yheights=[0.97], drawer=Drawers.Lines),
         'phachan': Quant2ChanPlotter([YTypes.phase], yscaling=[[-185, 185]], yheights=[0.97], drawer=Drawers.Lines),
         'anpchan': Quant2ChanPlotter([YTypes.amplitude, YTypes.phase], yscaling=[Scaling.auto_global, [-185, 185]], \
-                                     yheights=[0.58, 0.38], drawer=Drawers.Lines+" "+Drawers.Points),
+                                     yheights=[0.58, 0.38], drawer=Drawers.Lines.value+" "+Drawers.Points.value),
         'rechan' : Quant2ChanPlotter([YTypes.real], yscaling=[Scaling.auto_global], yheights=[0.97], drawer=Drawers.Lines),
         'imchan' : Quant2ChanPlotter([YTypes.imag], yscaling=[Scaling.auto_global], yheights=[0.97], drawer=Drawers.Lines),
         'rnichan': Quant2ChanPlotter([YTypes.real, YTypes.imag], yscaling=[Scaling.auto_global, Scaling.auto_global],
@@ -1336,4 +1456,4 @@ Plotters  = {
 }
 
 
-Types = jenums.enum(*Plotters.keys())
+Types = enumerations.Enum(*Plotters.keys())

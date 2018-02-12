@@ -174,24 +174,36 @@ class plotbase(object):
         if hasattr(self, 'table'):
             self.table.close()
 
+    # depending on combination of query or not and read flags or not
+    # we have optimum call sequence for processing a table
+    # key = (qryYesNo, readFlagYesNo)
+    # I think that executing an empty query
+    #   tbl.query('') 
+    # takes longer than 
+    #   tbl.query()
+    _qrycolmapf = {
+            (False, False): lambda tbl, q, c: tbl,                    # no query, no flagcolum reading
+            (True , False): lambda tbl, q, c: tbl.query(q),           # only query
+            (False, True ): lambda tbl, q, c: tbl.query(columns=c),   # only different columns
+            (True,  True ): lambda tbl, q, c: tbl.query(q, columns=c) # the works
+        }
+
     ## selection is a selection object from 'selection.py'
     def __init__(self, msname, selection, mapping, **kwargs):
         self.verbose = kwargs.setdefault('verbose', True)
+        self.flags   = kwargs.get('readflags', True)
 
         #self.table   = ms2util.opentable(msname)
         self.table    = pycasa.table(msname) if havePyCasa else ms2util.opentable(msname)
+        colnames      = ",".join(self.table.colnames()) + ", (FLAG_ROW || FLAG) AS FLAGCOL" if self.flags else None
 
         ## apply selection if necessary
         qry = selection.selectionTaQL()
-        if qry:
-            s = NOW()
-            self.table = self.table.query( qry )
-            e = NOW()
-            if self.verbose:
-                print "Query took\t\t{0:.3f}s".format(e-s)
-        #ms = self.table
-        #self.table = fakems(ms, mapping)
-        #del ms
+        s = NOW()
+        self.table = plotbase._qrycolmapf[(bool(qry), bool(colnames))](self.table, qry, colnames)
+        e = NOW()
+        if qry and self.verbose:
+            print "Query took\t\t{0:.3f}s".format(e-s)
 
         ## Parse data-description-id selection into a map:
         ## self.ddSelection will be 
@@ -308,40 +320,40 @@ def m2d(ar):
         shp.insert(-1, 1)
     return ar.reshape( shp )
 
-
-def calibrate_speed(n):
-    l  = range(n)
-    s  = NOW()
-    t  = numpy.array(l, dtype=numpy.float32)
-    e  = NOW()
-    return (n, e-s)
-
 class dataset:
-    __slots__ = ['x', 'y', 'n', 'a']
-    __nparraytype   = type(numpy.array([]))
-    npperformance = calibrate_speed(100000)
+    __slots__ = ['x', 'y', 'n', 'a', 'sf', 'm']
 
-    def __init__(self, x=None, y=None):
+    @classmethod
+    def add_sumy(self, obj, xs, ys, m):
+        obj.y = obj.y + ys
+        obj.n = obj.n + 1
+        obj.m = numpy.logical_or(obj.m, m)
+
+    @classmethod
+    def init_sumy(self, obj, xs, ys, m):
+        obj.x  = numpy.array(xs)
+        obj.y  = numpy.array(ys)
+        obj.sf = dataset.add_sumy
+        obj.m  = m
+
+    def __init__(self, x=None, y=None, m=None):
         if x is not None and len(x)!=len(y):
             raise RuntimeError, "attempt to construct data set where len(x) != len(y)?!!!"
         self.x  = list() if x is None else x
         self.y  = list() if y is None else y
+        self.m  = list() if m is None else m
         self.n  = 0 if x is None else 1
+        self.sf = dataset.init_sumy if x is None else dataset.add_sumy
         self.a  = False
 
-    def append(self, xv, yv):
+    def append(self, xv, yv, m):
         self.x.append(xv)
         self.y.append(yv)
+        self.m.append(m)
 
     # integrate into the current buffer
-    def sumy(self, xs, ys):
-        if self.n==0:
-            self.x  = xs
-            self.y  = ys
-            self.n  = 1
-        else:
-            self.y = self.y + ys
-            self.n = self.n + 1
+    def sumy(self, xs, ys, m):
+        self.sf(self, xs, ys, m)
 
     def average(self):
         if not self.a and self.n>1:
@@ -349,7 +361,7 @@ class dataset:
         self.a = True
 
     def is_numarray(self):
-        return isinstance(self.x, dataset.__nparraytype) and isinstance(self.y, dataset.__nparraytype)
+        return (type(self.x) is numpy.ndarray and type(self.y) is numpy.ndarray)
 
     def as_numarray(self):
         if self.is_numarray():
@@ -358,10 +370,11 @@ class dataset:
         # <quantity> versus time
         self.x  = numpy.array(self.x, dtype=numpy.float64)
         self.y  = numpy.array(self.y, dtype=numpy.float64)
+        self.m  = numpy.array(self.m, dtype=numpy.bool)
         return self
 
     def __str__(self):
-        return "DATASET: %s" % (zip(self.x, self.y), )
+        return "DATASET: {0} MASK: {1}".format(zip(self.x, self.y), self.m)
 
     def __repr__(self):
         return str(self)
@@ -399,10 +412,8 @@ class partitioner:
         self.mod  = imp.new_module("dyn_marker_mod")
         exec self.code in self.mod.__dict__
 
-    def __call__(self, ds):
+    def __call__(self, x, y):
         ds_true       = []
-        x             = ds.xval
-        y             = ds.yval
         self.mod.avg  = numpy.mean(y)
         self.mod.sd   = numpy.std(y)
         self.mod.xmin = numpy.min(x)
@@ -549,7 +560,8 @@ def solint_numpy_indexing(dsref):
 
     newds = dataset()
     for tm in tms:
-        newds.append(tm, numpy.average(dsref.y[numpy.where(dsref.x==tm)]) )
+        idxs = numpy.where(dsref.x==tm)
+        newds.append(tm, numpy.average(dsref.y[idxs]), numpy.any(dsref.m[idxs]) )
     dsref.x = newds.x
     dsref.y = newds.y
     return time.time() - start
@@ -657,6 +669,31 @@ def solint_pure_python2(dsref):
     dsref.y = y
     return time.time() - start
 
+def solint_pure_python2a(dsref):
+    start = time.time()
+    tms   = set(dsref.x)
+
+    # check if there is something to be averaged at all
+    if len(tms)==len(dsref.x):
+        return time.time() - start
+
+    # accumulate data into bins of the same time
+    acc = collections.defaultdict(list)
+    y   = dsref.y
+    m   = dsref.m
+    for (i, tm) in enumerate(dsref.x):
+        if m[i] == False:
+            acc[ tm ].append( y[i] )
+    # do the averaging
+    (xl, yl) = (list(), list())
+    for (tm, ys) in acc.iteritems():
+        xl.append(tm)
+        yl.append( sum(ys)/len(ys) )
+    dsref.x = xl
+    dsref.y = yl
+    dsref.m = numpy.zeros(len(xl), dtype=numpy.bool)
+    return time.time() - start
+
 # In solint_pure_python4 we do not check IF we need to do something, just DO it
 def solint_pure_python4(dsref):
     start = time.time()
@@ -721,7 +758,7 @@ class data_quantity_time(plotbase):
             self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
 
             # decide which solint function to use
-            solint_fn = solint_pure_python2
+            solint_fn = solint_pure_python2a
 
         if selection.averageTime!=AVG.None:
             print "Warning: {0} time averaging ignored for this plot".format(selection.averageTime)
@@ -795,6 +832,8 @@ class data_quantity_time(plotbase):
         else:
             columns        = ["ANTENNA1", "ANTENNA2", "TIME", "DATA_DESC_ID", "FIELD_ID", "WEIGHT", datacol]
             self.actual_fn = self.withWeightOneLabel
+        if self.flags:
+            columns.append( "FLAGCOL" )
         pts =  ms2util.reducems2(self, self.table, {}, columns, verbose=True, slicers=slicers, chunksize=self.chunksize)
 
         if self.nreject:
@@ -821,7 +860,7 @@ class data_quantity_time(plotbase):
         return self.actual_fn(*args)
 
     #### This is the version WITHOUT WEIGHT THRESHOLDING
-    def withoutWeightOneLabel(self, acc, a1, a2, tm, dd, fld, data):
+    def withoutWeightOneLabel(self, acc, a1, a2, tm, dd, fld, data, *flag):
         #print "__call__: ",a1,a2,tm,dd,fld,data.shape
         # Make really sure we have a 3-D array of data ...
         d3d  = m3d(data)
@@ -843,6 +882,8 @@ class data_quantity_time(plotbase):
 
         # Transform the time stamps [rounds time to integer multiples of solint, if that is set]
         tm   = self.timebin_fn( tm )
+        flag = flag[0] if flag else None
+        flg  = (lambda row, ch, p: False) if flag is None else (lambda row, ch, p: flag[row, ch, p])
 
         # Now we can loop over all the rows in the data
 
@@ -856,11 +897,11 @@ class data_quantity_time(plotbase):
                     l = ["", (a1[row], a2[row]), fq, sb, fld[row], pname, chn]
                     for (qnm, qval) in qd:
                         l[0] = qnm
-                        acc.setdefault(tuple(l), dataset()).append(tm[row], qval[row, chi, pidx])
+                        acc.setdefault(tuple(l), dataset()).append(tm[row], qval[row, chi, pidx], flg(row, chi, pidx))
         return acc
 
     #### This is the version WITH WEIGHT THRESHOLDING
-    def withWeightOneLabel(self, acc, a1, a2, tm, dd, fld, weight, data):
+    def withWeightOneLabel(self, acc, a1, a2, tm, dd, fld, weight, data, *flag):
         #print "__call__: ",a1,a2,tm,dd,fld,data.shape
         # Make really sure we have a 3-D array of data ...
         d3d  = m3d(data)
@@ -893,6 +934,8 @@ class data_quantity_time(plotbase):
 
         # Transform the time stamps [rounds time to integer multiples of solint, if that is set]
         tm   = self.timebin_fn( tm )
+        flag = flag[0] if flag else None
+        flg  = (lambda row, ch, p: False) if flag is None else (lambda row, ch, p: flag[row, ch, p])
 
         # Now we can loop over all the rows in the data
 
@@ -912,7 +955,7 @@ class data_quantity_time(plotbase):
                         #pi       = self.plot_idx(l)
                         #di       = self.ds_idx(l)
                         #print "row #",row,"/l=",l," => pi=",pi," di=",di," qval.shape=",qval.shape
-                        acc.setdefault(tuple(l), dataset()).append(tm[row], qval[row, chi, pidx])
+                        acc.setdefault(tuple(l), dataset()).append(tm[row], qval[row, chi, pidx], flg(row, chi, pidx))
         return acc
 
 ## This plotter will iterate over "DATA" or "LAG_DATA"
@@ -1056,6 +1099,8 @@ class data_quantity_chan(plotbase):
         else:
             columns        = ["ANTENNA1", "ANTENNA2", "TIME", "DATA_DESC_ID", "FIELD_ID", "WEIGHT", datacol]
             self.actual_fn = self.withWeightThresholding
+        if self.flags:
+            columns.append( "FLAGCOL" )
         pts     =  ms2util.reducems2(self, self.table, {}, columns, verbose=True, slicers=slicers, chunksize=self.chunksize)
 
         if self.nreject:
@@ -1069,7 +1114,7 @@ class data_quantity_chan(plotbase):
                 dl = list(label)
                 for (qnm, qd) in map(lambda (qnm, qfn): (qnm, qfn(ds.y)), self.quantities):
                     dl[0] = qnm
-                    rv[ self.MKLAB(fields, dl) ] = dataset(ds.x, qd)
+                    rv[ self.MKLAB(fields, dl) ] = dataset(ds.x, qd, ds.m)
             else:
                 rv[ self.MKLAB(fields, label) ] = ds
         #for k in rv.keys():
@@ -1082,7 +1127,7 @@ class data_quantity_chan(plotbase):
         return self.actual_fn(*args)
 
     # This is the one WITHOUT WEIGHT THRESHOLDING
-    def withoutWeightThresholding(self, acc, a1, a2, tm, dd, fld, data):
+    def withoutWeightThresholding(self, acc, a1, a2, tm, dd, fld, data, *flag):
         # Make really sure we have a 3-D array of data ...
         d3d  = m3d(data)
         shp  = data.shape
@@ -1104,6 +1149,7 @@ class data_quantity_chan(plotbase):
         # Transform the time stamps [rounds time to integer multiples of solint
         # if that is set or the midpoint of the time range if solint was None]
         tm   = self.timebin_fn( tm )
+        flag = flag[0] if flag else numpy.zeros(data.shape, dtype=numpy.bool)
 
         # Now we can loop over all the rows in the data
 
@@ -1121,7 +1167,7 @@ class data_quantity_chan(plotbase):
                 l[5] = pname
                 for (qnm, qval) in qd:
                     l[0] = qnm
-                    acc.setdefault(tuple(l), dataset()).sumy(self.chanidx, qval[row, self.chansel,pidx])
+                    acc.setdefault(tuple(l), dataset()).sumy(self.chanidx, qval[row, self.chansel, pidx], flag[row, self.chansel, pidx])
         return acc
 
     # This is the one WITH WEIGHT THRESHOLDING
@@ -1157,6 +1203,7 @@ class data_quantity_chan(plotbase):
         # Transform the time stamps [rounds time to integer multiples of solint
         # if that is set or the midpoint of the time range if solint was None]
         tm   = self.timebin_fn( tm )
+        flag = flag[0] if flag else numpy.zeros(data.shape, dtype=numpy.bool)
 
         # Now we can loop over all the rows in the data
 
@@ -1177,9 +1224,13 @@ class data_quantity_chan(plotbase):
                 l[5] = pname
                 for (qnm, qval) in qd:
                     l[0] = qnm
-                    acc.setdefault(tuple(l), dataset()).sumy(self.chanidx, qval[row, self.chansel,pidx])
+                    acc.setdefault(tuple(l), dataset()).sumy(self.chanidx, qval[row, self.chansel, pidx], flag[row, self.chansel, pidx])
         return acc
 
+
+class unflagged(object):
+    def __getitem__(self, idx):
+        return False
 
 class weight_time(plotbase):
     def __init__(self):
@@ -1197,7 +1248,7 @@ class weight_time(plotbase):
         #self.cnt = 0
         #self.ts  = set()
         ## Now we can start the reduction of the table
-        columns = ["ANTENNA1", "ANTENNA2", "TIME", "DATA_DESC_ID", "FIELD_ID", "WEIGHT"]
+        columns = ["ANTENNA1", "ANTENNA2", "TIME", "DATA_DESC_ID", "FIELD_ID", "WEIGHT"] + ["FLAG_ROW"] if self.flags else []
         pts     =  ms2util.reducems2(self, self.table, {}, columns, verbose=True, chunksize=5000)
 
         #print "WE SHOULD HAVE ",self.cnt," DATA POINTS"
@@ -1208,10 +1259,11 @@ class weight_time(plotbase):
             rv[ self.MKLAB(fields, label) ] = dataset
         return rv
 
-    def __call__(self, acc, a1, a2, tm, dd, fld, weight):
+    def __call__(self, acc, a1, a2, tm, dd, fld, weight, *flag_row):
         #print "__call__: ",a1,a2,tm,dd,fld,weight.shape
         # ok, process all the rows!
-        shp = weight.shape
+        shp   = weight.shape
+        flags = unflagged() if not flag_row else flag_row[0]
         # single-pol data will have shape (nrow,) 
         # but our code really would like it to be (nrow, npol), even if 'npol' == 1. (FFS casacore!)
         d2d = m2d(weight)
@@ -1219,7 +1271,7 @@ class weight_time(plotbase):
             (fq, sb, plist) = self.ddSelection[ dd[row] ]
             # we don't iterate over channels
             for (pidx, pname) in plist:
-                acc.setdefault((YTypes.weight, (a1[row], a2[row]), fq, sb, fld[row], pname), dataset()).append(tm[row], weight[row, pidx])
+                acc.setdefault((YTypes.weight, (a1[row], a2[row]), fq, sb, fld[row], pname), dataset()).append(tm[row], weight[row, pidx], flags[row])
         return acc
 
 class uv(plotbase):
@@ -1239,7 +1291,7 @@ class uv(plotbase):
         fields = [AX.TYPE, AX.BL, AX.FQ, AX.SB, AX.SRC]
 
         ## Now we can start the reduction of the table
-        columns = ["ANTENNA1", "ANTENNA2", "DATA_DESC_ID", "FIELD_ID", "UVW"]
+        columns = ["ANTENNA1", "ANTENNA2", "DATA_DESC_ID", "FIELD_ID", "UVW"] + ["FLAG_ROW"] if self.flags else []
         pts     =  ms2util.reducems2(self, self.table, {}, columns, verbose=True, chunksize=5000)
 
         rv  = {}
@@ -1249,14 +1301,16 @@ class uv(plotbase):
         #    print "Plot:",str(k),"/",map(str, rv[k].keys())
         return rv
 
-    def __call__(self, acc, a1, a2, dd, fld, uvw):
+    def __call__(self, acc, a1, a2, dd, fld, uvw, *flag_row):
         # ok, process all the rows!
+        flags = unflagged() if not flag_row else flag_row[0]
         for row in range(uvw.shape[0]):
             (fq, sb, _plist) = self.ddSelection[ dd[row] ]
             # we don't iterate over channels nor over polarizations
             ds = acc.setdefault(('V', (a1[row], a2[row]), fq, sb, fld[row]), dataset())
-            ds.append( uvw[row, 0],  uvw[row, 1])
-            ds.append(-uvw[row, 0], -uvw[row, 1])
+            f  = flags[row]
+            ds.append( uvw[row, 0],  uvw[row, 1], f)
+            ds.append(-uvw[row, 0], -uvw[row, 1], f)
         return acc
 
 ## This plotter will iterate over "DATA" or "LAG_DATA"
@@ -1375,6 +1429,8 @@ class data_quantity_uvdist(plotbase):
         else:
             columns        = ["ANTENNA1", "ANTENNA2", "UVW", "DATA_DESC_ID", "FIELD_ID", "WEIGHT", datacol]
             self.actual_fn = self.withWeightThresholding
+        if self.flags:
+            columns.append( "FLAGCOL" )
         pts =  ms2util.reducems2(self, self.table, {}, columns, verbose=True, slicers=slicers, chunksize=self.chunksize)
 
         if self.nreject:
@@ -1392,12 +1448,12 @@ class data_quantity_uvdist(plotbase):
         return self.actual_fn(*args)
 
     #### This is the version WITHOUT WEIGHT THRESHOLDING
-    def withoutWeightThresholding(self, acc, a1, a2, uvw, dd, fld, data):
+    def withoutWeightThresholding(self, acc, a1, a2, uvw, dd, fld, data, *flag):
         #print "__call__: ",a1,a2,tm,dd,fld,data.shape
         # Make really sure we have a 3-D array of data ...
         d3d  = m3d(data)
         shp  = data.shape
-
+        flg  = unflagged() if not flag else flag[0]
         # Good. We have a block of data, shape (nrow, nchan, npol)
         # Step 1: apply the masking + vector averaging
         #         'vamd' = vector averaged masked data
@@ -1428,16 +1484,16 @@ class data_quantity_uvdist(plotbase):
                     l = ["", (a1[row], a2[row]), fq, sb, fld[row], pname, chn]
                     for (qnm, qval) in qd:
                         l[0] = qnm
-                        acc.setdefault(tuple(l), dataset()).append(uvd[chi, row], qval[row, chi, pidx])
+                        acc.setdefault(tuple(l), dataset()).append(uvd[chi, row], qval[row, chi, pidx], flg[row, chi, pidx])
         return acc
 
     #### This is the version WITH WEIGHT THRESHOLDING
-    def withWeightThresholding(self, acc, a1, a2, uvw, dd, fld, weight, data):
+    def withWeightThresholding(self, acc, a1, a2, uvw, dd, fld, weight, data, *flag):
         #print "__call__: ",a1,a2,tm,dd,fld,data.shape
         # Make really sure we have a 3-D array of data ...
         d3d  = m3d(data)
         shp  = data.shape
-
+        flg  = unflagged() if not flag else flag[0]
         # compute weight mask
         w3d  = numpy.zeros(shp, dtype=numpy.float)
         for i in xrange(shp[0]):
@@ -1484,7 +1540,7 @@ class data_quantity_uvdist(plotbase):
                         #pi       = self.plot_idx(l)
                         #di       = self.ds_idx(l)
                         #print "row #",row,"/l=",l," => pi=",pi," di=",di," qval.shape=",qval.shape
-                        acc.setdefault(tuple(l), dataset()).append(tm[row], qval[row, chi, pidx])
+                        acc.setdefault(tuple(l), dataset()).append(tm[row], qval[row, chi, pidx], flag[row, chi, pidx])
         return acc
 
 Iterators = {
