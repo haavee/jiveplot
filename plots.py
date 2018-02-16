@@ -1447,7 +1447,7 @@ Plotters  = {
         'ampchan': Quant2ChanPlotter([YTypes.amplitude], yscaling=[Scaling.auto_global], yheights=[0.97], drawer=Drawers.Lines),
         'ampfreq': Quant2ChanPlotter([YTypes.amplitude], yscaling=[Scaling.auto_global], yheights=[0.97], drawer=Drawers.Lines, xtype='frequency'),
         'phachan': Quant2ChanPlotter([YTypes.phase], yscaling=[[-185, 185]], yheights=[0.97], drawer=Drawers.Lines),
-        'phachan': Quant2ChanPlotter([YTypes.phase], yscaling=[[-185, 185]], yheights=[0.97], drawer=Drawers.Lines, xtype='frequency'),
+        'phafreq': Quant2ChanPlotter([YTypes.phase], yscaling=[[-185, 185]], yheights=[0.97], drawer=Drawers.Lines, xtype='frequency'),
         'anpchan': Quant2ChanPlotter([YTypes.amplitude, YTypes.phase], yscaling=[Scaling.auto_global, [-185, 185]], \
                                      yheights=[0.58, 0.38], drawer=Drawers.Lines.value+" "+Drawers.Points.value),
         'anpfreq': Quant2ChanPlotter([YTypes.amplitude, YTypes.phase], yscaling=[Scaling.auto_global, [-185, 185]], \
