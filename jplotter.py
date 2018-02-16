@@ -501,23 +501,12 @@ class jplotter:
         pmap   = self.mappings.polarizationMap
         smap   = self.mappings.spectralMap
         pfx    = 'listFreqs:'
-        ct2str = lambda x : ms2util.polarizationmap.correlationId2String(x)
-        get    = lambda x : pmap.getCorrelationTypes(x)
-        # print the polarization combi's we know about
-        #for p in pmap.polarizationIDs():
-        #    print "{0} Polarizationsetup {1:2d} contains {2}".format(pfx, p, ct2str(get(p)))
         # deal with the frequency setups
         for frqid in smap.freqIds():
             print "{0} FREQID={1} [{2}]".format(prng(pfx), frqid, smap.freqGroupName(frqid))
             # Loop over the subbands
-            for sb in range(smap.nSubbandOfFREQ(frqid)):
-                # get subband properties
-                f    = smap.frequencyOfFREQ_SB(frqid, sb)
-                bw   = smap.bandwidthOfFREQ_SB(frqid, sb)
-                nch  = smap.numchanOfFREQ_SB(frqid, sb)
-                tp   = smap.typeOfFREQ_SB(frqid, sb)
-                pols = " ".join(map(lambda x: "P{0}={1}".format(x, ct2str(get(x))), smap.polarizationIdsOfFREQ_SB(frqid, sb)))
-                print "{0}   SB{1:2d}: {2:5.4f}MHz/{3:<.1f}MHz {4:3d}{6} {5}".format(prng(pfx), sb, f/1.0e6, bw/1.0e6, nch, pols, tp)
+            for (sbidx, sb) in smap.subbandsOfFREQ(frqid):
+                print "{0}   SB{1:2d}:".format(prng(pfx), sbidx),sb.__str__(polarizationMap=self.mappings.polarizationMap)
 
     def freqIDs(self):
         if not self.msname:
@@ -712,11 +701,6 @@ class jplotter:
                     if len(chset)==1:
                         # I don't know how else to extract the single element out of a set
                         [nchan] = list(chset)
-                # if we have time domain data we have twice as many 'channels'
-                # Note: this is now changed at the ms2util.subband() and spectralmap() stages;
-                #       subbands display now wether they have "ch"annels or lag"s"
-                #if nchan and self.mappings.domain.domain==jenums.Type.Lag:
-                #    nchan *= 2
                 # Rite. We may have a value for nch!
                 #  Scream loudly if one of the 'relative' channels (other than first)
                 #  is mentioned in the argument and we didn't find an actual value

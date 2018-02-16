@@ -268,7 +268,7 @@ class Plotter(object):
     #drawfuncs = { Drawers.Points: lambda dev, x, y, tp: dev.pgpt(x, y, tp),
     #              Drawers.Lines:  lambda dev, x, y, tp: dev.pgline(x, y) }
 
-    def __init__(self, desc, xaxis, yaxis, lo, xscaling=None, yscaling=None, yheights=None, drawer=None):
+    def __init__(self, desc, xaxis, yaxis, lo, xscaling=None, yscaling=None, yheights=None, drawer=None, **kwargs):
         self.xAxis               = CP(xaxis)
         self.yAxis               = CP(yaxis)
         self.yHeights            = CP(yheights)
@@ -860,7 +860,8 @@ class GenXvsYPlotter(Plotter):
 ##########################################################
 class Quant2ChanPlotter(Plotter):
     def __init__(self, ytypes, yscaling=None, yheights=None, **kwargs):
-        super(Quant2ChanPlotter, self).__init__("+".join(map(str,ytypes))+" versus channel", jenums.Axes.CH, ytypes, layout(2,4), yscaling=yscaling, yheights=yheights, **kwargs)
+        xt = kwargs.get('xtype', jenums.Axes.CH)
+        super(Quant2ChanPlotter, self).__init__("+".join(map(str,ytypes))+" versus "+('channel' if xt is jenums.Axes.CH else xt), xt, ytypes, layout(2,4), yscaling=yscaling, yheights=yheights, **kwargs)
 
     def drawfunc(self, device, plotar, first, onePage=None, **opts):
         # onePage == None? I.e. plot all. I.E. start from beginning!
@@ -1237,7 +1238,8 @@ def getXYlims(plotarray, ytype, curplotlabel, xscaling, yscaling):
         dx = xlims[1] - xlims[0]
         # if x-range too small, safeguard against that?
         # make sure dx is positive and non-zero. SEE NOTE ABOVE
-        dx = max(dx, 1)
+        # Apparently x-axis of ~1E-6 is still OK
+        dx = max(dx, 1e-6)
         if not fixed:
             mid      = (xlims[1] + xlims[0])/2
             xlims[0] = mid - 0.55*dx
@@ -1443,9 +1445,13 @@ Plotters  = {
         'wt':      Quant2TimePlotter([YTypes.weight], yscaling=[Scaling.auto_global], yheights=[0.94]),
         # by channel
         'ampchan': Quant2ChanPlotter([YTypes.amplitude], yscaling=[Scaling.auto_global], yheights=[0.97], drawer=Drawers.Lines),
+        'ampfreq': Quant2ChanPlotter([YTypes.amplitude], yscaling=[Scaling.auto_global], yheights=[0.97], drawer=Drawers.Lines, xtype='frequency'),
         'phachan': Quant2ChanPlotter([YTypes.phase], yscaling=[[-185, 185]], yheights=[0.97], drawer=Drawers.Lines),
+        'phachan': Quant2ChanPlotter([YTypes.phase], yscaling=[[-185, 185]], yheights=[0.97], drawer=Drawers.Lines, xtype='frequency'),
         'anpchan': Quant2ChanPlotter([YTypes.amplitude, YTypes.phase], yscaling=[Scaling.auto_global, [-185, 185]], \
                                      yheights=[0.58, 0.38], drawer=Drawers.Lines.value+" "+Drawers.Points.value),
+        'anpfreq': Quant2ChanPlotter([YTypes.amplitude, YTypes.phase], yscaling=[Scaling.auto_global, [-185, 185]], \
+                                     yheights=[0.58, 0.38], drawer=Drawers.Lines.value+" "+Drawers.Points.value, xtype='frequency'),
         'rechan' : Quant2ChanPlotter([YTypes.real], yscaling=[Scaling.auto_global], yheights=[0.97], drawer=Drawers.Lines),
         'imchan' : Quant2ChanPlotter([YTypes.imag], yscaling=[Scaling.auto_global], yheights=[0.97], drawer=Drawers.Lines),
         'rnichan': Quant2ChanPlotter([YTypes.real, YTypes.imag], yscaling=[Scaling.auto_global, Scaling.auto_global],

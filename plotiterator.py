@@ -222,6 +222,9 @@ class plotbase(object):
 
         _pMap    = mapping.polarizationMap
         _spwMap  = mapping.spectralMap
+        GETF     = _spwMap.frequenciesOfFREQ_SB
+        # Frequencies get done in MHz 
+        scale    = 1e6 if mapping.domain.domain == jenums.Type.Spectral else 1
 
         ## if user did not pass DATA_DESC_ID selection, default to all
         if selection.ddSelection:
@@ -235,18 +238,20 @@ class plotbase(object):
                 (fq, sb, pid, l) = ddSel
                 ddId             = GETDDID(fq, sb, pid)
                 polStrings       = _pMap.getPolarizations(pid)
-                acc[ ddId ]      = (fq, sb, zip(l, ITEMGET(*l)(polStrings)))
+                acc[0][ ddId ]   = (fq, sb, zip(l, ITEMGET(*l)(polStrings)))
+                acc[1][ ddId ]   = GETF(fq, sb)/scale
                 return acc
-            self.ddSelection   = reduce(ddIdAdder, selection.ddSelection, {})
+            (self.ddSelection, self.ddFreqs)   = reduce(ddIdAdder, selection.ddSelection, [{}, {}])
         else:
             ddids     = _spwMap.datadescriptionIDs()
             UNMAPDDID = _spwMap.unmapDDId
             def ddIdAdder(acc, dd):
                 # Our data selection is rather simple: all the rows!
                 r         = UNMAPDDID(dd)
-                acc[ dd ] = (r.FREQID, r.SUBBAND, list(enumerate(_pMap.getPolarizations(r.POLID))))
+                acc[0][ dd ] = (r.FREQID, r.SUBBAND, list(enumerate(_pMap.getPolarizations(r.POLID))))
+                acc[1][ dd ] = GETF(r.FREQID, r.SUBBAND)/scale
                 return acc
-            self.ddSelection   = reduce(ddIdAdder, ddids, {})
+            (self.ddSelection, self.ddFreqs)   = reduce(ddIdAdder, ddids, [{}, {}])
 
         ## Provide for a label unmapping function.
         ## After creating the plots we need to transform the labels - some
@@ -967,8 +972,9 @@ class data_quantity_chan(plotbase):
     ##
     ##  Note that 'time averaging' will be implemented on a per-plot
     ##  basis, not at the basic type of plot instance
-    def __init__(self, qlist):
-        self.quantities = qlist
+    def __init__(self, qlist, **kwargs):
+        self.quantities  = qlist
+        self.byFrequency = kwargs.get('byFrequency', False)
 
     def makePlots(self, msname, selection, mapping, **kwargs):
         datacol = CP(mapping.domain.column)
@@ -979,6 +985,13 @@ class data_quantity_chan(plotbase):
         avgTime = CP(selection.averageTime)
         solint  = CP(selection.solint)
         timerng = CP(selection.timeRange)
+
+        # need a function that (optionally) transforms the FQ/SB/CH idx to real frequencies
+        self.changeXaxis = lambda dd, chanidx: chanidx
+        if self.byFrequency:
+            if mapping.spectralMap is None:
+                raise RuntimeError("Request to plot by frequency but no spectral mapping available")
+            self.changeXaxis = lambda dd, chanidx: self.ddFreqs[ dd ][ chanidx ]
 
         # solint must be >0.1 OR must be equal to None 
         # solint==None implies "aggregate all data into the selected time ranges in
@@ -1157,7 +1170,8 @@ class data_quantity_chan(plotbase):
         # selected; the fact that we see it here means that it WAS selected!
         # The only interesting bit is selecting the correct products
         for row in range(shp[0]):
-            (fq, sb, plist) = self.ddSelection[ dd[row] ]
+            ddr             = dd[row]
+            (fq, sb, plist) = self.ddSelection[ ddr ]
             # we can already precompute most of the label
             # potentially, modify the TIME value to be a time bucket such
             # that we can intgrate into it
@@ -1167,7 +1181,7 @@ class data_quantity_chan(plotbase):
                 l[5] = pname
                 for (qnm, qval) in qd:
                     l[0] = qnm
-                    acc.setdefault(tuple(l), dataset()).sumy(self.chanidx, qval[row, self.chansel, pidx], flag[row, self.chansel, pidx])
+                    acc.setdefault(tuple(l), dataset()).sumy(self.changeXaxis(ddr, self.chanidx), qval[row, self.chansel, pidx], flag[row, self.chansel, pidx])
         return acc
 
     # This is the one WITH WEIGHT THRESHOLDING
@@ -1211,7 +1225,8 @@ class data_quantity_chan(plotbase):
         # selected; the fact that we see it here means that it WAS selected!
         # The only interesting bit is selecting the correct products
         for row in range(shp[0]):
-            (fq, sb, plist) = self.ddSelection[ dd[row] ]
+            ddr             = dd[row]
+            (fq, sb, plist) = self.ddSelection[ ddr ]
             # we can already precompute most of the label
             # potentially, modify the TIME value to be a time bucket such
             # that we can intgrate into it
@@ -1224,7 +1239,7 @@ class data_quantity_chan(plotbase):
                 l[5] = pname
                 for (qnm, qval) in qd:
                     l[0] = qnm
-                    acc.setdefault(tuple(l), dataset()).sumy(self.chanidx, qval[row, self.chansel, pidx], flag[row, self.chansel, pidx])
+                    acc.setdefault(tuple(l), dataset()).sumy(self.changeXaxis(ddr, self.chanidx), qval[row, self.chansel, pidx], flag[row, self.chansel, pidx])
         return acc
 
 
@@ -1551,8 +1566,11 @@ Iterators = {
     'imtime'  : data_quantity_time([(YTypes.imag, numpy.imag)]),
     'rnitime' : data_quantity_time([(YTypes.real, numpy.real), (YTypes.imag, numpy.imag)]),
     'ampchan' : data_quantity_chan([(YTypes.amplitude, numpy.abs)]),
+    'ampfreq' : data_quantity_chan([(YTypes.amplitude, numpy.abs)], byFrequency=True),
     'phachan' : data_quantity_chan([(YTypes.phase, lambda x: numpy.angle(x, True))]),
+    'phafreq' : data_quantity_chan([(YTypes.phase, lambda x: numpy.angle(x, True))], byFrequency=True),
     'anpchan' : data_quantity_chan([(YTypes.amplitude, numpy.abs), (YTypes.phase, lambda x: numpy.angle(x, True))]),
+    'anpfreq' : data_quantity_chan([(YTypes.amplitude, numpy.abs), (YTypes.phase, lambda x: numpy.angle(x, True))], byFrequency=True),
     'rechan'  : data_quantity_chan([(YTypes.real, numpy.real)]),
     'imchan'  : data_quantity_chan([(YTypes.imag, numpy.imag)]),
     'rnichan' : data_quantity_chan([(YTypes.real, numpy.real), (YTypes.imag, numpy.imag)]),

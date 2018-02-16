@@ -293,6 +293,8 @@ class InvalidFieldId(Exception):
     def __str__(self):
         return "The field code {0} is not a recognized field".format(self.fieldId)
 
+ct2str = lambda x : polarizationmap.correlationId2String(x)
+
 ## data structures
 class subband:
     # ddmap = Map POLARIZATION_ID => DATA_DESCRIPTION_ID,
@@ -304,21 +306,27 @@ class subband:
     #   the ddmap should be
     #         Map POLARIZATION_ID => [DATA_DESCRIPTION_ID, ...]
     def __init__(self, spwid, f0, nchan, bw, ddmap, **kwargs):
-        self.spWinId     = spwid
-        self.frequency   = f0
-        self.numChannels = nchan
-        self.bandWidth   = bw
-        self.datadescMap = ddmap
-        self.domain      = kwargs.get('domain', jenums.Type.Unknown)
+        self.spWinId       = spwid
+        self.frequency     = f0
+        self.numChannels   = nchan
+        self.bandWidth     = bw
+        self.datadescMap   = ddmap
+        self.formatStr     = "{frequency[0]:5.4f}MHz/{bw:<.1f}MHz nch={nch} {polarizations}"
+        self.domain        = kwargs.get('domain', jenums.Type.Unknown)
+        # in lag domain the frequency axis becomes delay in units of s
         if self.domain==jenums.Type.Lag:
-            self.numChannels = self.numChannels * 2
-        self.numStr      = ("lag" if self.domain==jenums.Type.Lag else "ch")
+            freqs            = self.frequency
+            self.frequency   = numpy.arange(-self.numChannels, self.numChannels) * 1./(2*self.bandWidth)
+            self.numChannels = len(self.frequency)
+            self.formatStr   = "{0:5.4f}MHz {1:.2}us - {2:.2}us".format(freqs[0]/1.e6, self.frequency[0]/1e-6, self.frequency[-1]/1e-6) + "  nlag={nch} {polarizations}"
 
-    def __str__(self):
-        return "f0={0:9.3f}MHz bw={3:4.1f}MHz n{5}={1} (SPW #{2}) (ddMap={4})".format(self.frequency[0]/1.0e6, \
-                                                                        self.numChannels, self.spWinId, \
-                                                                        self.bandWidth/1.0e6, \
-                                                                        self.datadescMap, self.numStr)
+    def __str__(self, **kwargs):
+        pmap = kwargs.get('polarizationMap', None)
+        if pmap is None:
+            polarizations = " ".join(map("P{0}".format, self.datadescMap.keys()))
+        else:
+            polarizations = " ".join(map(lambda x: "P{0}={1}".format(x, ct2str(pmap.getCorrelationTypes(x))), self.datadescMap.keys()))
+        return self.formatStr.format(frequency=(self.frequency/1.0e6), bw=self.bandWidth/1.e6, spw=self.spWinId, ddMap=self.datadescMap, nch=self.numChannels, polarizations=polarizations)
 
     # (attempt to) map the indicated polarization id to a DATA_DESCRIPTION_ID
     #  None if we don't have this polid
@@ -386,6 +394,12 @@ class spectralmap:
             return self.spectralMap[key]
         except ValueError:
             raise KeyError
+
+    def subbandsOfFREQ(self, fq):
+        try:
+            return self._findFQ(fq)
+        except KeyError:
+            raise InvalidFreqGroup(fq)
 
     # FREQ0 indexed by spectral-window id and via "FREQGRP/SUBBAND"
     #   typically we first unmap the SPECTRAL_WINDOW_ID to a
