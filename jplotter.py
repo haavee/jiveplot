@@ -1881,7 +1881,7 @@ def run_plotter(cmdsrc, **kwargs):
 
     # run indexr on the MS
     c.addCommand(
-        mkcmd(rx=re.compile(r"^indexr$"), id="indexr",
+        mkcmd(rx=re.compile(r"^inde?xr$"), id="indexr",
             cb=lambda : j().indexr(), hlp=Help["indexr"]) )
 
     # 'listr' is the 'task' to display the scanlist
