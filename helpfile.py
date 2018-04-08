@@ -48,17 +48,20 @@ Example:
     # indexr
     ##################################################################
     "indexr":
-"""indexr
+"""inde?xr
     run indexr to create scan list of current MS
 
-Sometimes it is handy to be able to select data from your MS by 'scan' rather
-than by time range or bluntly by source. After having run 'indexr' on the
-current opened MS you can use the scan indices to select a time-range and
-source.
+Attempt to mimic Classic AIPS task 'INDXR'. Note that both 'indexr' and 'indxr'
+are recognized as command (*).
 
-Inspect the list of scans using 'r scan' (see the 'r' command ('r'='range')).
-It was decided to not include the scan list in the default output because it
-can be quite a long list.
+Sometimes it is handy to be able to select data from an MS by scan rather than
+by time range or bluntly by source. After having run 'indexr' on the current
+opened MS it is now possible to use scan indices to select a time-range and
+source using the 'scan' command.
+
+Inspect the list of scans using 'r scan' (see the 'r' command ('r'='range')) or
+the 'listr' command. It was decided to not include the scan list in the default
+'r' output because it can be quite a long list.
 
 A scan, as defined by this software, is a time-continuous range where the same
 (sub)array of telescopes (ARRAY_ID) is observing the same source (FIELD_ID).
@@ -70,6 +73,11 @@ more than one FREQ_GROUP (setup).
 
 Should this be a problem, contact verkouter@jive.nl and request it. You might
 get lucky.
+
+(*) RossB pointed out to the author, significantly after the fact, that, in
+fact, the aips task was called 'indxr' and not 'indexr', which is how the
+command was implemented in jplotter. The 'e' is now optional. (April 2018)
+
 """,
 
     ##################################################################
