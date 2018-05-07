@@ -50,17 +50,15 @@ class layout(object):
 
 # Take two labels and join them - i.e. to go from separate plot/data set labels 
 # to full data set label
+is_not_none = lambda x: x is not None
 def join_label(l1, l2):
-    # create an empty label
-    newlab = label({}, [])
     def attrval(a):
         # it's ok if _either_ of l1 or l2 has the attribute but not both
-        aval = filter(operator.truth, [getattr(l1, a), getattr(l2, a)])
+        aval = filter(is_not_none, [getattr(l1, a), getattr(l2, a)])
         if len(aval)>1:
             raise RuntimeError, "Duplicate attribute value {0}: {1} {2}".format(a, aval[0], aval[1])
         return None if len(aval)==0 else aval[0] 
-    map(lambda a: setattr(newlab, a, attrval(a)), label._attrs)
-    return newlab
+    return label(reduce(lambda acc, a: operator.setitem(acc, a, attrval(str(a))) or acc, label._attrs, dict()), label._attrs)
 
 # take one label and split it in two; the plot and data set label, based
 # on the contents of the 'inplot' list [the rest ends up in the data set label]

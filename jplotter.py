@@ -1812,7 +1812,9 @@ class environment(object):
                 m_fn = m_fn[1:]
                 f  = None
                 try:
-                    (f, p, d) = imp.find_module(m_name, [m_path])
+                    # compute module path - if it starts with "/" it's absolute
+                    # otherwise use sys.path[0]+m_path
+                    (f, p, d) = imp.find_module(m_name, [m_path if m_path[0]=='/' else os.path.join(sys.path[0], m_path)])
                     mod = imp.load_module(m_name, f, p, d)
                     self.post_processing_fn  = mod.__dict__[m_fn]
                     self.post_processing_mod = args[0]
