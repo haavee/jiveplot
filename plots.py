@@ -7,6 +7,7 @@ FLAG     = jenums.Flagstuff
 YTypes   = enumerations.Enum("amplitude", "phase", "real", "imag", "weight")
 Scaling  = enumerations.Enum("auto_global", "auto_local")
 CKReset  = enumerations.Enum("newplot")
+FU       = functional
 
 CP       = copy.deepcopy
 
@@ -260,8 +261,13 @@ Drawers = enumerations.Enum("Lines", "Points", "Both")
 ####
 ##########################################################
 noFilter = lambda x: True
-
-
+# The label regex's match groups:
+#                       1                  vnon-capturing 3 
+rxLabel  = re.compile(r'([^ \t\v]+)\s*:\s*((?<![\\])[\'"])((?:.(?!(?<![\\])\2))*.?)\2')
+# Standard x/y[n] axis description
+#                        1   2
+rxXYAxis = re.compile(r'^(x|y([0-9]*))$').match
+#
 class Plotter(object):
     #drawfuncs = { Drawers.Points: lambda dev, x, y, tp: dev.pgpt(x, y, tp),
     #              Drawers.Lines:  lambda dev, x, y, tp: dev.pgline(x, y) }
@@ -283,6 +289,8 @@ class Plotter(object):
         self.defaultCkFunS       = "ckey_builtin"
         self.defaultFilter       = [noFilter] * len(self.yAxis)
         self.defaultFilterS      = ["(none)"] * len(self.yAxis)
+        self.defaultxLabel       = ""
+        self.defaultyLabel       = [""] * len(self.yAxis)
 
         # dict mapping a specific drawer to a method call on self
         self.drawfuncs = { Drawers.Points: lambda dev, x, y, tp: self.drawPoints(dev, x, y, tp),
@@ -333,6 +341,8 @@ class Plotter(object):
         self.drawMethod   = CP([""]*len(self.yAxis))
         self.drawers      = CP([[]]*len(self.yAxis))
         self.setDrawer(*str(self.defaultDrawer).split())
+        self.xLabel       = CP(self.defaultxLabel)
+        self.yLabel       = CP(self.defaultyLabel)
 
     # self.drawers    = [ [drawers-for-yaxis0], [drawers-for-yaxis1], ... ]
     # self.drawMethod = "yaxis0:method yaxis1:method ...."
@@ -552,6 +562,54 @@ class Plotter(object):
     def num_pages(self, plotar):
         return (len(plotar)/self.layout().nplots())+1
 
+    # deal with labelling of the axes
+    def haveXLabel(self):
+        return self.xLabel
+    def haveYLabel(self):
+        return filter(operator.truth, self.yLabel)
+
+    def setLabel(self, *args):
+        if args:
+            # verify that the whole string was valid (replace all recognized labels with empty string
+            # and check if we have anything left that's not whitespace)
+            if reduce(operator.add, map(FU.compose(str.strip, operator.itemgetter(0), FU.partial(rxLabel.subn, "")), args)):
+                raise RuntimeError("Syntax error in label string(s), not all are formed like <axis> : '<label text>'")
+            # if there are arguments given extract "<axis>:'<label text>'" entries
+            # "label x:channel  y1: 'Phase (deg)' amplitude:'Flux (Jy)' y:'Oh (noes/fortnight)'"
+            # the rxLabel will yield (<axis>, detected quote, <label text>)
+            for axis, text in dict(map(FU.m_itemgetter(0, 2), reduce(operator.add, map(rxLabel.findall, args)))).iteritems():
+                # need to find which axis this is: 'x', 'y[n]' or '<quantity>'
+                xyAxis = rxXYAxis(axis.lower())
+                if xyAxis:
+                    if (xyAxis.group(1) == 'x'):
+                        # 'k itsda x-axis
+                        self.xLabel = CP(text)
+                    else:
+                        # default to y-axis #0 if none given
+                        yNumber = xyAxis.group(2)
+                        yNumber = int(yNumber) if yNumber else 0
+                        if yNumber >= len(self.yLabel):
+                            raise RuntimeError("y-axis #{0} is out of range (at most {1} available)".format(yNumber, len(self.yLabel)))
+                        self.yLabel[ yNumber ] = CP(text)
+                else:
+                    # ok not simple x/y[n] but actual quantity
+                    if axis == str(self.xAxis).lower():
+                        self.xLabel = CP(text)
+                    else:
+                        # test if quantity is one of the defined y-axes?
+                        lyax = map(FU.compose(str.lower, str), self.yAxis)
+                        if axis not in lyax:
+                            raise RuntimeError("The indicated y-axis {0} does not apply to this plot".format(axis))
+                        self.yLabel[ lyax.index(axis) ] = CP(text)
+        # ok return overview of labels (only return the labels that are defined)
+        rv = []
+        if self.xLabel:
+            rv.append( ('x ', self.xAxis, self.xLabel) )
+        for n, tp in enumerate(self.yAxis):
+            if self.yLabel[n]:
+                rv.append( ("y{0}".format(n), tp, self.yLabel[n]) )
+        return rv
+
 AllInOne = type("AllInOne", (), {})()
 
 ##########################################################
@@ -596,6 +654,10 @@ class Quant2TimePlotter(Plotter):
 
         pagelabel = self.mk_pagelabel(plotar)
 
+        # get x,y labels, if any
+        doxLabel  = self.haveXLabel()
+        doyLabel  = self.haveYLabel()
+
         device.pgbbuf()
         try:
             # reset the colour-key mapping; indicate we start a new plot
@@ -633,8 +695,8 @@ class Quant2TimePlotter(Plotter):
                 # world coordinate limits
                 cvp      = plotcoord(pidx, eachpage)
                 drawxlab = lastrow(eachpage, cvp, pnum, last-first) or self.xScale == Scaling.auto_local
+                drawxtxt = doxLabel and lastrow(eachpage, cvp, pnum, last-first)
 
-                #print "  drawxlab={0} {1},{2}".format(drawxlab, cvp.x, cvp.y)
                 ## Loop over the subplots
                 for (subplot, ytype) in enumerate(self.yAxis):
                     # filter the data sets with current y-axis type
@@ -650,14 +712,29 @@ class Quant2TimePlotter(Plotter):
                     # drawing of the y-axis label depends on the current view port or
                     # the setting of the current panel
                     drawylab = cvp.x==0 or Scaling.auto_local in self.yScale
+                    drawytxt = self.yLabel[subplot] and cvp.x==0
 
                     # get viewport and edit y coords if we need to draw y-axis labels
-                    vp       = getviewport(device, eachpage, cvp, drawxlab and subplot==0, drawylab, subplot, self.yHeights)
+                    vp       = getviewport(device, eachpage, cvp, drawxlab and subplot==0, drawylab, subplot, self.yHeights,
+                                           doxLabel=doxLabel, doyLabel=doyLabel)
 
                     # Now send to the device
                     device.pgsvp( *vp )
                     # and set character height
                     device.pgsch( 0.75 )
+
+                    with pgenv(device): 
+                        device.pgsch( 0.9 )
+                        device.pgsci( 1 )
+                        if (drawxtxt and subplot==0):
+                            device.pgmtxt('B', 2.2, 0.9, 1.0, self.xLabel)
+                        if drawytxt:
+                            # y character size: let's scale to viewport?
+                            txt      = self.yLabel[subplot]
+                            vp_ysize = vp[3]-vp[2]
+                            ch       = min(0.9, (vp_ysize / len(txt)) / (0.9 * (1.0/40)))
+                            device.pgsch( ch )
+                            device.pgmtxt('L', 2.2 / ch, 0.9, 1.0, txt)
 
                     # we subtract day0hr from all x-axis values so we must do that with
                     # the x-axis limits too
@@ -752,6 +829,9 @@ class GenXvsYPlotter(Plotter):
 
         pagelabel = self.mk_pagelabel( plotar )
 
+        # get x,y labels, if any
+        doxLabel  = self.haveXLabel()
+        doyLabel  = self.haveYLabel()
         device.pgbbuf()
 
         try:
@@ -794,14 +874,29 @@ class GenXvsYPlotter(Plotter):
                 cvp      = plotcoord(pidx, eachpage)
                 drawxlab = lastrow(eachpage, cvp, pnum, last-first) or self.xScale == Scaling.auto_local
                 drawylab = cvp.x==0 or self.yScale[0] == Scaling.auto_local
+                drawxtxt = doxLabel and lastrow(eachpage, cvp, pnum, last-first)
+                drawytxt = self.yLabel[0] and cvp.x==0
 
                 # get viewport and edit y coords if we need to draw y-axis labels
-                vp       = getviewport(device, eachpage, cvp, drawxlab, drawylab)
+                vp       = getviewport(device, eachpage, cvp, drawxlab, drawylab, doxLabel=doxLabel, doyLabel=doyLabel)
 
                 # Now send to the device
                 device.pgsvp( *vp )
                 # and set character height
                 device.pgsch( 0.75 )
+
+                with pgenv(device): 
+                    device.pgsch( 0.9 )
+                    device.pgsci( 1 )
+                    if drawxtxt:
+                        device.pgmtxt('B', 2.2, 0.9, 1.0, self.xLabel)
+                    if drawytxt:
+                        # y character size: let's scale to viewport?
+                        txt      = self.yLabel[0]
+                        vp_ysize = vp[3]-vp[2]
+                        ch       = min(0.9, (vp_ysize / len(txt)) / (0.9 * (1.0/40)))
+                        device.pgsch( ch )
+                        device.pgmtxt('L', 2.2 / ch, 0.9, 1.0, txt)
 
                 # get limits of the plot in world coordinates
                 (xlims, ylims) = getXYlims(plotar, self.yAxis[0], plotlabel, self.xScale, self.yScale[0])
@@ -895,6 +990,10 @@ class Quant2ChanPlotter(Plotter):
 
         pagelabel = self.mk_pagelabel( plotar )
 
+        # get x,y labels, if any
+        doxLabel  = self.haveXLabel()
+        doyLabel  = self.haveYLabel()
+
         device.pgbbuf()
 
         try:
@@ -932,6 +1031,7 @@ class Quant2ChanPlotter(Plotter):
                 # world coordinate limits
                 cvp      = plotcoord(pidx, eachpage)
                 drawxlab = lastrow(eachpage, cvp, pnum, last-first) or self.xScale == Scaling.auto_local
+                drawxtxt = doxLabel and lastrow(eachpage, cvp, pnum, last-first)
 
                 ## Loop over the subplots
 
@@ -948,6 +1048,7 @@ class Quant2ChanPlotter(Plotter):
                     # drawing of the y-axis label depends on the current view port or
                     # the setting of the current panel
                     drawylab = cvp.x==0 or Scaling.auto_local in self.yScale
+                    drawytxt = self.yLabel[subplot] and cvp.x==0
 
                     # get viewport and edit y coords if we need to draw y-axis labels
                     vp       = getviewport(device, eachpage, cvp, drawxlab and subplot==0, drawylab, subplot, self.yHeights)
@@ -956,6 +1057,19 @@ class Quant2ChanPlotter(Plotter):
                     device.pgsvp( *vp )
                     # and set character height
                     device.pgsch( 0.75 )
+
+                    with pgenv(device): 
+                        device.pgsch( 0.9 )
+                        device.pgsci( 1 )
+                        if (drawxtxt and subplot==0) or drawytxt:
+                            device.pgmtxt('B', 2.2, 0.9, 1.0, self.xLabel)
+                        if drawytxt:
+                            # y character size: let's scale to viewport?
+                            txt      = self.yLabel[subplot]
+                            vp_ysize = vp[3]-vp[2]
+                            ch       = min(0.9, (vp_ysize / len(txt)) / (0.9 * (1.0/40)))
+                            device.pgsch( ch )
+                            device.pgmtxt('L', 2.2 / ch, 0.9, 1.0, txt)
 
                     # get limits of the plot in world coordinates
                     (xlims, ylims) = getXYlims(plotar, ytype, plotlabel, self.xScale, self.yScale[subplot])
@@ -1084,7 +1198,7 @@ def pagestyle(layout, nplots, expandx=None, expandy=None):
     page.xl     = 0.01 #0.05
     page.xr     = 0.98 #0.95
     page.yb     = 0.04 + page.footer
-    page.yt     = 1.0 - page.header
+    page.yt     = 1.0  - page.header
     return page
 
 def growlayout(layout, nplots, expandx=None, expandy=None):
@@ -1126,16 +1240,36 @@ def plotcoord(plotnr, eachpage):
 # 'subplot', if given, must be integer - index of the the n-th subplot
 # 'heights' must be given - an array of the individual subplot heights, in fractions of the
 #           viewport
-def getviewport(device, page, cvp, drawxlab, drawylab, subplot=None, height=None):
+# 'drawxlab', 'drawylab' are misnomers; they are the x,y axis values
+# we now support real axis labels, like "Flux (Jy)", "time (UTC)"
+# which we need to make space for if they need to be drawn.
+# Note that we scale all plots down by shifting the left edge or bottom (or both)
+def getviewport(device, page, cvp, drawxlab, drawylab, subplot=None, height=None, doxLabel=None, doyLabel=None):
     viewport = [0.0] * 4
 
-    dx = (page.xr - page.xl)/page.layout.nx
-    dy = (page.yt - page.yb)/page.layout.ny
+    # well. that's funny. "pglen(...)" isn't very helpful; the string height(s) are
+    # about 1/14th to 1/11th (!) of the total vertical height! That's WAY too huge.
+    # Quite unuseful.
+    # According to PGPLOT docs, character height of 1.0 ~ 1/40th of y-height of view surface.
+    # find maximum length
+    sheight =  (0.9 * (1.0/40)) if doxLabel or doyLabel else 0.0
+    # if we need to draw y-axis label we shift the left side to the right
+    # take into account the largest character size [y labels will be scaled such that
+    #  they'll fit in the viewport so the shortest string will be the largest characters?
+    #  (not necessarily but we have to assume something here: we can only correctly compute the character height
+    #   after we've computed viewport which depends on the character height which we can only compute after
+    #   we've computed the viewport which ...)]
+    ddx          = ((3.1*sheight) / min(map(len, doyLabel))) if doyLabel else 0
+    # if we need to draw x-axis label we shift the bottom up
+    ddy          = 3.1*sheight if doxLabel else 0
 
-    viewport[0] = page.xl + cvp.x * dx
-    viewport[1] = page.xl + (cvp.x+1) * dx
+    dx = (page.xr - page.xl - ddx)/page.layout.nx
+    dy = (page.yt - page.yb - ddy)/page.layout.ny
+
+    viewport[0] = page.xl + ddx + cvp.x * dx
+    viewport[1] = viewport[0] + dx 
     viewport[2] = page.yt - (cvp.y+1) * dy
-    viewport[3] = page.yt - cvp.y * dy
+    viewport[3] = viewport[2] + dy
 
     dvpx = viewport[1] - viewport[0]
     dvpy = viewport[3] - viewport[2]

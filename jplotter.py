@@ -2027,6 +2027,21 @@ def run_plotter(cmdsrc, **kwargs):
         mkcmd(rx=ryScale, id="y", args=lambda x: x,
               cb=scale_fn, hlp=Help["xyscale"]) )
 
+    # Allow labels to be set on axes!
+    rxLabel = re.compile(r'label(\s+\S+.*)?$')
+    def label_fn(*args):
+        pt = j().getPlotType()
+        if not pt:
+            print "No plot type selected to operate on"
+            return
+        labels = plots.Plotters[pt].setLabel(*args)
+        for (which, tp, txt) in labels:
+            print "{0}: {1}[{2}] '{3}'".format(pt, which, tp, txt)
+
+    c.addCommand( \
+            mkcmd(rx=rxLabel, id="label", args=lambda x : re.sub(r"^label\s*", "", x), \
+                  cb=label_fn, hlp=Help["label"])) #"""label [<axis1>:'<label1 text>' [<axisN>:'<labelN text>' ...]]\n\tShow or set axis label(s)""") )
+
     # allow sorting by arbitrary keys
     #  sort [p ch fq etc]
     def sort_fn(*args):
