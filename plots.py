@@ -1061,7 +1061,7 @@ class Quant2ChanPlotter(Plotter):
                     with pgenv(device): 
                         device.pgsch( 0.9 )
                         device.pgsci( 1 )
-                        if (drawxtxt and subplot==0) or drawytxt:
+                        if drawxtxt and subplot==0:
                             device.pgmtxt('B', 2.2, 0.9, 1.0, self.xLabel)
                         if drawytxt:
                             # y character size: let's scale to viewport?
