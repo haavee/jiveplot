@@ -895,9 +895,11 @@ class data_quantity_time(plotbase):
         # We don't have to test *IF* the current data description id is 
         # selected; the fact that we see it here means that it WAS selected!
         # The only interesting bit is selecting the correct products
+        dds = self.ddSelection
+        ci  = self.chanidx
         for row in range(shp[0]):
-            (fq, sb, plist) = self.ddSelection[ dd[row] ]
-            for (chi, chn) in self.chanidx:
+            (fq, sb, plist) = dds[ dd[row] ]
+            for (chi, chn) in ci:
                 for (pidx, pname) in plist:
                     l = ["", (a1[row], a2[row]), fq, sb, fld[row], pname, chn]
                     for (qnm, qval) in qd:
@@ -943,13 +945,15 @@ class data_quantity_time(plotbase):
         flg  = (lambda row, ch, p: False) if flag is None else (lambda row, ch, p: flag[row, ch, p])
 
         # Now we can loop over all the rows in the data
+        dds = self.ddSelection
+        ci  = self.chanidx
 
         # We don't have to test *IF* the current data description id is 
         # selected; the fact that we see it here means that it WAS selected!
         # The only interesting bit is selecting the correct products
         for row in range(shp[0]):
-            (fq, sb, plist) = self.ddSelection[ dd[row] ]
-            for (chi, chn) in self.chanidx:
+            (fq, sb, plist) = dds[ dd[row] ]
+            for (chi, chn) in ci:
                 for (pidx, pname) in plist:
                     if self.reject_f(w3d[row, chi, pidx]):
                         self.nreject = self.nreject + 1
@@ -1169,9 +1173,13 @@ class data_quantity_chan(plotbase):
         # We don't have to test *IF* the current data description id is 
         # selected; the fact that we see it here means that it WAS selected!
         # The only interesting bit is selecting the correct products
+        dds = self.ddSelection
+        cx  = self.changeXaxis
+        ci  = self.chanidx
+        cs  = self.chansel
         for row in range(shp[0]):
             ddr             = dd[row]
-            (fq, sb, plist) = self.ddSelection[ ddr ]
+            (fq, sb, plist) = dds[ ddr ] 
             # we can already precompute most of the label
             # potentially, modify the TIME value to be a time bucket such
             # that we can intgrate into it
@@ -1181,7 +1189,7 @@ class data_quantity_chan(plotbase):
                 l[5] = pname
                 for (qnm, qval) in qd:
                     l[0] = qnm
-                    acc.setdefault(tuple(l), dataset()).sumy(self.changeXaxis(ddr, self.chanidx), qval[row, self.chansel, pidx], flag[row, self.chansel, pidx])
+                    acc.setdefault(tuple(l), dataset()).sumy(cx(ddr, ci), qval[row, cs, pidx], flag[row, cs, pidx])
         return acc
 
     # This is the one WITH WEIGHT THRESHOLDING
@@ -1220,26 +1228,30 @@ class data_quantity_chan(plotbase):
         flag = flag[0] if flag else numpy.zeros(data.shape, dtype=numpy.bool)
 
         # Now we can loop over all the rows in the data
-
+        dds = self.ddSelection
+        ci  = self.chanidx
+        cs  = self.chansel
+        cx  = self.changeXaxis
+        rf  = self.reject_f
         # We don't have to test *IF* the current data description id is 
         # selected; the fact that we see it here means that it WAS selected!
         # The only interesting bit is selecting the correct products
         for row in range(shp[0]):
             ddr             = dd[row]
-            (fq, sb, plist) = self.ddSelection[ ddr ]
+            (fq, sb, plist) = dds[ ddr ]
             # we can already precompute most of the label
             # potentially, modify the TIME value to be a time bucket such
             # that we can intgrate into it
             l = ["", (a1[row], a2[row]), fq, sb, fld[row], "", tm[row]]
             # we don't iterate over channels, only over polarizations
             for (pidx, pname) in plist:
-                if self.reject_f(w3d[row, 0, pidx]):
+                if rf(w3d[row, 0, pidx]):
                     self.nreject = self.nreject + 1
                     continue
                 l[5] = pname
                 for (qnm, qval) in qd:
                     l[0] = qnm
-                    acc.setdefault(tuple(l), dataset()).sumy(self.changeXaxis(ddr, self.chanidx), qval[row, self.chansel, pidx], flag[row, self.chansel, pidx])
+                    acc.setdefault(tuple(l), dataset()).sumy(cx(ddr, ci), qval[row, cs, pidx], flag[row, cs, pidx])
         return acc
 
 
