@@ -1,0 +1,231 @@
+#!/usr/bin/env python
+import sys, os, re, jplotter, command
+
+# program default(s)
+NoWgt   = True    # do not produce weight plots
+ScanNo  = None    # automatic scan selection
+Version = "$Id: standardplots,v 1.1 2014-08-08 15:38:41 jive_cc Exp $"
+
+# One-liner to split a list of things into two lists, one satisfying the predicate, the other not
+partition = lambda p, l: reduce(lambda (y,n), x: (y+[x], n) if p(x) else (y, n+[x]), l, ([], []))
+
+# returns None if the argument wasn't present, tp(<value>) if it was
+# (such that it will give an exception if e.g. you expect int but
+#  the user didn't pass a valid int
+def get_val(arg, tp=str):
+    conversion_error = False
+    try:
+        # is 'arg' given?
+        aidx = sys.argv.index(arg)  # raises ValueError if not found FFS
+        aval = sys.argv[aidx+1]     # raises IndexError
+
+        # Check it doesn't start with a '-'!
+        if aval[0]=='-':
+            raise RuntimeError, "Option %s expects argument, got another option '%s'" % (arg, aval)
+
+        # remove those arguments
+        del sys.argv[aidx]; del sys.argv[aidx]
+        # now set 'conversion_error' to True because the following
+        # statement could (also) raise a ValueError (like the
+        # "sys.argv.index()"). FFS Python! So we must take measures to tell
+        # them apart
+        conversion_error = True
+        return tp(aval)
+    except ValueError:
+        if conversion_error:
+            raise
+        # no 'arg' given, don't complain
+        return None
+    except IndexError:
+        # Mission option value to option
+        raise RuntimeError, "Mission optionvalue to {0}".format(arg)
+
+
+def Usage(prog, full):
+    print "Usage: {0} [-h] [-v] [-d] [-weight] [-scan #] <MS> <Refant> <CalSrc>"
+    if full:
+        print """
+    where:
+    -h      print this message and exit
+    -v      print current version and exit
+    -d      enable debug output in case of error
+    -weight also produce weight plots (default: {1})
+    -scan # select scan number # for plots, rather than
+            automatically selected one(s)
+    MS      the /path/to/the/measurementset.ms where to take data from
+    Refant  which station to use as reference antenna (two-letter station
+            code as found in the ANTENNA subtable/vexfile)
+    CalSrc  which source to use as calibrator source for calibrator scan
+            selection
+
+    Produces JIVE standard plots for the MeasurementSet. These plots are:
+
+    *  visibility amplitude/phase versus channel for up to four bands for
+       all baselines to Refant for two scans on the Calibrator source;
+       one at the beginning of the experiment and one at the end.
+       Use '-scan #' to make these plots of a scan of own selection rather
+       than automatic selection.
+    *  visibility amplitude versus time for the whole experiment.
+    *  weight versus time for each station, although since disk recording
+       this plot has become mostly useless and it is not produced by
+       default. Use '-weight' option to include it.
+""".format(prog, not NoWgt)
+    sys.exit( 0 if longhelp else 1 )
+
+
+class Settings(object):
+    def __init__(self, ms, refant, calsrc):
+        self.measurementset = ms
+        self.refant         = refant
+        self.calsrc         = re.sub(r'(\.|\+|\(|\)|\[|\])', r'\\\1', calsrc)
+        self.myBasename     = re.sub(r"\.ms$", "", os.path.basename(self.measurementset))
+        self.tempFileName   = "/tmp/sptf-{0}.ps".format( os.getpid() )
+
+    def cleanup(self):
+        os.unlink( self.tempFileName )
+
+#####################################################################
+##
+##                     Inspect command line
+##
+#####################################################################
+
+# Remove the options that have a value
+ScanNo = get_val('-scan', tp=int)
+
+# Now split in options and arguments
+(opts, args) = partition(lambda opt: opt[0]=='-', sys.argv[1:])
+
+## Not three arguments given or help requested?
+longhelp = ('-h' in opts)
+if len(args)!=3 or longhelp:
+    Usage(os.path.basename(sys.argv[0]), longhelp)
+
+## Maybe print version?
+if '-v' in opts:
+    print Version
+    sys.exit( 0 )
+
+if '-weight' in opts:
+    NoWgt = False
+
+#####################################################################
+##
+##                     The plots themselves
+##
+#####################################################################
+
+def open_ms(settings):
+    # open MS and run indexr
+    yield "ms {0}".format( settings.measurementset )
+    yield "indexr"
+    yield "refile {0}".format( settings.tempFileName )
+
+def mk_anp_chan_cross_plot(settings, scansel, num):
+    print "generating cross plots [anp/channel] calibrator scan [{0}]".format( num )
+    # all cross baselines to refant
+    yield "bl {0}* -auto".format( settings.refant )
+    yield "fq *;ch none"
+    yield "new all f bl t sb t"
+    yield "avt vector;avc none"
+    yield "pt anpchan"
+    yield "y local"
+    # select the scan
+    yield "scan mid-30s to mid+30s where {0}".format( scansel.format(settings.calsrc) )
+    yield "sort bl sb" 
+    #yield "save {0}-cross-{1}.ps/cps".format( settings.myBasename, num )
+    yield "refile {0}-cross-{1}.ps/cps".format( settings.myBasename, num )
+    yield "pl"
+    print "done cross plots on calibrator scan"
+
+def mk_anp_chan_auto_plot(settings, scansel, num):
+    print "generating auto plots [anp/channel] calibrator scan [{0}]".format( num )
+    yield "bl auto"
+    yield "fq *;ch none"
+    yield "new all f bl t sb t"
+    yield "avt scalar;avc none"
+    yield "pt anpchan"
+    yield "y local"
+    # select the scan
+    yield "scan mid-30s to mid+30s where {0}".format( scansel.format(settings.calsrc) )
+    yield "sort bl sb" 
+    #yield "save {0}-auto-{1}.ps/cps".format( settings.myBasename, num )
+    yield "refile {0}-auto-{1}.ps/cps".format( settings.myBasename, num )
+    yield "pl"
+    print "done auto plots on calibrator scan"
+
+def mk_anp_time_auto_plot(settings, scansel):
+    print "generating auto plots [anp/time] calibrator scan"
+    yield "bl auto"
+    # select inner 90% of the channels
+    yield "fq *;ch 0.1*last:0.9*last"
+    yield "new all f bl t"
+    yield "avt none;avc vector"
+    yield "pt anptime"
+    yield "y local"
+    # select the scan
+    yield "scan start-20m to end+100m where {0}".format( scansel.format(settings.calsrc) )
+    yield "time"
+    yield "sort bl" 
+    #yield "save {0}-ampphase.ps/cps".format( settings.myBasename )
+    yield "refile {0}-ampphase.ps/cps".format( settings.myBasename )
+    yield "pl" 
+    print "done auto plots on calibrator scan"
+
+def mk_weight_plot(settings):
+    # the weight plot is only auto baselines, max four subbands x 2 pols
+    # for the whole time range of the experiment
+    # no need to set the channel selection, it is ignored
+    print "generating weight plot"
+    yield "ms {0}".format( settings.measurementset )
+    yield "bl auto; fq 0:3/p;"
+    yield "src none"
+    yield "time none"
+    yield "pt wt"
+    yield "new all f bl t"
+    yield "y local"
+    yield "sort bl"
+    #yield "save {0}-weight.ps/cps".format( settings.myBasename )
+    yield "refile {0}-weight.ps/cps".format( settings.myBasename )
+    yield "pl"
+    print "done weight plot"
+
+
+#####################################################################
+##
+##                     And finally run them
+##
+#####################################################################
+s = Settings(args[0], args[1], args[2])
+
+todo = [open_ms(s)]
+
+# Per selected scan we plot the auto and cross spectra
+# and for the amp/phase vs. time we either use the user
+# selected scan or the first/last calibrator scan
+scans       = []
+anptimescan = None
+
+if ScanNo:
+    anptimescan = "scan_number={0}".format(ScanNo)
+    scans = [anptimescan]
+else:
+    anptimescan = "field ~ /{0}/i"
+    scans = [ "field ~ /{0}/i order by start asc limit 1",
+              "field ~ /{0}/i order by end desc limit 1" ]
+for (i, cond) in enumerate(scans):
+    todo.append( mk_anp_chan_cross_plot(s, cond, i) )
+    todo.append( mk_anp_chan_auto_plot(s, cond, i) )
+
+# And the anp versus time
+todo.append( mk_anp_time_auto_plot(s, anptimescan) )
+
+if not NoWgt:
+    todo.append( mk_weight_plot(s) )
+
+try:
+    jplotter.run_plotter(command.scripted(*todo), debug=('-d' in opts))
+except:
+    pass
+finally:
+    s.cleanup()
