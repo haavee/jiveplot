@@ -1,5 +1,5 @@
 # the possible plottypes are defined here,
-import enumerations, jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types, functional
+import enumerations, jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types, functional, functools
 from label_v6   import label
 
 AX       = jenums.Axes
@@ -252,7 +252,678 @@ class plt_dataset(object):
         return None if not xi else minidataset(xu, yu, xf, yf, (min(xi), max(xa)), (min(yi), max(ya)))
 
 
-Drawers = enumerations.Enum("Lines", "Points", "Both")
+# After https://stackoverflow.com/questions/11731136/python-class-method-decorator-with-self-arguments
+def check_attribute(attribute):
+    def _check_attribute(f, *brgs, **kwbrgs):
+        @functools.wraps(f)
+        def wrapper(self, *args, **kwargs):
+            if getattr(self, attribute) is None:
+                raise RuntimeError,"Called method {0} requires {1} to be not None".format(f.__name__, attribute)
+            return f(self, *args, **kwargs)
+        return wrapper
+    return _check_attribute
+
+def verify_argument(verifier):
+    def _verify_argument(f, *brgs, **kwbrgs):
+        @functools.wraps(f)
+        def wrapper(self, *args, **kwargs):
+            if not verifier(*args, **kwargs):
+                raise RuntimeError,"Called method {0} fails to verify called with {1} {2}".format(f.__name__, args, kwargs)
+            return f(self, *args, **kwargs)
+        return wrapper
+    return _verify_argument
+
+# A viewport describes an area on the draw surface with xLeft, xRight, yBottom,
+# yTop coordinates in Normalized Device Coordinates
+
+# If the viewport is a subplot /then/ it can be drawn on a device, decorated
+# with axes, tick marks and labels The subplot state is managed from the parent
+# page; if a viewport is requested from a page, the page knows wether the
+# viewport is special one (leftmost, rightmost, bottom row) and sets the
+# properties accordingly. This allows the viewport to correctly draw x,y axis
+# values and labels, if set.
+
+# The parent page does the layouting, taking care of reserving space for the
+# values, labels and computing the offsets at which these should happen
+
+# The viewport infers labels and scaling properties directly from the plotter
+# object (through its parent page) whose data it is meant to display
+
+class Viewport(object):
+
+    # x=column, y=row, parent = parent _Page_
+    def __init__(self, x, y, parent, subplot=None):
+        self.viewport_= [0.0]*4  # xLeft xRight yBottom yTop
+        self.window   = None
+        self.x        = x
+        self.y        = y
+        self.page     = parent
+        self.xDisp    = 0 # "DISP" parameter to PGMTXT for x-label
+        self.yDisp    = 0 #  id. for y-label
+        self.lastRow  = False
+        self.lastCol  = False
+        self.subPlot  = subplot
+
+    @staticmethod
+    def _is_ok(x):
+        return 0<=x<=1
+    @staticmethod
+    def _is_not_ok(x):
+        return x<0 or x>1
+
+    def get_viewport(self):
+        return self.viewport_
+    def set_viewport(self, vp):
+        if len(vp)!=4:
+            raise RuntimeError("Viewport must be length 4")
+        if filter(Viewport._is_not_ok, vp):
+            raise RuntimeError("Attempt to set invalid viewport {0}".format(vp))
+        self.viewport_ = vp
+    viewport = property(get_viewport, set_viewport)
+
+    # transform array-of-length-4 into four named properties
+    def get0(self):
+        return self.viewport_[0]
+    def set0(self, v):
+        self[0] = v
+    def get1(self):
+        return self.viewport_[1]
+    def set1(self, v):
+        self[1] = v
+    def get2(self):
+        return self.viewport_[2]
+    def set2(self, v):
+        self[2] = v
+    def get3(self):
+        return self.viewport_[3]
+    def set3(self, v):
+        self[3] = v
+
+    xLeft   = property(get0, set0)
+    xRight  = property(get1, set1)
+    yBottom = property(get2, set2)
+    yTop    = property(get3, set3)
+
+    # also allow [0..3] based indexing
+    def __getitem__(self, n):
+        return self.viewport_[n]
+    def __setitem__(self, n, v):
+        if Viewport._is_not_ok(v):
+            raise RuntimeError("Attempt to set invalid viewport[{0}] = {1} on ".format(n, v)+repr(self))
+        self.viewport_[n] = v
+        return self
+
+    # return x/y size in NDC
+    @property
+    @check_attribute('subPlot')
+    def dx(self):
+        return self.xRight - self.xLeft
+    @property
+    @check_attribute('subPlot')
+    def dy(self):
+        return self.yTop - self.yBottom
+
+    # return x/y-sizes in world coordinates
+    @property
+    @check_attribute('window')
+    def dx_world(self):
+        return self.window[1] - self.window[0]
+
+    @property
+    @check_attribute('window')
+    def dy_world(self):
+        return self.window[3] - self.window[2]
+
+
+    # extract a new viewport which is an indexed subsection of the parent viewport
+    def subplot(self, idx):
+        # get a new viewport as height fraction of this one
+        yHeights = self.page.plotter.yHeights
+        bot   = sum(yHeights[0:idx])
+        top   = bot + yHeights[idx]
+        dvpY  = self.yTop - self.yBottom
+
+        # construct with valid subplot and transfer logic values
+        rv          = Viewport(self.x, self.y, self.page, subplot=idx)
+        rv.xDisp    = self.xDisp
+        rv.yDisp    = self.yDisp
+        rv.lastRow  = self.lastRow
+        rv.lastCol  = self.lastCol
+        rv.viewport = [self.xLeft, self.xRight, self.yBottom + bot*dvpY, self.yBottom+top*dvpY]
+        return rv
+
+    @check_attribute('subPlot')
+    def doXLabel(self):
+        return self.page.plotter.xLabel and self.lastRow and self.subPlot==0
+    @check_attribute('subPlot')
+    def doYLabel(self):
+        return self.page.plotter.yLabel[self.subPlot] and self.x == 0
+    @check_attribute('subPlot')
+    def doXTicks(self):
+        return self.subPlot==0 and (self.lastRow or self.page.plotter.xScale == Scaling.auto_local)
+    @check_attribute('subPlot')
+    def doYTicks(self):
+        return self.x == 0 or self.lastCol or self.page.plotter.yScale[self.subPlot] == Scaling.auto_local
+
+    # Do our thang on the device!
+    @check_attribute('subPlot')
+    def svp(self, device):
+        device.pgsvp( *self.viewport_ )
+
+    @check_attribute('subPlot')
+    def drawLabels(self, device):
+        with pgenv(device):
+            # all text drawn in black with page's label character size
+            device.pgsci( 1 )
+            device.pgsch( self.page.labelCharSz )
+            if self.doXLabel():
+                device.pgmtxt('B', self.xDisp, 0.9, 1.0, self.page.plotter.xLabel)
+            if self.doYLabel():
+                device.pgmtxt('L', self.yDisp, 0.9, 1.0, self.page.plotter.yLabel[self.subPlot])
+
+    # sets window and draws boxes &cet
+    @check_attribute('subPlot')
+    def drawBox(self, device, xmi, xma, ymi, yma):
+        if self.window is not None:
+            raise RuntimeError,"Can only set window once on viewport ({0.x}, {0.y}, subPlot={0.subPlot})".format(self)
+        self.window = [xmi, xma, ymi, yma]
+        with pgenv(device):
+            # step one: set the window in world coordinates
+            device.pgswin( *self.window )
+            # Need to draw the box always, wih thin line
+            device.pgsci( 1 )
+            device.pgslw( 1 )
+            device.pgsch( self.page.tickCharSz )
+
+            # Form the XOPT/YOPT strings for PGPLOT's PG(T)BOX function
+            xboxstr  = yboxstr = "ABCTS"
+            yboxstr += "V"
+
+            if self.page.plotter.xAxis == jenums.Axes.TIME:
+                xboxstr += "ZHO"
+
+            # do we need to draw the x-axis ticks?
+            if self.doXTicks():
+                xboxstr += "N"
+            # y-axis values for the outermost column get drawn on the right-hand side
+            if self.doYTicks():
+                yboxstr += ("M" if self.lastCol else "N")
+            # y values forced to decimal
+            yboxstr += "1"
+
+            #device.pgsch( 0.6 )
+            device.pgtbox( xboxstr, 0.0, 0, yboxstr, 0.0, 0 )
+
+
+    # sets viewport, window, draws boxes and labels
+    @check_attribute('subPlot')
+    def setLabelledBox(self, device, xmi, xma, ymi, yma):
+        self.svp(device)
+        self.drawBox(device, xmi, xma, ymi, yma)
+        self.drawLabels(device)
+
+    # Help in choosing which x limit to use; data sets these days have
+    # flagged+unflagged data and we need to select based on which of these are
+    # actually available what the lowest time is.
+    # Key into the choice table is:
+    #    ( <bool A>, <bool B> )
+    # where:
+    #      <bool A> = '.xval   is not None'  ("data set has unflagged data points")
+    #      <bool B> = '.xval_f is not None'  ("data set has flagged   data points")
+    choicetab  = {
+            # we don't have to cover (True, True) because
+            # that would mean that both .xval and .xval_f are None
+            # and that case is filtered out; datasets with no data at all
+            # are not sent to the drawing function ...
+            (False, False): lambda x, xf: min(min(x), min(xf)),
+            (True , False): lambda x, xf: min(xf),
+            (False, True ): lambda x, xf: min(x)
+            }
+
+    # analyze dataset labels for unique source names
+    # and display the first occurrence of each, cycling
+    # in three heights. Use world coordinates for this
+    @check_attribute('subPlot')
+    def printSrcNameByTime(self, device, datasets, xform_x=lambda x: x):
+        # do each source only once
+        seensrces        = set()
+        # must be done in world coordinates
+        y_offset, y_step = (0.45 * self.dy_world, 0.1*self.dy_world)
+        with pgenv(device):
+            # in black w/ small characters
+            device.pgsci( 1 )
+            device.pgsch( 0.4 )
+            for (dskey,dsdata) in datasets:
+                # If no 'SRC' in data set identifier or already seen: do nothing
+                if dskey.SRC is None or dskey.SRC in seensrces:
+                    continue
+                # SRC available, not seen yet, find 'earliest time'
+                x0   = Viewport.choicetab[(dsdata.xval is None, dsdata.xval_f is None)](dsdata.xval, dsdata.xval_f)
+                # stagger them in groups of 3, covers 3 source phase ref
+                device.pgptxt( xform_x(x0), y_offset + y_step * (len(seensrces)%3), 0.0, 0.0, dskey.SRC )
+                seensrces.add( dskey.SRC )
+
+    @check_attribute('subPlot')
+    def drawMainLabel(self, device, mainlabel):
+        with pgenv(device):
+            device.pgsci( 1 )
+            device.pgsch( 0.8 )
+            device.pgmtxt( 'T', -1.0, 0.5, 0.5, mainlabel)
+
+    #  Get a nice string representation of this objects's stat
+    _fmt = ("Viewport(x={0.x:d},y={0.y:d} [x:{0.xLeft:.3f}-{0.xRight:.3f} y:{0.yBottom:.3f}-{0.yTop:.3f}] xDisp={0.xDisp:.3f} yDisp={0.yDisp:.3f} "+
+            "lastRow/Col={0.lastRow}/{0.lastCol} subPlot={0.subPlot}) id={1}").format
+    def __repr__(self):
+        return Viewport._fmt(self, id(self))
+
+
+
+
+########################################################################################
+#
+#  An object describing a page layout for a particular plotter and array of plots
+#  to be displayed.
+#
+#  From the parent plotter properties the layout is copied and potentially
+#  altered, based on the amount of plots that are to be generated. From the
+#  labels and scaling options the Page class can compute the size of the plots
+#  and decide how the viewports (where the actual data will be plotted)'s axes
+#  are to be created (if x/y tick values must be drawn, if x/y labels must be
+#  drawn).
+#
+#  From the parent plotter's properties it can also infer wether the metadata
+#  (header, legend) must be drawn or wether that space needs to be allocated to
+#  the plot area.
+#
+########################################################################################
+
+
+class Page(object):
+    charSize   = 1.0/40    # PGPLOT nominal char size in NDC [1/40th of y-height if charsize set to 1.0]
+    tickString = "1.00e^8" # nominal-ish format for how tick values are displayed (it's the string length that counts)
+
+
+    # come up with a good layout
+    #
+    #   onePage:
+    #       is AllInOne => for animation, change layout to hold nplot
+    #       is None     => unnavigable device so we may have to produce > 1 pages
+    #       *           => navigable device (window) so draw one page
+    #                      if nlot < layout, change layout to hold all
+    def __init__(self, plotter, device, onePage, plotar, **kwargs):
+        nplot        = len(plotar)
+        # start by setting page boundaries
+        self.header  = 0.14 if plotter.showHeader else 0.01
+        self.footer  = 0.04 if plotter.showLegend else 0.00
+        self.xl_     = 0.01
+        self.xr_     = 0.98
+        self.yb_     = self.footer 
+        self.yt_     = 1.0 - self.header
+        self.plotter = plotter
+        # the left hand side and bottom of the plot area 
+        # may be offset (to make room for x/y axis labels
+        self.leftShift_   = 0
+        self.rightShift_  = 0
+        self.bottomShift_ = 0
+        # and the given layout
+        self.layout = copy.deepcopy(plotter.layout())
+        # depending on how to re-arrange the amount of plots come up with a new layout
+        if onePage is AllInOne:
+            # we must grow the layout such that everything fits on one page
+            self._growlayout(nplot, **kwargs)
+        else:
+            nplot = min(nplot, self.layout.nplots()) if onePage else nplot
+            # shrinkage is allowed if number of plots < layout 
+            # AND (either nx,ny==1 OR spillage > 25%)
+            # otherwise we leave the layout well alone I guess
+            if nplot<self.layout.nplots() and (self.layout.nx==1 or self.layout.ny==1 or (float(nplot)/self.layout.nplots())<=0.75):
+                self._shrinkLayout(nplot, **kwargs)
+            else:
+                self._updateLayout(nplot, **kwargs)
+        # Now we can seed dx,dy for the plot panels
+        # and ddx, ddy for room for the tick values, if necessary
+        self.dx, self.dy   = (0, 0)
+        self.ddx, self.ddy = (0, 0)
+        self._updateDxy()
+
+        # page has tickCharSz and labelCharSz (in normalized character heights)
+        # as well as the 'offset outside viewport in character heights' in case a label needs to be drawn
+        # if we need to do x/y labels we just shift the xleft and ybottom accordingly
+        # zip the panel heights with their labels and filter those who are not empty
+        # set the property on the page in units of the normal character height
+        self.labelCharSz = [h/n for (h,n) in zip(map(lambda fraction: self.dy * fraction, self.plotter.yHeights), map(len,self.plotter.yLabel))+[(self.dx, len(self.plotter.xLabel))] if n>0]
+        self.labelCharSz = min(0.8*Page.charSize, 0 if not self.labelCharSz else min(self.labelCharSz)) / Page.charSize
+
+        # already compute the tickCharSz with the same current settings for consistency
+        self.tickCharSz = map(lambda fraction: (self.dy * fraction)/len(Page.tickString), self.plotter.yHeights) + [ self.dx/len(Page.tickString) ]
+        self.tickCharSz = min(0.6*Page.charSize, min(self.tickCharSz)) / Page.charSize
+
+        # the important values to keep are: tickwitdh (measured string length) and label x/y height and tick char height
+        with pgenv(device):
+            device.pgsch( self.labelCharSz )
+            (self.lXCH, self.lYCH) = device.pgqcs( 0 )
+            device.pgsch( self.tickCharSz )
+            (self.tXCH, self.tYCH) = device.pgqcs( 0 )
+            (self.tickWidth, _   ) = map(lambda l: 1.2*l, device.pglen(Page.tickString, 0))
+            self.tickHeight        = 2 * self.tYCH
+
+        if self.labelCharSz>0:
+            # if we need to do x labels, shift bottom of page up by ~2 chY units
+            # (xlabels are drawn with horizontal baseline)
+            if self.plotter.xLabel:
+                self.bottomShift = self.bottomShift + 1.5*self.lYCH
+            # if there is/are y labels, shift the left side of the page to the right
+            # make room for one and a bit label character-heights-with-vertical-baseline
+            if any(self.plotter.yLabel):
+                self.rightShift = self.rightShift + 1.5*self.lXCH
+
+        # Depending on x/y scaling we have to make room for x/y axis tick values on left row/bottom row
+        # or on all plots
+        if self.plotter.xScale == Scaling.auto_local:
+            # local x-axis scaling: bottom of each plot must be raised
+            self.ddy = self.tickHeight
+        else:
+            # common x-axis so we can just raise the bottom to make room
+            self.bottomShift = self.bottomShift + self.tickHeight
+
+        # repeat for y-axis
+        # tick values are drawn with horizontal baseline
+        if Scaling.auto_local in self.plotter.yScale:
+            # each plot will have own y axis so shift viewport to the right
+            self.ddx = self.tickWidth
+        else:
+            # common/global y-axis, just shift the left hand side of the page's view area
+            self.rightShift = self.rightShift + self.tickWidth
+            # also make a /little/ more room on the right hand side by shifting
+            # the left side back in case we have > 1 columns of plots because
+            # the right-most plots will get their global y-axis tick values
+            # displayed on the right. (When doing local y-axis scale, all plots
+            # get their y-axis values on the left hand side)
+            if self.layout.nx > 1:
+                self.leftShift  = self.leftShift  + 0.5*self.tickWidth
+
+        # From the parent plotter + plot array we can form the page header, but only if needed
+        self.pageLabel = None if not self.plotter.showHeader else self.plotter.mk_pagelabel( plotar )
+
+    def _updateDxy(self):
+        self.dx = (self.xr_ - self.xl_ - self.rightShift_ - self.leftShift_)/self.layout.nx
+        self.dy = (self.yt_ - self.yb_ - self.bottomShift_)/self.layout.ny
+
+    @verify_argument(lambda *args, **kwargs: args[0]>=0 and args[0]<=1)
+    def _setLeftShift(self, ls):
+        self.leftShift_ = ls
+        self._updateDxy()
+    def _getLeftShift(self):
+        return self.leftShift_
+    @verify_argument(lambda *args, **kwargs: args[0]>=0 and args[0]<=1)
+    def _setRightShift(self, rs):
+        self.rightShift_ = rs
+        self._updateDxy()
+    def _getRightShift(self):
+        return self.rightShift_
+    @verify_argument(lambda *args, **kwargs: args[0]>=0 and args[0]<=1)
+    def _setBottomShift(self, bs):
+        self.bottomShift_ = bs
+        self._updateDxy()
+    def _getBottomShift(self):
+        return self.bottomShift_
+    leftShift   = property(_getLeftShift,   _setLeftShift)
+    rightShift  = property(_getRightShift,  _setRightShift)
+    bottomShift = property(_getBottomShift, _setBottomShift)
+
+    # whenever xl, xr, yt, yb is updated, recompute dx, dy
+    @verify_argument(lambda *args, **kwargs: args[0]>=0 and args[0]<=1)
+    def _setxl(self, xl):
+        self.xl_ = xl
+        self._updateDxy()
+    @verify_argument(lambda *args, **kwargs: args[0]>=0 and args[0]<=1)
+    def _setxr(self, xr):
+        self.xr_ = xr
+        self._updateDxy()
+    @verify_argument(lambda *args, **kwargs: args[0]>=0 and args[0]<=1)
+    def _setyb(self, yb):
+        self.yb_ = yb
+        self._updateDxy()
+    @verify_argument(lambda *args, **kwargs: args[0]>=0 and args[0]<=1)
+    def _setyt(self, yt):
+        self.yt_ = yt
+        self._updateDxy()
+    def _getxl(self):
+        return self.xl_
+    def _getxr(self):
+        return self.xr_
+    def _getyb(self):
+        return self.yb_
+    def _getyt(self):
+        return self.yt_
+
+    xl = property(_getxl, _setxl)
+    xr = property(_getxr, _setxr)
+    yb = property(_getyb, _setyb)
+    yt = property(_getyt, _setyt)
+
+    def plotIndex(self, pnum):
+        return pnum % self.layout.nplots()
+
+    def viewport(self, pnum, nplot):
+        # figure out the index of the plot on the page
+        pidx = self.plotIndex(pnum)
+        # the viewport coords
+        rv          = Viewport(pidx % self.layout.nx, pidx / self.layout.nx, self)
+        rv.lastRow  = (rv.y+1)==self.layout.ny or (nplot - pnum)<=self.layout.nx
+        rv.lastCol  = (self.layout.nx>1 and (rv.x+1)==self.layout.nx and not Scaling.auto_local in self.plotter.yScale) or (pnum == nplot)
+        xl,yt       = (self.xl + self.rightShift + rv.x*self.dx, self.yt - rv.y * self.dy)
+        # if there's multiple columns, rows, relax the fit in those directions
+        x_scale     = 0.98 if self.layout.nx > 1 else 1.0
+        y_scale     = 0.98 if self.layout.ny > 1 else 1.0
+        #              left           right               bottom                       top
+        #              0              1                   2                            3
+        rv.viewport = [xl + self.ddx, xl+x_scale*self.dx, yt-y_scale*self.dy+self.ddy, yt]
+        # we now have the basic viewport for the current plot
+
+        # set label offsts in units of the label character height
+        rv.xDisp   = 2
+        rv.yDisp   = (1.5*self.tickWidth  / self.lYCH)  if self.lYCH else 0
+        return rv
+
+    # if amount of plots to draw << current layout, then we automatically
+    # rescale to a layout which maximizes to the actual amount of plots.
+    # that is: if rescaling is allowed at all
+    def _updateLayout(self, nplots, expandx=None, expandy=None, **kwargs):
+        if self.layout.nplots()<nplots or not (expandx or expandy):
+            return
+        # start with an approximation
+        if expandx and expandy:
+            sqrtN          = math.sqrt(nplots)
+            self.layout.nx = int(math.floor(sqrtN))
+            self.layout.ny = int(math.ceil(sqrtN))
+        elif expandx:
+            self.layout.nx = int(math.ceil(float(nplots)/self.layout.ny))
+        else:
+            self.layout.ny = int(math.ceil(float(nplots)/self.layout.nx))
+        # expand in allowed dimensions until fit
+        self._growLayout(nplots, expandx=expandx, expandy=expandy)
+
+
+    def _growLayout(self, nplots, expandx=None, expandy=None, **kwargs):
+
+        if nplots>self.layout.nplots() and not (expandx or expandy):
+            raise RuntimeError, "Request to grow layout from {0} to {1} plots but not allowed to expand!".format(self.layout.nplots(), nplots)
+        # make sure the new layout is such that all plots will be on one page
+        while self.layout.nplots()<nplots:
+            if expandx and expandy:
+                if self.layout.nx<self.layout.ny:
+                    self.layout.nx = self.layout.nx + 1
+                else:
+                    self.layout.ny = self.layout.ny + 1
+            elif expandx:
+                self.layout.nx = self.layout.nx + 1
+            else:
+                self.layout.ny = self.layout.ny + 1
+
+
+    def _shrinkLayout(self, nplots, expandx=None, expandy=None, **kwargs):
+        # if people say expandy = True that means they value the y direction
+        # so for shrinking we're going to reverse that
+        expandx = not expandx
+        expandy = not expandy
+        lo      = self.layout
+
+        while True:
+            # we want to minimize spillage
+            # if < 0 we must grow again
+            spill         = lo.nplots() - nplots
+            # no spillage means we're /definitely/ done!
+            if spill==0:
+                break
+            (comp, delta) = (operator.gt, +1) if spill < 0 else (operator.lt, -1)
+
+            # if neither nor both directions are allowed to expand ...
+            # note: there is no 'xor' for 'objects' in Python only bitwise xor ...
+            if (expandx and expandy) or (not expandx and not expandy):
+                if lo.nx>1 and lo.ny>1:
+                    # if both > 1 prefer a balanced shrinkage
+                    if comp(lo.ny,lo.nx):
+                        lo.nx += delta
+                    else:
+                        lo.ny += delta
+                elif comp(1, lo.nx):
+                    lo.nx += delta
+                elif comp(1, lo.ny):
+                    lo.ny += delta
+                else:
+                    raise RuntimeError,"Failed to shrink (expandx and expandy and neither nx,ny>1)"
+            elif expandx:
+                # prefer lowering x, until we can't anymore
+                if comp(1, lo.nx):
+                    lo.nx += delta
+                else:
+                    lo.ny += delta
+            else:
+                # prefer lowering y, until we can't anymore
+                if comp(1, lo.ny):
+                    lo.ny += delta
+                else:
+                    lo.nx += delta
+            # check new spillage?
+            nspill = lo.nplots() - nplots
+            if nspill < spill:
+                # less spillage is gooder
+                continue
+            # we may only terminate if spill >= 0
+            if spill>=0:
+                break
+
+
+    def show(self, device):
+        with pgenv(device):
+            device.pgslw( 2 )
+            device.pgsls( 1 )
+            device.pgsvp( 0, 1, 0, 1)
+            device.pgsci( 2 )
+            device.pgbox( "BC", 0, 0, "BC", 0, 0)
+            device.pgsvp( self.xl_, self.xr_, self.yb_, self.yt_ )
+            device.pgsci( 1 )
+            device.pgbox( "BC", 0, 0, "BC", 0, 0)
+
+    def printlegend(self, device):
+        # if the color code dict is empty, there isn't much we can do now, is there?
+        # note: we filter out the ones that do not have a label:
+        # sometimes, when only one data set is plotted in a plot,
+        # there are no labels left [either they're in the global, shared
+        # label section or they're in the per-plot label but none reside
+        # in the per-dataset section]. So there's no need to draw the legend
+        # because there isn't any
+        coldict = dict(filter(functional.compose(operator.truth, operator.itemgetter(0)), self.plotter.coldict().iteritems()))
+        if not coldict or not self.plotter.showLegend:
+            return
+
+        with pgenv(device):
+            device.pgsvp( self.xl_, self.xr_, 0, self.yb_ )
+            device.pgswin( 0, 1, 0, 1 )
+            device.pgsch(0.4)
+            device.pgslw( 4 )
+            # Find the longest description and divide the space we have into an equal
+            # number of positions. So we need the size of the longest key in device units
+            (xsz, ysz)                 = device.pglen(max(coldict.keys(), key=len), 0)
+            # the values below look like NDC but they are world coordinates for PGPTXT.
+            # However, we'll map the footer area to world (0,1,0,1) so it's "NDC" inside the footer ;-)
+            (xsep, xoff, xline, xskip) = (0.01, 0.01, 0.03, 0.005)
+            (txt_off,)                 = (0.10,) # drop text baseline by this factor to align nicely with the line
+            nxleg                      = max(1, int(math.floor((1.0 - 2*xoff) / (xsz+xline+xskip+xsep))))
+            # for drawing a horizontal line we need 2 x-coords and only 1 y-coord
+            xpos                       = [0.0] * 2
+            ypos                       = 0.0
+            nyleg                      = int(math.ceil(float(len(coldict))/nxleg))
+            dy                         = 1.0/(nyleg+1)
+            for (idx, cmap) in enumerate(coldict.iteritems()):
+                (label, col) = cmap
+                (ipos, jpos) = (idx % nxleg, idx / nxleg)
+
+                xpos[0] = xoff + (xsz+xline+xskip+xsep) * ipos
+                xpos[1] = xpos[0] + xline
+                xcapt   = xpos[1] + xskip
+
+                ypos  = 1.0 - (jpos + 1)*dy
+                ycapt = ypos - txt_off*dy
+
+                device.pgsci( col )
+                device.pgline( numpy.asarray(xpos), numpy.asarray([ypos, ypos]) )
+                device.pgsci( 1 )
+                device.pgptxt( xcapt, ycapt, 0.0, 0.0, label )
+
+    def printPageLabel(self, device, curPlot, nPlot):
+        if self.pageLabel is None:
+            return
+        # Puts a label on the page, assuming a fixed record structure.
+        # take the data from the parent plotter
+
+        # compute the skip between lines - we should use the max of
+        # left/right labels to make them line up properly
+        nline    = max(len(self.pageLabel.left), len(self.pageLabel.right))
+        # set current pageno based on settings
+        self.pageLabel.right[2] = "page: {0}/{1}".format( int(math.ceil(float(curPlot)/self.layout.nplots())) + 1,
+                                                          int(math.ceil(float(nPlot)/self.layout.nplots())) )
+
+        with pgenv(device):
+            # set the viewport to the header area and map to world coordinates 0,1 0,1
+            device.pgsvp( self.xl, self.xr, self.yt, 1 )
+            device.pgswin( 0, 1, 0, 1 )
+
+            device.pgsch( 0.8 )
+
+            # compute y position of succesive lines
+            ypos      = map(lambda lineno: 1.0 - (lineno+1.5)/(nline+1), xrange(nline))
+
+            # plot the left lines
+            for (txt, pos) in zip(self.pageLabel.left, ypos):
+                device.pgptxt(0, pos, 0.0, 0.0, txt)
+            # id. for the right ones
+            for (txt, pos) in zip(self.pageLabel.right, ypos):
+                device.pgptxt(1, pos, 0.0, 1.0, txt)
+
+            # What's left is the center label, we print it LARGER than normal
+            device.pgsch( 1.6 );
+            device.pgptxt(0.5, 0.75, 0.0, 0.5, self.pageLabel.center);
+
+    def nextPage(self, device, curPlot, nPlot):
+        with pgenv(device):
+           device.pgpage()
+           device.pgsvp( 0.0, 1.0, 0.0, 1.0 )
+           device.pgswin( 0.0, 1.0, 0.0, 1.0 )
+           device.pgsci( 1 )
+        self.printlegend(device)
+        self.printPageLabel(device, curPlot, nPlot)
+
+
+    _fmt = ("Page({0.layout.nx}x{0.layout.ny} [x={0.xl:.3f}-{0.xr:.3f} y={0.yb:.3f}-{0.yt:.3f}] dx/y={0.dx:.3f} {0.dy:.3f} ddx/y={0.ddx:.3f} {0.ddy:.3f} " +
+           "lbl={0.labelCharSz:.3f} tick={0.tickCharSz:.3f} rs={0.rightShift_:.3f} bs={0.bottomShift_:.3f}").format
+    def __repr__(self):
+        return Page._fmt(self)
+
+
+Drawers  = enumerations.Enum("Lines", "Points", "Both")
+AllInOne = type("AllInOne", (), {})()
 
 
 ##########################################################
@@ -262,25 +933,34 @@ Drawers = enumerations.Enum("Lines", "Points", "Both")
 ##########################################################
 noFilter = lambda x: True
 # The label regex's match groups:
-#                       1                  vnon-capturing 3 
+#                                          non-capturing 3 
+#                                          |
+#                       1                  v
 rxLabel  = re.compile(r'([^ \t\v]+)\s*:\s*((?<![\\])[\'"])((?:.(?!(?<![\\])\2))*.?)\2')
 # Standard x/y[n] axis description
 #                        1   2
 rxXYAxis = re.compile(r'^(x|y([0-9]*))$').match
-#
+
+
 class Plotter(object):
     #drawfuncs = { Drawers.Points: lambda dev, x, y, tp: dev.pgpt(x, y, tp),
     #              Drawers.Lines:  lambda dev, x, y, tp: dev.pgline(x, y) }
 
     def __init__(self, desc, xaxis, yaxis, lo, xscaling=None, yscaling=None, yheights=None, drawer=None, **kwargs):
+        # determine the number of subplots from the yaxis parameter we limit
+        # ourselves to accepting list(...) or anything else (if we would e.g.
+        # test wether 'yaxis' was a sequence than a yaxis of "hello" would
+        # result in five subplots: ['h', 'e', 'l', 'l', 'o'])
+        if not isinstance(yaxis, list):
+            yaxis = [yaxis]
         self.xAxis               = CP(xaxis)
         self.yAxis               = CP(yaxis)
-        self.yHeights            = CP(yheights)
+        self.yHeights            = [0.97]*len(self.yAxis) if yheights is None else CP(yheights)
         self.Description         = CP(desc)
         self.defaultLayout       = CP(lo)
         self.defaultDrawer       = CP(Drawers.Points) if drawer is None else CP(drawer)
-        self.defaultxScaling     = CP(xscaling) if xscaling else CP(Scaling.auto_global)
-        self.defaultyScaling     = CP(yscaling) if yscaling else [Scaling.auto_global] * len(self.yAxis)
+        self.defaultxScaling     = CP(xscaling) if xscaling is not None else CP(Scaling.auto_global)
+        self.defaultyScaling     = CP(yscaling) if yscaling is not None else [Scaling.auto_global] * len(self.yAxis)
         self.defaultsortOrder    = lambda x: hash(x)
         self.defaultsortOrderStr = "(none)"
         self.defaultMarker       = [None] * len(self.yAxis)
@@ -291,6 +971,8 @@ class Plotter(object):
         self.defaultFilterS      = ["(none)"] * len(self.yAxis)
         self.defaultxLabel       = ""
         self.defaultyLabel       = [""] * len(self.yAxis)
+        self.defaultShowHeader   = True
+        self.defaultShowLegend   = True
 
         # dict mapping a specific drawer to a method call on self
         self.drawfuncs = { Drawers.Points: lambda dev, x, y, tp: self.drawPoints(dev, x, y, tp),
@@ -343,6 +1025,8 @@ class Plotter(object):
         self.setDrawer(*str(self.defaultDrawer).split())
         self.xLabel       = CP(self.defaultxLabel)
         self.yLabel       = CP(self.defaultyLabel)
+        self.showHeader   = CP(self.defaultShowHeader)
+        self.showLegend   = CP(self.defaultShowLegend)
 
     # self.drawers    = [ [drawers-for-yaxis0], [drawers-for-yaxis1], ... ]
     # self.drawMethod = "yaxis0:method yaxis1:method ...."
@@ -610,7 +1294,19 @@ class Plotter(object):
                 rv.append( ("y{0}".format(n), tp, self.yLabel[n]) )
         return rv
 
-AllInOne = type("AllInOne", (), {})()
+    # prepare the full page layout based on:
+    #    - current layout
+    #    - all plots on one page?
+    #    - number of plots?
+    #    - x/y tick values drawn?
+    #    - x/y labels need to be drawn?
+    # return:
+    #   Page(...)
+    def pagestyle(self, device, onePage, nplots, **kwargs):
+        # Start with a basic page
+        return Page(self, device, onePage, nplots, **kwargs)
+
+
 
 ##########################################################
 ####
@@ -628,35 +1324,19 @@ class Quant2TimePlotter(Plotter):
 
         # Check for sensibility in caller.
         if first>=len(plotar):
-            if len(plotar):
-                raise RuntimeError, "first plot ({0}) > #-of-plots ({1})".format(first, len(plotar))
-            else:
-                raise RuntimeError, "No plots to plot"
+            raise RuntimeError ("first plot ({0}) > #-of-plots ({1})" if len(plotar) else "No plots to plot").format(first, len(plotar))
 
-        # make sure that the layout is such that we accomodate all plots on one page!
-        # for this style we allow the number of plots to grow in each direction
-        layout = growlayout(self.layout(), len(plotar), expandy=True) if onePage is AllInOne else self.layout()
+        page     = self.pagestyle(device, onePage, plotar, expandy=True)
 
-        # Verbatim from amptimedrawer.g cf Huib style 
-        device.pgscf( 2 )
-   
-        # get the pagestyle
-        n        = min(len(plotar), layout.nplots()) if onePage else len(plotar)
-        eachpage = pagestyle(layout, n, expandy=True)
-
-        # Now we know how many plots/page so we can compute how many plots to do
+        # Now we know how many plots/page so we can compute how many plots to actually draw in this iteration
+        n        = min(len(plotar), page.layout.nplots()) if onePage else len(plotar)
         last     = min(first + n, len(plotar))
 
         # Huib, modified to have hours of day
-        sday        = 60.0*60.0*24.0
-        xmin        = reduce(min, map(lambda x: plotar.limits[x].xlim[0], self.yAxis), 9999999999999)
-        day0hr      = math.floor(xmin/sday)*sday
-
-        pagelabel = self.mk_pagelabel(plotar)
-
-        # get x,y labels, if any
-        doxLabel  = self.haveXLabel()
-        doyLabel  = self.haveYLabel()
+        sday     = 60.0*60.0*24.0
+        xmin     = reduce(min, map(lambda x: plotar.limits[x].xlim[0], self.yAxis), float('inf'))
+        day0hr   = math.floor(xmin/sday)*sday
+        xform_x  = lambda x: x - day0hr
 
         device.pgbbuf()
         try:
@@ -666,36 +1346,18 @@ class Quant2TimePlotter(Plotter):
             # retrieve the plotlabels. We count the plots numerically but address them in the plotar
             # (which, in reality, is a Dict() ...) by their key
             for (i, plotlabel) in hvutil.enumerateslice(sorted(plotar.keys(), key=self.sortOrder), first, last):
-                #print "plot {0} '{1}' (first={2})".format(i, plotlabel.key(), first)
                 # <pnum> is the actual counter of the plots we're creating
                 #        (potentiall spans > 1 page)
-                # <pidx> is the number of the current plot on the current page
-                #        (always in the range 0:<plots_per_page - 1>)
-                pnum = (i - first)
-                pidx = pnum % eachpage.layout.nplots()
-
-                # new page?
-                if pidx==0:
-                    #print "issueing new page!"
+                pnum = i - first
+                if (pnum % page.layout.nplots()) == 0:
                     # before we go to the next page, write the legend
-                    # because the "colcode" mapping gets filled in as we go along,
-                    # waiting with printing it makes sure that it contains at least
-                    # all the colour-to-dataset mappings present on the current page
-                    # (if the next page introduces new entries they'll be added on
-                    #  *that* page)
-                    printlegend(device, self.coldict(), eachpage)
-                    issuenewpage( device )
-                    pagelabel.right[2] = pagenostring(i, len(plotar), eachpage)
-                    printlabel(device, pagelabel, eachpage.header);
+                    page.nextPage(device, i, len(plotar))
 
-                # get a reference to the plot we should be plotting now!
+                # request the plot area for this plot number
+                cvp  = page.viewport(pnum, last-first)
+
+                # get a reference to the plot we should be plotting now
                 pref  = plotar[plotlabel]
-
-                # Set up the plotcoord for this plot, including
-                # world coordinate limits
-                cvp      = plotcoord(pidx, eachpage)
-                drawxlab = lastrow(eachpage, cvp, pnum, last-first) or self.xScale == Scaling.auto_local
-                drawxtxt = doxLabel and lastrow(eachpage, cvp, pnum, last-first)
 
                 ## Loop over the subplots
                 for (subplot, ytype) in enumerate(self.yAxis):
@@ -709,85 +1371,53 @@ class Quant2TimePlotter(Plotter):
                     # get the limits of the plots in world coordinates
                     (xlims, ylims) = getXYlims(plotar, ytype, plotlabel, self.xScale, self.yScale[subplot])
 
-                    # drawing of the y-axis label depends on the current view port or
-                    # the setting of the current panel
-                    drawylab = cvp.x==0 or Scaling.auto_local in self.yScale
-                    drawytxt = self.yLabel[subplot] and cvp.x==0
-
-                    # get viewport and edit y coords if we need to draw y-axis labels
-                    vp       = getviewport(device, eachpage, cvp, drawxlab and subplot==0, drawylab, subplot, self.yHeights,
-                                           doxLabel=doxLabel, doyLabel=doyLabel)
-
-                    # Now send to the device
-                    device.pgsvp( *vp )
-                    # and set character height
-                    device.pgsch( 0.75 )
-
-                    with pgenv(device): 
-                        device.pgsch( 0.9 )
-                        device.pgsci( 1 )
-                        if (drawxtxt and subplot==0):
-                            device.pgmtxt('B', 2.2, 0.9, 1.0, self.xLabel)
-                        if drawytxt:
-                            # y character size: let's scale to viewport?
-                            txt      = self.yLabel[subplot]
-                            vp_ysize = vp[3]-vp[2]
-                            ch       = min(0.9, (vp_ysize / len(txt)) / (0.9 * (1.0/40)))
-                            device.pgsch( ch )
-                            device.pgmtxt('L', 2.2 / ch, 0.9, 1.0, txt)
+                    # get the viewport for this particular subplot
+                    vp = cvp.subplot(subplot)
 
                     # we subtract day0hr from all x-axis values so we must do that with
                     # the x-axis limits too
-                    xlims = map(lambda x: x - day0hr, xlims)
-                
-                    dy = ylims[1] - ylims[0]
+                    xlims = map(xform_x, xlims)
 
-                    device.pgswin( xlims[0], xlims[1], ylims[0], ylims[1] )
-                    setboxes(device, cvp, drawxlab and subplot==0, drawylab, self.xAxis==jenums.Axes.TIME)
+                    # tell viewport to draw a framed box - initializes the world coordinates 
+                    # and based on the current plot's x-axis type we get time or normal x-axis
+                    vp.setLabelledBox(device, xlims[0], xlims[1], ylims[0], ylims[1])
 
-                    # draw with lines
-                    device.pgsls( 1 )
-
-                    # first use: draw the data sets in the plots
-                    olw = device.pgqlw()
-                    if olw!=3:
-                        device.pgslw(8)
-                    for (lab, data) in datasets:
-                        # get the colour key for this data set
-                        device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
-                        # we know there's stuff to display so let's do that then
-                        # Any marked data points to display?
-                        (mu, mf) = (None, None)
-                        # Any unflagged data to display?
-                        if data.xval is not None:
-                            map(functional.ylppa(device, data.xval - day0hr, data.yval, -2), self.drawers[subplot])
-                            mu = self.markedPointsForYAxis(subplot, data.xval, data.yval)
-                        # Any flagged data to display?
-                        if data.xval_f is not None:
-                            map(functional.ylppa(device, data.xval_f - day0hr, data.yval_f, 5), self.drawers[subplot])
-                            mf = self.markedPointsForYAxis(subplot, data.xval_f, data.yval_f)
-                        # draw markers if necessary
-                        lw = device.pgqlw()
-                        device.pgslw(self.markerSize)
-                        if mu:
-                            device.pgpt( data.xval[mu] - day0hr, data.yval[mu], 7)
-                        if mf:
-                            device.pgpt( data.xval_f[mf] - day0hr, data.yval_f[mf], 27)
-                        device.pgslw(lw)
-                        # Any extra drawing commands?
-                        self.doExtraCallbacks(device, data, xoffset=day0hr)
-                    device.pgslw(olw)
-
+                    with pgenv(device):
+                        # draw with lines
+                        device.pgsls( 1 )
+                        for (lab, data) in datasets:
+                            # get the colour key for this data set
+                            device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
+                            # we know there's stuff to display so let's do that then
+                            # Any marked data points to display?
+                            (mu, mf) = (None, None)
+                            # Any unflagged data to display?
+                            if data.xval is not None:
+                                map(functional.ylppa(device, xform_x(data.xval), data.yval, -2), self.drawers[subplot])
+                                mu = self.markedPointsForYAxis(subplot, data.xval, data.yval)
+                            # Any flagged data to display?
+                            if data.xval_f is not None:
+                                map(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, 5), self.drawers[subplot])
+                                mf = self.markedPointsForYAxis(subplot, data.xval_f, data.yval_f)
+                            # draw markers if necessary, temporarily changing line width(markersize)
+                            lw = device.pgqlw()
+                            device.pgslw(self.markerSize)
+                            if mu:
+                                device.pgpt( xform_x(data.xval[mu]), data.yval[mu], 7)
+                            if mf:
+                                device.pgpt( xform_x(data.xval_f[mf]), data.yval_f[mf], 27)
+                            device.pgslw(lw)
+                            # Any extra drawing commands?
+                            self.doExtraCallbacks(device, data, xoffset=day0hr)
+                    # do some extra work for panel (subplot) number 0
                     if subplot==0: 
-                        # Add some more metadata, if appropriate
-                        device.pgsci( 1 )
-                        device.pgsch( 0.8 )
                         # 2nd use of the data sets: print the source names at the appropriate times
-                        printsrcname(device, pref, datasets, day0hr, ylims[0] + 0.45*dy, 0.1*dy)
-                        device.pgmtxt( 'T', -1.0, 0.5, 0.5, "{0:s}".format(label.format(plotlabel.attrs(plotar.plotlabel))) )
+                        vp.printSrcNameByTime(device, datasets, xform_x)
+                        # and draw the main plot label
+                        vp.drawMainLabel(device, "{0:s}".format(label.format(plotlabel.attrs(plotar.plotlabel))) )
 
             # last page with plots also needs a legend, doesn't it?
-            printlegend(device, self.coldict(), eachpage)
+            page.printlegend(device)
         finally:
             device.pgebuf()
 
@@ -811,137 +1441,88 @@ class GenXvsYPlotter(Plotter):
 
         # Check for sensibility in caller.
         if first>=len(plotar):
-            raise RuntimeError, "first plot ({0}) > #-of-plots ({1})".format(first, len(plotar))
+            raise RuntimeError ("first plot ({0}) > #-of-plots ({1})" if len(plotar) else "No plots to plot").format(first, len(plotar))
 
-        # make sure that the layout is such that we accomodate all plots on one page!
-        # for this style we allow the number of plots to grow in each direction
-        layout = growlayout(self.layout(), len(plotar), expandx=True, expandy=True) if onePage is AllInOne else self.layout()
+        page     = self.pagestyle(device, onePage, plotar, expandy=True)
 
-        # Verbatim from ampchandrawer.g cf Huib style 
-        device.pgscf( 2 )
-   
-        # get the pagestyle
-        n        = min(len(plotar), layout.nplots()) if onePage else len(plotar)
-        eachpage = pagestyle(layout, n, expandy=True, expandx=True)
-
-        # Now we know how many plots/page so we can compute how many plots to do
+        # Now we know how many plots/page so we can compute how many plots to actually draw in this iteration
+        n        = min(len(plotar), page.layout.nplots()) if onePage else len(plotar)
         last     = min(first + n, len(plotar))
 
-        pagelabel = self.mk_pagelabel( plotar )
+        xmin     = reduce(min, map(lambda x: plotar.limits[x].xlim[0], self.yAxis), float('inf'))
+        xform_x  = lambda x: x
 
-        # get x,y labels, if any
-        doxLabel  = self.haveXLabel()
-        doyLabel  = self.haveYLabel()
         device.pgbbuf()
-
         try:
             # reset the colour-key mapping; indicate we start a new plot
             self.colkey_reset(CKReset.newplot)
 
             # retrieve the plotlabels. We count the plots numerically but address them in the plotar
             # (which, in reality, is a Dict() ...) by their key
-            # we want the plots in baseline, subband order, if any
             for (i, plotlabel) in hvutil.enumerateslice(sorted(plotar.keys(), key=self.sortOrder), first, last):
                 # <pnum> is the actual counter of the plots we're creating
                 #        (potentiall spans > 1 page)
-                # <pidx> is the number of the current plot on the current page
-                #        (always in the range 0:<plots_per_page - 1>)
-                pnum = (i - first)
-                pidx = pnum % eachpage.layout.nplots()
-
-                # new page?
-                if pidx==0:
+                pnum = i - first
+                if (pnum % page.layout.nplots()) == 0:
                     # before we go to the next page, write the legend
-                    # because the "colcode" mapping gets filled in as we go along,
-                    # waiting with printing it makes sure that it contains at least
-                    # all the colour-to-dataset mappings present on the current page
-                    # (if the next page introduces new entries they'll be added on
-                    #  *that* page)
-                    printlegend(device, self.coldict(), eachpage)
-                    issuenewpage( device )
-                    pagelabel.right[2] = pagenostring(i, len(plotar), eachpage)
-                    printlabel(device, pagelabel, eachpage.header);
+                    page.nextPage(device, i, len(plotar))
 
-                # get a reference to the plot we should be plotting now!
-                pref = plotar[plotlabel]
+                # request the plot area for this plot number
+                cvp  = page.viewport(pnum, last-first)
 
-                # filter the data sets with type yType
+                # get a reference to the plot we should be plotting now
+                pref  = plotar[plotlabel]
+
+                # filter the data sets with current y-axis type
                 # Keep the indices because we need them twice
                 datasets = filter(lambda kv: kv[0].TYPE == self.yAxis[0] and self.filter_fun[0](kv[0]), pref.iteritems())
 
-                # Set up the plotcoord for this plot, including
-                # world coordinate limits
-                cvp      = plotcoord(pidx, eachpage)
-                drawxlab = lastrow(eachpage, cvp, pnum, last-first) or self.xScale == Scaling.auto_local
-                drawylab = cvp.x==0 or self.yScale[0] == Scaling.auto_local
-                drawxtxt = doxLabel and lastrow(eachpage, cvp, pnum, last-first)
-                drawytxt = self.yLabel[0] and cvp.x==0
-
-                # get viewport and edit y coords if we need to draw y-axis labels
-                vp       = getviewport(device, eachpage, cvp, drawxlab, drawylab, doxLabel=doxLabel, doyLabel=doyLabel)
-
-                # Now send to the device
-                device.pgsvp( *vp )
-                # and set character height
-                device.pgsch( 0.75 )
-
-                with pgenv(device): 
-                    device.pgsch( 0.9 )
-                    device.pgsci( 1 )
-                    if drawxtxt:
-                        device.pgmtxt('B', 2.2, 0.9, 1.0, self.xLabel)
-                    if drawytxt:
-                        # y character size: let's scale to viewport?
-                        txt      = self.yLabel[0]
-                        vp_ysize = vp[3]-vp[2]
-                        ch       = min(0.9, (vp_ysize / len(txt)) / (0.9 * (1.0/40)))
-                        device.pgsch( ch )
-                        device.pgmtxt('L', 2.2 / ch, 0.9, 1.0, txt)
-
-                # get limits of the plot in world coordinates
+                # the type may have been removed due to an expression/selection
+                if not datasets:
+                    continue
+                # get the limits of the plots in world coordinates
                 (xlims, ylims) = getXYlims(plotar, self.yAxis[0], plotlabel, self.xScale, self.yScale[0])
+                xlims          = map(xform_x, xlims)
 
-                device.pgswin( xlims[0], xlims[1], ylims[0], ylims[1] )
-                setboxes(device, cvp, drawxlab, drawylab, False)
+                # get the viewport for this particular subplot
+                vp = cvp.subplot(0)
 
-                device.pgsls( 1 )
-                # first use: draw the data sets in the plots
-                # remember the lowest subband if the subband number is
-                # actually in the data set labels
-                for (lab, data) in datasets:
-                    # get the colour key for this data set
-                    device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
-                    # we know there's stuff to display so let's do that then
-                    # Any marked data points to display?
-                    (mu, mf) = (None, None)
-                    # Any unflagged data to display?
-                    if data.xval is not None:
-                        # only one yAxis in this type of plot
-                        map(functional.ylppa(device, data.xval, data.yval, -2), self.drawers[0])
-                        mu = self.markedPointsForYAxis(0, data.xval, data.yval)
-                    # Any flagged data to display?
-                    if data.xval_f is not None:
-                        map(functional.ylppa(device, data.xval_f, data.yval_f, 5), self.drawers[0])
-                        mf = self.markedPointsForYAxis(0, data.xval_f, data.yval_f)
-                    # draw markers if necessary
-                    lw = device.pgqlw()
-                    device.pgslw(self.markerSize)
-                    if mu:
-                        device.pgpt( data.xval[mu], data.yval[mu], 7)
-                    if mf:
-                        device.pgpt( data.xval_f[mf], data.yval_f[mf], 27)
-                    device.pgslw(lw)
-                    self.doExtraCallbacks(device, data)
-                
-                # Add some more metadata
-                device.pgsci( 1 )
-                device.pgsch( 0.8 )
+                # tell viewport to draw a framed box - initializes the world coordinates 
+                # and based on the current plot's x-axis type we get time or normal x-axis
+                vp.setLabelledBox(device, xlims[0], xlims[1], ylims[0], ylims[1])
 
-                # first label with baseline
-                device.pgmtxt( 'T', -1.0, 0.5, 0.5, "{0:s}".format(label.format(plotlabel.attrs(plotar.plotlabel))) )
+                with pgenv(device):
+                    # draw with lines
+                    device.pgsls( 1 )
+                    for (lab, data) in datasets:
+                        # get the colour key for this data set
+                        device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
+                        # we know there's stuff to display so let's do that then
+                        # Any marked data points to display?
+                        (mu, mf) = (None, None)
+                        # Any unflagged data to display?
+                        if data.xval is not None:
+                            map(functional.ylppa(device, xform_x(data.xval), data.yval, -2), self.drawers[0])
+                            mu = self.markedPointsForYAxis(0, data.xval, data.yval)
+                        # Any flagged data to display?
+                        if data.xval_f is not None:
+                            map(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, 5), self.drawers[0])
+                            mf = self.markedPointsForYAxis(0, data.xval_f, data.yval_f)
+                        # draw markers if necessary, temporarily changing line width(markersize)
+                        lw = device.pgqlw()
+                        device.pgslw(self.markerSize)
+                        if mu:
+                            device.pgpt( xform_x(data.xval[mu]), data.yval[mu], 7)
+                        if mf:
+                            device.pgpt( xform_x(data.xval_f[mf]), data.yval_f[mf], 27)
+                        device.pgslw(lw)
+                        # Any extra drawing commands?
+                        self.doExtraCallbacks(device, data)
+                # and draw the main plot label
+                vp.drawMainLabel(device, "{0:s}".format(label.format(plotlabel.attrs(plotar.plotlabel))) )
 
             # last page with plots also needs a legend, doesn't it?
-            printlegend(device, self.coldict(), eachpage)
+            page.printlegend(device)
         finally:
             device.pgebuf()
 
@@ -963,122 +1544,60 @@ class Quant2ChanPlotter(Plotter):
 
         # Check for sensibility in caller.
         if first>=len(plotar):
-            if len(plotar):
-                raise RuntimeError, "first plot ({0}) > #-of-plots ({1})".format(first, len(plotar))
-            else:
-                raise RuntimeError, "No plots to be plotted"
+            raise RuntimeError ("first plot ({0}) > #-of-plots ({1})" if len(plotar) else "No plots to plot").format(first, len(plotar))
 
-        # make sure that the layout is such that we accomodate all plots on one page!
-        # for this style we allow the number of plots to grow in each direction
-        layout = growlayout(self.layout(), len(plotar), expandx=True, expandy=True) if onePage is AllInOne else self.layout()
+        page     = self.pagestyle(device, onePage, plotar, expandy=True)
 
-        # Verbatim from ampchandrawer.g cf Huib style 
-        device.pgscf( 2 )
-   
-        # get the pagestyle
-        n        = min(len(plotar), layout.nplots()) if onePage not in [None, AllInOne] else len(plotar)
-        eachpage = pagestyle(layout, n, expandy=True, expandx=True)
-
-        # Now we know how many plots/page so we can compute how many plots to do
+        # Now we know how many plots/page so we can compute how many plots to actually draw in this iteration
+        n        = min(len(plotar), page.layout.nplots()) if onePage else len(plotar)
         last     = min(first + n, len(plotar))
 
-        # We need to have the real frequencies
+        xmin     = reduce(min, map(lambda x: plotar.limits[x].xlim[0], self.yAxis), float('inf'))
+        identity = lambda x: x
+
+        # We may need to have the real frequencies
         try:
             mysm = ms2util.makeSpectralMap( plotar.msname )
         except RuntimeError:
             mysm = None
 
-        pagelabel = self.mk_pagelabel( plotar )
-
-        # get x,y labels, if any
-        doxLabel  = self.haveXLabel()
-        doyLabel  = self.haveYLabel()
-
         device.pgbbuf()
-
         try:
             # reset the colour-key mapping; indicate we start a new plot
             self.colkey_reset(CKReset.newplot)
 
             # retrieve the plotlabels. We count the plots numerically but address them in the plotar
             # (which, in reality, is a Dict() ...) by their key
-            # we want the plots in baseline, subband order, if any
             for (i, plotlabel) in hvutil.enumerateslice(sorted(plotar.keys(), key=self.sortOrder), first, last):
                 # <pnum> is the actual counter of the plots we're creating
                 #        (potentiall spans > 1 page)
-                # <pidx> is the number of the current plot on the current page
-                #        (always in the range 0:<plots_per_page - 1>)
-                pnum = (i - first)
-                pidx = pnum % eachpage.layout.nplots()
-
-                # new page?
-                if pidx==0:
+                pnum = i - first
+                if (pnum % page.layout.nplots()) == 0:
                     # before we go to the next page, write the legend
-                    # because the "colcode" mapping gets filled in as we go along,
-                    # waiting with printing it makes sure that it contains at least
-                    # all the colour-to-dataset mappings present on the current page
-                    # (if the next page introduces new entries they'll be added on
-                    #  *that* page)
-                    printlegend(device, self.coldict(), eachpage)
-                    issuenewpage( device )
-                    pagelabel.right[2] = pagenostring(i, len(plotar), eachpage)
-                    printlabel(device, pagelabel, eachpage.header);
+                    page.nextPage(device, i, len(plotar))
 
-                # get a reference to the plot we should be plotting now!
-                pref = plotar[plotlabel]
+                # request the plot area for this plot number
+                cvp  = page.viewport(pnum, last-first)
 
-                # Set up the plotcoord for this plot, including
-                # world coordinate limits
-                cvp      = plotcoord(pidx, eachpage)
-                drawxlab = lastrow(eachpage, cvp, pnum, last-first) or self.xScale == Scaling.auto_local
-                drawxtxt = doxLabel and lastrow(eachpage, cvp, pnum, last-first)
-
+                # get a reference to the plot we should be plotting now
+                pref      = plotar[plotlabel]
+                plotxlims = None # keep track of altered x-limits (for multisubband)
                 ## Loop over the subplots
-
-                plotxlims = None
                 for (subplot, ytype) in enumerate(self.yAxis):
                     # filter the data sets with current y-axis type
                     # Keep the indices because we need them twice
                     datasets = filter(lambda kv: kv[0].TYPE == ytype and self.filter_fun[subplot](kv[0]), pref.iteritems())
 
-                    # the specific type may have been removed?
+                    # the type may have been removed due to an expression/selection
                     if not datasets:
                         continue
-
-                    # drawing of the y-axis label depends on the current view port or
-                    # the setting of the current panel
-                    drawylab = cvp.x==0 or Scaling.auto_local in self.yScale
-                    drawytxt = self.yLabel[subplot] and cvp.x==0
-
-                    # get viewport and edit y coords if we need to draw y-axis labels
-                    vp       = getviewport(device, eachpage, cvp, drawxlab and subplot==0, drawylab, subplot, self.yHeights)
-
-                    # Now send to the device
-                    device.pgsvp( *vp )
-                    # and set character height
-                    device.pgsch( 0.75 )
-
-                    with pgenv(device): 
-                        device.pgsch( 0.9 )
-                        device.pgsci( 1 )
-                        if drawxtxt and subplot==0:
-                            device.pgmtxt('B', 2.2, 0.9, 1.0, self.xLabel)
-                        if drawytxt:
-                            # y character size: let's scale to viewport?
-                            txt      = self.yLabel[subplot]
-                            vp_ysize = vp[3]-vp[2]
-                            ch       = min(0.9, (vp_ysize / len(txt)) / (0.9 * (1.0/40)))
-                            device.pgsch( ch )
-                            device.pgmtxt('L', 2.2 / ch, 0.9, 1.0, txt)
-
-                    # get limits of the plot in world coordinates
+                    # get the limits of the plots in world coordinates
                     (xlims, ylims) = getXYlims(plotar, ytype, plotlabel, self.xScale, self.yScale[subplot])
 
                     ## we support two types of plots, actually:
                     ##   * all subbands on top of each other
                     ##   * all subbands next to each other
                     xoffset  = {}
-                    identity = lambda x: x
 
                     if self.multiSubband:
                         # make new x-axes based on the subband attribute of the label(s)
@@ -1091,246 +1610,67 @@ class Quant2ChanPlotter(Plotter):
                     else:
                         xlims = copy.deepcopy(plotxlims)
 
-                    # compute delta y for later use
-                    dy = ylims[1] - ylims[0]
+                    # get the viewport for this particular subplot
+                    vp = cvp.subplot(subplot)
 
-                    device.pgswin( xlims[0], xlims[1], ylims[0], ylims[1] )
-                    setboxes(device, cvp, drawxlab and subplot==0, drawylab, self.xAxis==jenums.Axes.TIME, subplot)
+                    # tell viewport to draw a framed box - initializes the world coordinates 
+                    # and based on the current plot's x-axis type we get time or normal x-axis
+                    vp.setLabelledBox(device, xlims[0], xlims[1], ylims[0], ylims[1])
 
-                    device.pgsls( 1 )
-                    # first use: draw the data sets in the plots
-                    # remember the lowest subband if the subband number is
-                    # actually in the data set labels
-                    for (lab, data) in datasets:
-                        # get the colour key for this data set
-                        device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
-                        # we know there's stuff to display so let's do that then
-                        # Any marked data points to display?
-                        (mu, mf) = (None, None)
-                        # may have had to transform the xvals, xu = x unflagged, xf = x flagged
-                        (xu, xf) = (None, None)
-                        # Any unflagged data to display?
-                        if data.xval is not None:
-                            xu = xoffset.get(lab.SB, identity)( data.xval )
-                            map(functional.ylppa(device, xu, data.yval, -2), self.drawers[subplot])
-                            # extract marked points based on world coordinates iso modified plot coords
-                            mu = self.markedPointsForYAxis(subplot, data.xval, data.yval)
-                        # Any flagged data to display?
-                        if data.xval_f is not None:
-                            xf = xoffset.get(lab.SB, identity)( data.xval_f )
-                            map(functional.ylppa(device, xf, data.yval_f, 5), self.drawers[subplot])
-                            # extract marked points based on world coordinates iso modified plot coords
-                            mf = self.markedPointsForYAxis(subplot, data.xval_f, data.yval_f)
-                        # draw markers if necessary
-                        lw = device.pgqlw()
-                        device.pgslw(self.markerSize)
-                        if mu:
-                            # if mu evaluates to True then xu is also not-None
-                            device.pgpt( xu[mu], data.yval[mu], 7)
-                        if mf:
-                            # id. for the flagged stuff
-                            device.pgpt( xf[mf], data.yval_f[mf], 27)
-                        device.pgslw(lw)
-                        self.doExtraCallbacks(device, data)
-                    
-                    # Add some more metadata in subplot 0
-                    if subplot==0:
-                        device.pgsci( 1 )
-                        device.pgsch( 0.8 )
-
-                        # first label with baseline
-                        device.pgmtxt( 'T', -1.0, 0.5, 0.5, "{0:s}".format(label.format(plotlabel.attrs(plotar.plotlabel))) )
-
-                        # Want to write real frequencies so we must have the actual FQ/SB
-                        # It either FQ, SB are part of the data set label we're stuffed; the
-                        # channel number does not map (uniquely) to frequency any more
-                        # because the user has overplotted >1 subband in one plot
-                        device.pgsch( 0.5 )
-                        if plotlabel.FQ is not None and plotlabel.SB is not None:
-                            if mysm is None:
-                                frqedge = "no freq info"
-                            else:
-                                frqedge = "{0:f}MHz".format( mysm.frequencyOfFREQ_SB(plotlabel.FQ, plotlabel.SB)/1.0e6 )
-                        else:
-                            frqedge = "multi SB"
-                        device.pgmtxt( 'B', -1, 0.01, 0.0, frqedge )
+                    with pgenv(device):
+                        # draw with lines
+                        device.pgsls( 1 )
+                        for (lab, data) in datasets:
+                            # get the colour key for this data set
+                            device.pgsci( self.colkey(label(lab, plotar.dslabel), **opts) )
+                            # get the x-axis transformation for the current data set
+                            xform_x = xoffset.get(lab.SB, identity)
+                            # we know there's stuff to display so let's do that then
+                            # Any marked data points to display?
+                            (mu, mf) = (None, None)
+                            # Any unflagged data to display?
+                            if data.xval is not None:
+                                map(functional.ylppa(device, xform_x(data.xval), data.yval, -2), self.drawers[subplot])
+                                mu = self.markedPointsForYAxis(subplot, data.xval, data.yval)
+                            # Any flagged data to display?
+                            if data.xval_f is not None:
+                                map(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, 5), self.drawers[subplot])
+                                mf = self.markedPointsForYAxis(subplot, data.xval_f, data.yval_f)
+                            # draw markers if necessary, temporarily changing line width(markersize)
+                            lw = device.pgqlw()
+                            device.pgslw(self.markerSize)
+                            if mu:
+                                device.pgpt( xform_x(data.xval[mu]), data.yval[mu], 7)
+                            if mf:
+                                device.pgpt( xform_x(data.xval_f[mf]), data.yval_f[mf], 27)
+                            device.pgslw(lw)
+                            # Any extra drawing commands?
+                            self.doExtraCallbacks(device, data)
+                    # do some extra work for panel (subplot) number 0
+                    if subplot==0: 
+                        # and draw the main plot label
+                        vp.drawMainLabel(device, "{0:s}".format(label.format(plotlabel.attrs(plotar.plotlabel))) )
+                        # indicate multi subband if set
+                        with pgenv(device):
+                            device.pgsch( 0.5 )
+                            frqedge = None
+                            if plotlabel.FQ is not None and plotlabel.SB is not None:
+                                frqedge = "{0:.3f}MHz".format( mysm.frequencyOfFREQ_SB(plotlabel.FQ, plotlabel.SB)/1.0e6 )
+                            elif self.multiSubband and len(xoffset)>1:
+                                frqedge = "multi SB"
+                            if frqedge:
+                                device.pgmtxt( 'B', -1, 0.01, 0.0, frqedge )
 
             # last page with plots also needs a legend, doesn't it?
-            printlegend(device, self.coldict(), eachpage)
+            page.printlegend(device)
         finally:
             device.pgebuf()
 
 
-#####
-##### Utilities
-#####
 
-def pagestyle(layout, nplots, expandx=None, expandy=None):
-    page        = type('', (), {})()
-    page.layout = copy.deepcopy(layout)
-
-    # if the number of plots to plot 
-    # is (significantly) smaller than the
-    # indicated layout, start making them bigger
-    if nplots<page.layout.nplots() and (expandx or expandy):
-        if expandx and expandy:
-            sqrtN          = math.sqrt(nplots)
-            page.layout.nx = int(math.floor(sqrtN))
-            page.layout.ny = int(math.ceil(sqrtN))
-        elif expandx:
-            page.layout.nx = int(math.ceil(float(nplots)/page.layout.ny))
-        else:
-            page.layout.ny = int(math.ceil(float(nplots)/page.layout.nx))
-
-        while page.layout.nplots()<nplots:
-            if expandx and expandy:
-                if page.layout.nx<page.layout.ny:
-                    page.layout.nx = page.layout.nx + 1
-                else:
-                    page.layout.ny = page.layout.ny + 1
-            elif expandx:
-                page.layout.nx = page.layout.nx + 1
-            else:
-                page.layout.ny = page.layout.ny + 1
-
-    page.header = 0.14
-    page.footer = 0.04
-    page.xl     = 0.01 #0.05
-    page.xr     = 0.98 #0.95
-    page.yb     = 0.04 + page.footer
-    page.yt     = 1.0  - page.header
-    return page
-
-def growlayout(layout, nplots, expandx=None, expandy=None):
-    # make sure the new layout is such that all plots will be on one page
-    nlayout = copy.deepcopy( layout )
-    while nlayout.nplots()<nplots:
-        if expandx and expandy:
-            if nlayout.nx<nlayout.ny:
-                nlayout.nx = nlayout.nx + 1
-            else:
-                nlayout.ny = nlayout.ny + 1
-        elif expandx:
-            nlayout.nx = nlayout.nx + 1
-        else:
-            nlayout.ny = nlayout.ny + 1
-    return nlayout
-
-def issuenewpage(device):
-   device.pgpage()
-   device.pgsvp( 0.0, 1.0, 0.0, 1.0 )
-   device.pgswin( 0.0, 1.0, 0.0, 1.0 )
-   device.pgsci( 1 )
-
-def pagenostring(i, nplots, eachpage):
-    # python math slightly more sensitive than glish
-    # "/" is _integer_ divide, not float!!!
-    return "page: {0}/{1}".format( \
-            int(math.ceil(float(i)/eachpage.layout.nplots())) + 1, \
-            int(math.ceil(float(nplots)/eachpage.layout.nplots())) )
-
-# return an unnamed object with attributes ".x" and ".y" indicating
-# the column and row index of the indicated plot. Rows are filled first.
-def plotcoord(plotnr, eachpage):
-    return type('', (), {"x" : plotnr % eachpage.layout.nx,
-                         "y" : plotnr / eachpage.layout.nx} )()
-
-# set the actual viewport on the device
-# (almost) verbatim from drawutils.g - only we do NOT send the viewport to the device
-# 'subplot', if given, must be integer - index of the the n-th subplot
-# 'heights' must be given - an array of the individual subplot heights, in fractions of the
-#           viewport
-# 'drawxlab', 'drawylab' are misnomers; they are the x,y axis values
-# we now support real axis labels, like "Flux (Jy)", "time (UTC)"
-# which we need to make space for if they need to be drawn.
-# Note that we scale all plots down by shifting the left edge or bottom (or both)
-def getviewport(device, page, cvp, drawxlab, drawylab, subplot=None, height=None, doxLabel=None, doyLabel=None):
-    viewport = [0.0] * 4
-
-    # well. that's funny. "pglen(...)" isn't very helpful; the string height(s) are
-    # about 1/14th to 1/11th (!) of the total vertical height! That's WAY too huge.
-    # Quite unuseful.
-    # According to PGPLOT docs, character height of 1.0 ~ 1/40th of y-height of view surface.
-    # find maximum length
-    sheight =  (0.9 * (1.0/40)) if doxLabel or doyLabel else 0.0
-    # if we need to draw y-axis label we shift the left side to the right
-    # take into account the largest character size [y labels will be scaled such that
-    #  they'll fit in the viewport so the shortest string will be the largest characters?
-    #  (not necessarily but we have to assume something here: we can only correctly compute the character height
-    #   after we've computed viewport which depends on the character height which we can only compute after
-    #   we've computed the viewport which ...)]
-    ddx          = ((3.1*sheight) / min(map(len, doyLabel))) if doyLabel else 0
-    # if we need to draw x-axis label we shift the bottom up
-    ddy          = 3.1*sheight if doxLabel else 0
-
-    dx = (page.xr - page.xl - ddx)/page.layout.nx
-    dy = (page.yt - page.yb - ddy)/page.layout.ny
-
-    viewport[0] = page.xl + ddx + cvp.x * dx
-    viewport[1] = viewport[0] + dx 
-    viewport[2] = page.yt - (cvp.y+1) * dy
-    viewport[3] = viewport[2] + dy
-
-    dvpx = viewport[1] - viewport[0]
-    dvpy = viewport[3] - viewport[2]
-
-    if subplot is not None:
-        orgviewport = copy.deepcopy(viewport)
-
-        if subplot>1:
-            raise RuntimeError, "viewport only supports two subplots"
-
-        # compute y-coordinate of division - it's at 60% of the plot height
-        bot   = sum(height[0:subplot])
-        top   = bot + height[subplot]
-        vp2   = viewport[2]
-        viewport[2] = vp2 + bot*dvpy
-        viewport[3] = vp2 + top*dvpy
-        #split = viewport[2] + 0.6 * dvpy
-        # depending on which subplot this either becomes the new bottom coord
-        # or the new top coord
-        #if subplot==0:
-        #    viewport[3] = split
-        #else:
-        #    viewport[2] = split
-
-        # relax the fit for more comfort
-        viewport[0] = viewport[0] + 0.04*dvpx
-        viewport[1] = viewport[1] - 0.04*dvpx
-
-#        if subplot==0:
-#            viewport[2] = viewport[2] + 0.04*dvpy
-#        else:
-#            viewport[3] = viewport[3] - 0.04*dvpy
-
-        # when drawing x-axis labels we only need to shrink
-        # the bottom row plots. Plots who have 'drawxlabel' == True
-        # and are not on the bottom row of the page have more than enough
-        # room below (at least one (unused) plot below them) so we don't have
-        # to shrink the plot in the y-direction in that case ...
-        if drawxlab and subplot==0 and cvp.y==(page.layout.ny - 1):
-	        viewport[2] = viewport[2] + 0.1*dvpy
-    else:
-        # no subplot, just relax the fit a bit
-        viewport[0] = viewport[0] + 0.04*dvpx
-        viewport[1] = viewport[1] - 0.04*dvpx
-        viewport[2] = viewport[2] + 0.04*dvpy
-        viewport[3] = viewport[3] - 0.04*dvpy
-
-        # see above for why for some plots we don't have to shrink
-        # the y-direction when plotting the x-axis labels
-        if drawxlab and cvp.y==(page.layout.ny - 1):
-            viewport[2] = viewport[2] + 0.1*dvpy
-
-    # for all plots, if we must draw the y scale we must make room
-    if drawylab:
-        viewport[0] = viewport[0] + 0.05 * (viewport[1] - viewport[0])  # was 0.1 * (dx)
-    return viewport
-
-##
-## Return tuple of (xlims, ylims) with
-## xlims = [<xmin>, <xmax>], ylims=[<ymin>, <ymax>]
-##
+######
+###### Utilities
+######
 
 #  19 Dec 2017 MarkK comes to me saying the plots are borkened!
 #              Plotting ratios of two data sets that are basically equal (i.e.
@@ -1395,170 +1735,6 @@ def getXYlims(plotarray, ytype, curplotlabel, xscaling, yscaling):
             ylims[1] = mid + 0.65*dy
         return (xlims, ylims)
 
-# eachpage: contains the page layout
-# plotlocation: row,column index of current plot
-# plot:     plotnumber of current plot
-# nplot:    total number of plots to plot
-#
-# we have a last-row-on-page if:
-#    * the y-index of the plot IS the bottom row of the page
-#    * there are less than one row of plot _remaining_ to plot
-def lastrow(eachpage, plotlocation, plot, nplot):
-    return (plotlocation.y+1)==eachpage.layout.ny or (nplot - plot) <= eachpage.layout.nx
-
-# Sorry Huib, now in Harro coding style!
-def printlabel(device, labels, room):
-    # Puts a label on the page, assuming a fixed record structure
-    # Save current character height so we can put it back when done
-    ch = device.pgqch()
-
-    # set the height we're going to use (somewhat smaller than normal)
-    device.pgsch( 0.8 )
-  
-    # compute the skip between lines - we should use the max of 
-    # left/right labels to make them line up properly
-    nline    = max(len(labels.left), len(labels.right))
-    lineskip = room / (nline+1)
-
-    # compute an array of y-positions up to the maximum number 
-    # of lines of text in either left or right
-    ypos = map(lambda x: 1.0 - (1.9+x)*lineskip, xrange(0, nline))
-
-    # plot the left lines
-    for (txt, pos) in zip(labels.left, ypos):
-        device.pgptxt(0.05, pos, 0.0, 0.0, txt)
-    # id. for the right ones
-    for (txt, pos) in zip(labels.right, ypos):
-        device.pgptxt(0.98, pos, 0.0, 1.0, txt)
-
-    # What's left is the center label, we print it LARGER than normal
-    device.pgsch( 1.6 );
-    device.pgptxt(0.5, 1.0 - 0.3*room, 0.0, 0.5, labels.center);
-
-    # And put back the original character height
-    device.pgsch( ch );
-
-def setboxes(device, cvp, drawxlab, drawylab, xtime=False, subplot=None):
-    #  Determine the boxstrings; i.e. determine wether or
-    #  not to draw the labels. Only draw labels at the leftmost
-    #  and the bottom plots
-    device.pgsci( 1 )
-
-    xboxstr = yboxstr = "ABCTS"
-    yboxstr += "V"
-
-    if xtime:
-        xboxstr += "ZHO"
-
-    if (drawxlab and subplot is None) or (drawxlab and subplot==0):
-        xboxstr += "N"
-        #print "drawing x-label for cvp {0},{1}".format( cvp.x, cvp.y )
-
-    if cvp.x==0 or drawylab:
-        yboxstr += "N"
-    else:
-        yboxstr += "M"
-
-    yboxstr += "1"
-
-    device.pgsch( 0.6 )
-    device.pgtbox( xboxstr, 0.0, 0, yboxstr, 0.0, 0 )
-
-## Use the footer of the page to print the color => data set key mapping
-def printlegend(device, colcode, eachpage):
-    # if the color code dict is empty, there isn't much we can do now, is there?
-    if len(colcode)==0:
-        return
-
-    device.pgsls( 1 )
-    och = device.pgqch()
-    device.pgsch( 0.4 )
-
-    # reset all viewports
-    device.pgsvp( 0, 1, 0, 1 )
-    device.pgswin( 0, 1, 0, 1 )
-
-    (xsep, xoff, xline, xskip) = (0.01, 0.1, 0.03, 0.005)
-    ysep                       = 0.45 * eachpage.footer
-    nxleg                      = 4
-    room                       = eachpage.footer
-    # for drawing a horizontal line we need 2 x-coords and only 1 y-coord
-    xpos                       = [0.0] * 2
-    ypos                       = 0.0
-
-    # Find the longest description and divide the space we have into an equal
-    # number of positions. So we need the size of the longest key in device units
-    (xsz, ysz) = device.pglen(max(colcode.keys(), key=len), 5)
-
-    nxleg = int( math.floor( (1.0 - 2*xoff) / (xsz+xline+xskip+xsep) ) )
-    if nxleg<1:
-        nxleg = 1
-
-    for (idx, (label, col)) in enumerate(colcode.iteritems()):
-        # sometimes, when only one data set is plotted in a plot,
-        # there are no labels left [either they're in the global, shared
-        # label section or they're in the per-plot label but none reside
-        # in the per-dataset section]. So there's no need to draw the legend
-        # because there isn't any
-        if not label:
-            continue
-        (ipos, jpos) = (idx % nxleg, idx / nxleg)
-        
-        xpos[0] = xoff + (xsz+xline+xskip+xsep) * ipos
-        xpos[1] = xpos[0] + xline
-        xcapt   = xpos[1] + xskip
-        
-        ypos  = room + ysep * (1 - jpos)
-        ycapt = ypos - 0.005
-
-        device.pgsci( col )
-        olw = device.pgqlw()
-        device.pgslw( 4 )
-        device.pgline( numpy.asarray(xpos), numpy.asarray([ypos, ypos]) )
-        device.pgslw( olw )
-        device.pgsci( 1 )
-        device.pgptxt( xcapt, ycapt, 0.0, 0.0, label )
-    device.pgsch( och )
-
-
-choicetab = {
-        # we don't have to cover (True, True) because
-        # that would mean that both .xval and .xval_f are None
-        # and that case is filtered out; datasets with no data at all
-        # are not sent to the drawing function ...
-        (False, False): lambda x, xf: min(x[0], xf[0]),
-        (True , False): lambda x, xf: xf[0],
-        (False, True ): lambda x, xf: x[0]
-        }
-
-def printsrcname(device, plotref, datasets, day0hr, yval, ystep):
-    # device is the PGPLOT object
-    # plotarray is reference to the current plot
-    # datasets is the (potential) subset of data set keys plotted in this plot
-    #          (the plot could contain >1 type of data sets
-    # day0hr is the time reference value; all values in the data sets are
-    #        plotted wrt this value
-    # yval is the y coordinate of the lable
-    # ystep determines whether they are staggered
-    device.pgsls( 1 )
-    och = device.pgqch()
-    device.pgsch( 0.4 )
-    device.pgsci( 1 )
-
-    seensrces = set()
-    for (dskey,_) in datasets:
-        # If no 'SRC' in data set identifier, do nothing
-        if dskey.SRC is None:
-            continue
-        # Huib: Need to do only for first occurrence
-        if dskey.SRC in seensrces:
-            continue
-        # stagger them in groups of 3, covers 3 source phase ref
-        pref = plotref[dskey]
-        x0   = choicetab[(pref.xval is None, pref.xval_f is None)](pref.xval, pref.xval_f)
-        device.pgptxt( x0-day0hr, yval + ystep * (len(seensrces)%3), 0.0, 0.0, dskey.SRC )
-        seensrces.add( dskey.SRC )
-    device.pgsch( och )
 
 ###### 
 ###### The list of defined plotters
