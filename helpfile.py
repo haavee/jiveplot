@@ -990,26 +990,36 @@ the current fringe-fit does a baseline based fringe-fit""",
 unit is seconds!""",
 
     ##################################################################
-    # hc (not implemented; see "save")
+    # "save"
     ##################################################################
-	"hc":
-"""hc <filename>
-   make hardcopy of all plots
+	"save":
+"""save <filename>[.ext][/type]
+   save current plots to file
 
-<filename> is the PGPLOT destination, thus
-it may be specified as:
+The filename is a PGPLOT device name. Thus it may be specified as:
+    <filename>[.<extension>][/<type>]
 
-    <label>[/<device>]
+The extension and/or type are optional; jplotter defaults to colour
+PostScript:
 
-<device> is any PGPLOT acceptable device. The default <device> is "cps" (Color
-PostScript), implying that <label> is interpreted as a filename.
+    .<extension> = .ps
+    /<type>      = /CPS
+
+If only <extension> is given, jplotter will automatically infer the
+"/<type>" for you; likewise if only the "/<type>" is given, jplotter will infer
+an appropriate ".<extension>".
+
+If both extension and type are given, jplotter will pass the device name
+through unalderated.
 
 Examples:
-    # plot to X-Window with title <label>
-    > hc <label>/xw
-    # plot to PostScript file <label>
-    > hc <label>/cps
 
+    jcli> save foo      # becomes: foo.ps/CPS
+    jcli> save foo.png  #   ..   : foo.png/PNG
+    jcli> save foo/pdf  #   ..   : foo.pdf/PDF
+
+
+See the PGOPEN documentation at http://www.astro.caltech.edu/~tjp/pgplot/subroutines.html#PGOPEN
 """,
 
     ##################################################################
@@ -1774,13 +1784,33 @@ For the 'time' attribute the full time selection syntax can be used:
     # show
     ##################################################################
 "show":
-"""show [flagged|unflagged|both]
-    display or change which datapoints are being plotted. Default: unflagged
+"""show [flagged|unflagged|both] [[no]header|legend]
+    display or change which datapoints are being plotted and what meta data is displayed on the page
+
+Controlling the meta data display
+---------------------------------
+
+By default each page is decorated with a header containg (lots) of meta data
+about the plot and a footer containing the legend for the colours. The display
+of these areas is now optional and can be set/inspected through this command.
+Any space not used for meta data becomes available for plot area. This setting
+is kept per plot type.
+
+    # switch off all metadata - whole page is dedicated to plot surface
+    jcli> pt ampchan
+    jcli> show
+    show[ampchan]:            Header Legend
+    jcli> show noheader 
+    show[ampchan]:            NoHeader Legend
+
+
+Controlling which data points are plotted
+-----------------------------------------
 
 By default the FLAG_ROW and FLAG columns are read and OR'ed together to keep
 track of a data point's flagged status. Depending on the actual 'show' setting
-only points meeting that criterion are actually drawn on the screen. 
-By default only the unflagged data are displayed.
+only points meeting that criterion are actually drawn on the screen.  By
+default only the unflagged data are displayed.
 
 Note that NaN/Inf data is /never/ displayed, wether they were flagged or
 unflagged.
