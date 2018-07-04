@@ -907,12 +907,12 @@ class Page(object):
             device.pgptxt(0.5, 0.75, 0.0, 0.5, self.pageLabel.center);
 
     def nextPage(self, device, curPlot, nPlot):
+        self.printlegend(device)
         with pgenv(device):
            device.pgpage()
            device.pgsvp( 0.0, 1.0, 0.0, 1.0 )
            device.pgswin( 0.0, 1.0, 0.0, 1.0 )
            device.pgsci( 1 )
-        self.printlegend(device)
         self.printPageLabel(device, curPlot, nPlot)
 
 
