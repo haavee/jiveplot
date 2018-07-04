@@ -42,7 +42,7 @@ def get_val(arg, tp=str):
 
 
 def Usage(prog, full):
-    print "Usage: {0} [-h] [-v] [-d] [-weight] [-scan #] <MS> <Refant> <CalSrc>"
+    print "Usage: {0} [-h] [-v] [-d] [-weight] [-scan #] <MS> <Refant> <CalSrc>".format(prog)
     if full:
         print """
     where:
