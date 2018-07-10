@@ -2499,6 +2499,7 @@ def run_plotter(cmdsrc, **kwargs):
     rxExt    = re.compile(r"(\.[^./]+)$")
     rxType   = re.compile(r'(/[a-z]+)$', re.I)
     type2ext = functools.partial(re.compile(r'^[/vc]*', re.I).sub, '.')
+    ext2type = {".ps":"/CPS", ".pdf":"/PDF", ".png":"/PNG"}
     def mk_postscript(e, filenm):
         if not filenm:
             ppgplot.pgldev()
@@ -2528,13 +2529,12 @@ def run_plotter(cmdsrc, **kwargs):
         # if there were none, use defaults
         tbl = { (True, True)  : lambda e, t: (".ps", "/cps"),
                 (True, False) : lambda e, t: (type2ext(t), t),
-                (False, True) : lambda e, t: (e, ""),
+                (False, True) : lambda e, t: (e, ext2type.get(e.lower(),"Unknown")),
                 (False, False): lambda e, t: (e, t)}
         (pext, ptp) = tbl[(ext is None, tp is None)](ext, tp)
         fn          = pgfn+pext
         try:
             f = ppgplot.pgopen(fn+ptp)
-            print "f=",f," (",type(f),")"
         except:
             raise RuntimeError, "Sorry, failed to open file '{0}'".format(e.wd +"/"+fn if not fn[0] == "/" else fn)
         ppgplot.pgslct(f)
