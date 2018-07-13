@@ -332,7 +332,7 @@ class dataset:
     def add_sumy(self, obj, xs, ys, m):
         obj.y = obj.y + ys
         obj.n = obj.n + 1
-        obj.m = numpy.logical_or(obj.m, m)
+        obj.m = numpy.logical_and(obj.m, m)
 
     @classmethod
     def init_sumy(self, obj, xs, ys, m):
