@@ -78,7 +78,7 @@ class Settings(object):
         self.measurementset = ms
         self.refant         = refant
         self.calsrc         = re.sub(r'(\.|\+|\(|\)|\[|\])', r'\\\1', calsrc)
-        self.myBasename     = re.sub(r"\.ms$", "", os.path.basename(self.measurementset))
+        self.myBasename     = re.sub(r"\.ms", "", os.path.basename(self.measurementset))
         self.tempFileName   = "/tmp/sptf-{0}.ps".format( os.getpid() )
 
     def cleanup(self):
@@ -126,13 +126,16 @@ def mk_anp_chan_cross_plot(settings, scansel, num):
     # all cross baselines to refant
     yield "bl {0}* -auto".format( settings.refant )
     yield "fq *;ch none"
-    yield "new all f bl t sb t"
     yield "avt vector;avc none"
     yield "pt anpchan"
     yield "y local"
     # select the scan
     yield "scan mid-30s to mid+30s where {0}".format( scansel.format(settings.calsrc) )
-    yield "sort bl sb" 
+    yield "new all false bl true sb false"
+    yield "multi true"
+    yield "sort bl" 
+    yield "ckey p['RR']=2 p['LL']=3 p['RL']=4 p['LR']=5"
+    yield "nxy 2 4"
     #yield "save {0}-cross-{1}.ps/cps".format( settings.myBasename, num )
     yield "refile {0}-cross-{1}.ps/cps".format( settings.myBasename, num )
     yield "pl"
@@ -154,8 +157,28 @@ def mk_anp_chan_auto_plot(settings, scansel, num):
     yield "pl"
     print "done auto plots on calibrator scan"
 
-def mk_anp_time_auto_plot(settings, scansel):
-    print "generating auto plots [anp/time] calibrator scan"
+def mk_amp_chan_auto_plot(settings, scansel, num):
+    print "generating auto plots [amp/channel] calibrator scan [{0}]".format( num )
+    yield "bl auto"
+    yield "fq */p;ch none"
+    yield "avt scalar;avc none"
+    yield "time none"
+    yield "pt ampchan"
+    yield "y 0 2"
+    # select the scan
+    yield "scan mid-30s to mid+30s where {0}".format( scansel.format(settings.calsrc) )
+    yield "new all false bl true sb false time true"
+    yield "multi true"
+    yield "sort bl" 
+    yield "ckey p['RR']=2 p['LL']=3"
+    yield "nxy 2 4"
+    #yield "save {0}-auto-{1}.ps/cps".format( settings.myBasename, num )
+    yield "refile {0}-auto-{1}.ps/cps".format( settings.myBasename, num )
+    yield "pl"
+    print "done auto plots on calibrator scan"
+
+def mk_amp_time_auto_plot(settings, scansel):
+    print "generating auto plots [amp/time] calibrator scan"
     yield "bl auto"
     # select inner 90% of the channels
     yield "fq *;ch 0.1*last:0.9*last"
@@ -172,15 +195,37 @@ def mk_anp_time_auto_plot(settings, scansel):
     yield "pl" 
     print "done auto plots on calibrator scan"
 
+def mk_anp_time_cross_plot(settings, timesel, num):
+    print "generating cross plots [anp/time] all scans"
+    yield "bl {0}* -auto".format( settings.refant )
+    # select inner 90% of the channels
+    yield "fq 3:6/p;ch 0.1*last:0.9*last"
+    yield "new all f bl t"
+    yield "avt none;avc vector"
+    yield "pt anptime"
+    yield "y local"
+    # select the scan
+    # yield "scan start-20m to end+100m where {0}".format( scansel.format(settings.calsrc) )
+    yield "src none"
+    yield "time {0}".format(timesel)
+    yield "sort bl" 
+    yield "ckey src"
+    yield "ptsz 2"
+    #yield "save {0}-ampphase.ps/cps".format( settings.myBasename )
+    yield "refile {0}-ampphase-{1}.ps/cps".format( settings.myBasename, num )
+    yield "pl" 
+    print "done auto plots on calibrator scan"
+
 def mk_weight_plot(settings):
     # the weight plot is only auto baselines, max four subbands x 2 pols
     # for the whole time range of the experiment
     # no need to set the channel selection, it is ignored
     print "generating weight plot"
     yield "ms {0}".format( settings.measurementset )
-    yield "bl auto; fq 0:3/p;"
+    yield "bl auto; fq */p"
     yield "src none"
     yield "time none"
+    yield "ch mid"
     yield "pt wt"
     yield "new all f bl t"
     yield "y local"
@@ -215,10 +260,13 @@ else:
               "field ~ /{0}/i order by end desc limit 1" ]
 for (i, cond) in enumerate(scans):
     todo.append( mk_anp_chan_cross_plot(s, cond, i) )
-    todo.append( mk_anp_chan_auto_plot(s, cond, i) )
+    todo.append( mk_amp_chan_auto_plot(s, cond, i) )
 
 # And the anp versus time
-todo.append( mk_anp_time_auto_plot(s, anptimescan) )
+for (i, cond) in enumerate(('none', '$start-5m to +55m')):
+    todo.append( mk_anp_time_cross_plot(s, cond, i) )
+
+# todo.append( mk_anp_time_cross_plot(s, aptimescan) )
 
 if not NoWgt:
     todo.append( mk_weight_plot(s) )
