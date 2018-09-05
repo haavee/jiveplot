@@ -884,7 +884,8 @@ class Page(object):
         # set current pageno based on settings
         self.pageLabel.right[2] = "page: {0}/{1}".format( int(math.ceil(float(curPlot)/self.layout.nplots())) + 1,
                                                           int(math.ceil(float(nPlot)/self.layout.nplots())) )
-
+        # When using giza as PGPLOT backend, then '_' is suddenly "subscript" a-la TeX ffs
+        noUnderscore = functools.partial(re.sub, r"_", r"\\_") if 'giza' in device.pgqinf('VERSION').lower() else functional.identity
         with pgenv(device):
             # set the viewport to the header area and map to world coordinates 0,1 0,1
             device.pgsvp( self.xl, self.xr, self.yt, 1 )
@@ -897,10 +898,10 @@ class Page(object):
 
             # plot the left lines
             for (txt, pos) in zip(self.pageLabel.left, ypos):
-                device.pgptxt(0, pos, 0.0, 0.0, txt)
+                device.pgptxt(0, pos, 0.0, 0.0, noUnderscore(txt))
             # id. for the right ones
             for (txt, pos) in zip(self.pageLabel.right, ypos):
-                device.pgptxt(1, pos, 0.0, 1.0, txt)
+                device.pgptxt(1, pos, 0.0, 1.0, noUnderscore(txt))
 
             # What's left is the center label, we print it LARGER than normal
             device.pgsch( 1.6 );
