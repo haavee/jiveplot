@@ -2500,15 +2500,10 @@ def run_plotter(cmdsrc, **kwargs):
     rxType   = re.compile(r'(/[a-z]+)$', re.I)
     type2ext = functools.partial(re.compile(r'^[/vc]*', re.I).sub, '.')
     ext2type = {".ps":"/CPS", ".pdf":"/PDF", ".png":"/PNG"}
-    def mk_postscript(e, filenm):
-        if not filenm:
-            ppgplot.pgldev()
-            return
-        refresh(e)
-        if not e.plots:
-            print "No plots to save, sorry"
-            return
-
+   
+    # convert user input device specification into
+    # a PGPLOT compatible device string
+    def user2pgplot(filenm):
         ext, tp = None, None
         pgfn    = copy.deepcopy(filenm)
         # check if trailing type was given
@@ -2521,7 +2516,6 @@ def run_plotter(cmdsrc, **kwargs):
         mo = rxExt.search(pgfn)
         if mo:
             # yarrrs. remember + strip
-            # because there is
             ext  = mo.group(1)
             pgfn = rxExt.sub("", pgfn)
         # if there was a type but not extension, use that for extension
@@ -2532,7 +2526,19 @@ def run_plotter(cmdsrc, **kwargs):
                 (False, True) : lambda e, t: (e, ext2type.get(e.lower(),"Unknown")),
                 (False, False): lambda e, t: (e, t)}
         (pext, ptp) = tbl[(ext is None, tp is None)](ext, tp)
-        fn          = pgfn+pext
+        return (pgfn+pext, ptp)
+
+    def mk_postscript(e, filenm):
+        if not filenm:
+            ppgplot.pgldev()
+            return
+        refresh(e)
+        if not e.plots:
+            print "No plots to save, sorry"
+            return
+        # returns device file name and type as separate items
+        # so we can display the file name w/o the (inferred) type
+        fn, ptp = user2pgplot(filenm)
         try:
             f = ppgplot.pgopen(fn+ptp)
         except:
@@ -2643,14 +2649,8 @@ def run_plotter(cmdsrc, **kwargs):
             rxRefile = re.compile(r"^refile\s+(?P<file>.+)$")
             refile   = rxRefile.match(args[0])
             fn       = refile.group('file') if refile else args[0]
-
-            mo = rxExt.match(fn)
-            # no extension and not file type at all
-            if not mo:
-                fn = fn + ".ps/cps"
-            elif not mo.group('ft'):
-                # yes extension but no file type yet
-                fn = fn + "/cps"
+            fn, ptp  = user2pgplot(fn)
+            fn       = fn+ptp
             if refile:
                 foo[o.curdev].changeDev(fn)
             else:
