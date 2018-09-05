@@ -6,8 +6,7 @@ from operator  import truth, contains, eq, is_not, attrgetter, itemgetter, metho
 compose     = lambda *fns   : (lambda x: reduce(lambda acc, f: f(acc), reversed(fns), x))
 choice      = lambda p, t, f: (lambda x: t(x) if p(x) else f(x))  # branch
 choice_kw   = lambda p, t, f: (lambda x, **kwargs: t(x, **kwargs) if p(x, **kwargs) else f(x, **kwargs))  # branch
-#ylppa       = lambda x      : (lambda f: f(x))                    # ylppa is 'apply' in reverse ...
-ylppa       = lambda *args  : (lambda f: f(*args))                    # ylppa is 'apply' in reverse ...
+ylppa       = lambda *args  : (lambda f: f(*args))                # ylppa is 'apply' in reverse ...
 combine     = lambda f, *fns: (lambda x: f(*map(ylppa(x), fns)))  # f( fn[0](x), fn[1](x), ... )
 swap_args   = lambda f      : (lambda a, b, *args, **kwargs: f(b, a, *args, **kwargs))
 logic_or    = lambda x, y   : x or y                              # operator.__or__ / __and__ are /bitwise/ ops!

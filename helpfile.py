@@ -990,26 +990,36 @@ the current fringe-fit does a baseline based fringe-fit""",
 unit is seconds!""",
 
     ##################################################################
-    # hc (not implemented; see "save")
+    # "save"
     ##################################################################
-	"hc":
-"""hc <filename>
-   make hardcopy of all plots
+	"save":
+"""save <filename>[.ext][/type]
+   save current plots to file
 
-<filename> is the PGPLOT destination, thus
-it may be specified as:
+The filename is a PGPLOT device name. Thus it may be specified as:
+    <filename>[.<extension>][/<type>]
 
-    <label>[/<device>]
+The extension and/or type are optional; jplotter defaults to colour
+PostScript:
 
-<device> is any PGPLOT acceptable device. The default <device> is "cps" (Color
-PostScript), implying that <label> is interpreted as a filename.
+    .<extension> = .ps
+    /<type>      = /CPS
+
+If only <extension> is given, jplotter will automatically infer the
+"/<type>" for you; likewise if only the "/<type>" is given, jplotter will infer
+an appropriate ".<extension>".
+
+If both extension and type are given, jplotter will pass the device name
+through unalderated.
 
 Examples:
-    # plot to X-Window with title <label>
-    > hc <label>/xw
-    # plot to PostScript file <label>
-    > hc <label>/cps
 
+    jcli> save foo      # becomes: foo.ps/CPS
+    jcli> save foo.png  #   ..   : foo.png/PNG
+    jcli> save foo/pdf  #   ..   : foo.pdf/PDF
+
+
+See the PGOPEN documentation at http://www.astro.caltech.edu/~tjp/pgplot/subroutines.html#PGOPEN
 """,
 
     ##################################################################
@@ -1774,13 +1784,33 @@ For the 'time' attribute the full time selection syntax can be used:
     # show
     ##################################################################
 "show":
-"""show [flagged|unflagged|both]
-    display or change which datapoints are being plotted. Default: unflagged
+"""show [flagged|unflagged|both] [[no]header|legend]
+    display or change which datapoints are being plotted and what meta data is displayed on the page
+
+Controlling the meta data display
+---------------------------------
+
+By default each page is decorated with a header containg (lots) of meta data
+about the plot and a footer containing the legend for the colours. The display
+of these areas is now optional and can be set/inspected through this command.
+Any space not used for meta data becomes available for plot area. This setting
+is kept per plot type.
+
+    # switch off all metadata - whole page is dedicated to plot surface
+    jcli> pt ampchan
+    jcli> show
+    show[ampchan]:            Header Legend
+    jcli> show noheader 
+    show[ampchan]:            NoHeader Legend
+
+
+Controlling which data points are plotted
+-----------------------------------------
 
 By default the FLAG_ROW and FLAG columns are read and OR'ed together to keep
 track of a data point's flagged status. Depending on the actual 'show' setting
-only points meeting that criterion are actually drawn on the screen. 
-By default only the unflagged data are displayed.
+only points meeting that criterion are actually drawn on the screen.  By
+default only the unflagged data are displayed.
 
 Note that NaN/Inf data is /never/ displayed, wether they were flagged or
 unflagged.
@@ -1802,6 +1832,58 @@ points.
 Thus, if both types of data points are being displayed and marking is applied,
 then up to four (4) different markers will be drawn [obviously if there are no
 points meeting a criterion no marker of that kind will be drawn ...]
+
+""",
+    ##################################################################
+    # labelling axes
+    ##################################################################
+"label":
+"""label [<axis1>: '<label1 text>' [<axisN> : '<labelN text']]
+    display or change axis label(s). Default: no labels.
+
+Axes can be labelled with text. Without arguments the command displays which
+axis labels have been set for the current plot type. Labels for one or more axes
+can be set in one fell swoop; the command accepts one or more entries formatted
+as:
+    <axis identifier> : "<label text>"
+
+Axes can be identified by:
+    x, y, y0, y1, ... yN (for multi-panel plots, 0 is the bottom panel)
+        (Note: y is short for y0)
+or by the quantity on that axis, (check the output of 'pt' if unsure), e.g.:
+    amplitude, phase, u, v, time, channel, frequency
+
+The axis labels are kept per plot type and are global. An axis label can be
+removed by setting it to the empty string (which is the default), i.e. just
+double quotes. White space outside the quoted text is ignored, inside
+only trailing whitespace is ignored. See examples below.
+
+All text items and fonts as described in the PGPLOT manual section 4.5(*) are
+supported as the label text will be fed through the PGMTXT routine(**).
+
+Examples:
+    # Assume plot type is 'anptime'. ["amplitude+phase versus time"]
+
+    # Then the following labels the x-axis with the indicated string and the
+    # y-axis of the phase panel with (amongst others) an upper case greek letter
+    # Phi. Also note that single/double quotes can be used freely, as long as
+    # they're balanced
+    > label x : 'time (UTC)'  phase:"\gF (deg)"
+
+    # this fails because no axis called frequency exists in the plot type
+    > label frequency: "Sky frequency (MHz)"
+    The indicated y-axis frequency does not apply to this plot
+
+    # clear label of time (== same as x-axis type)
+    > label time: '' 
+
+    # embedded quotes can be done in two ways:
+    > label channel: "channel's property"    # the other flavour of quote
+    > label channel: 'channel\'s property'   # escaping the embedded one(s)
+
+
+(*)  http://www.astro.caltech.edu/~tjp/pgplot/chapter4.html
+(**) http://www.astro.caltech.edu/~tjp/pgplot/subroutines.html#PGMTXT
 
 """
 }

@@ -394,8 +394,26 @@
 #   HV: * time to commit - added some more basic stuff
 #
 import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, imp, time
-import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors
+import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors, functools
 from   functional import compose
+
+if '-d' in sys.argv:
+    print "PPGPLOT=",repr(ppgplot)
+
+# Monkeypatch ppgplot if it don't seem to have pgqwin()
+if not hasattr(ppgplot, 'pgqwin'):
+    # the associative array from device id to window
+    pg_windows = dict()
+    # need to wrap pgswin to remember which window set for which device
+    old_pgswin = ppgplot.pgswin
+    def pgswin_new(w0, w1, w2, w3):
+        pg_windows[ ppgplot.pgqid() ] = [w0, w1, w2, w3]
+        return old_pgswin(w0, w1, w2, w3)
+    def pgqwin():
+        return pg_windows.get(ppgplot.pgqid(), None)
+    ppgplot.pgswin = pgswin_new
+    ppgplot.pgqwin = pgqwin
+
 
 CP   = copy.deepcopy
 NOW  = time.time
@@ -1406,19 +1424,61 @@ class jplotter:
         # Display the settings, only for the axes for which the setting is true
         print "{0} {1}".format(pplt("new plots on:"), 
                 hvutil.dictfold(lambda (ax,val), acc: acc+"{0} ".format(ax) if val else acc, "", self.selection.newPlot))
-                
+
+    _isHeaderLegend = re.compile(r'^(?P<not>no)?(?P<what>header|legend)$', re.I).match
     def showSetting(self, *args):
-        if args and args[0]:
-            if len(args)>1:
-                raise RuntimeError("show only takes one argument, not {0}".format(len(args)))
-            # expect 'args' to be one of FLAG enums
-            newSetting = args[0].capitalize()
-            if newSetting not in FLAG:
-                raise RuntimeError("Unknown show setting {0}".format(args[0]))
-            if FLAG[newSetting] is not self._showSetting:
-                self._showSetting = FLAG[newSetting]
-                self.npmodify     = self.npmodify + 1
-        print "{0} {1}{2}".format(pplt("show:"), self._showSetting, " ({0:s} + {1:s})".format(FLAG.Flagged, FLAG.Unflagged) if self._showSetting is FLAG.Both else "")
+        curPlotType                      = self.getPlotType()
+        curPlot                          = None if curPlotType is None else plots.Plotters[curPlotType]
+        args                             = filter(operator.truth, args)
+        # default: no arguments given? display everything (if there is a current plot type) otherwise show nothing
+        #showFLAG, showHeader, showLegend = [False]*3 if args else [True] + ([True if curPlotType is not None else False])*2
+
+        getFlag   = lambda: "{0} {1}{2}".format(pplt("show:"), self._showSetting, " ({0:s} + {1:s})".format(FLAG.Flagged, FLAG.Unflagged) if self._showSetting is FLAG.Both else "")
+        getAttr   = lambda which, nm: "" if curPlot is None else "{0}{1}".format("" if getattr(curPlot, which) else "No", nm)
+        getHeader = lambda          : getAttr('showHeader', 'Header')
+        getLegend = lambda          : getAttr('showLegend', 'Legend')
+
+        # In order to be let the proc_arg() function below modify values
+        # outside of its scope (i.e. the values at /this/ stack frame) we must
+        # either put them in a list or make them attributes of an object.
+        # I chose the 2nd approach
+        show      = type('',(), {'FLAG':"", 'Header':"", 'Legend':""} if args else {'FLAG':getFlag(), 'Header':getHeader(), 'Legend':getLegend()})()
+
+        def proc_arg(acc, arg):
+            # expect 'arg' to be one of FLAG enums or (no)?(header|legend)
+            newSetting = arg.capitalize()
+            if newSetting in FLAG:
+                if FLAG[newSetting] is not self._showSetting:
+                    acc._showSetting = FLAG[newSetting]
+                    acc.npmodify     = acc.npmodify + 1
+                show.FLAG = getFlag()
+            else:
+                # Match to (no)(header|legend)
+                mo = jplotter._isHeaderLegend(newSetting)
+                if mo is None:
+                    raise RuntimeError("Unknown show setting {0}".format(arg))
+                # check if there is a current plot type whose' show setting we can manipulate
+                if curPlot is None:
+                    raise RuntimeError("No plot type selected to operate on")
+                # kool. update showing header/legend
+                if mo.group('what').lower()=='header':
+                    curPlot.showHeader = mo.group('not') is None
+                    acc.npmodify       = acc.npmodify + 1
+                    show.Header        = getHeader() #getAttr('showHeader') #True
+                else:
+                    curPlot.showLegend = mo.group('not') is None
+                    acc.npmodify       = acc.npmodify + 1
+                    #showLegend         = True
+                    show.Legend        = getLegend() #getAttr('showLegend') #True
+            return acc
+        # process all arguments
+        reduce(proc_arg, args, self)
+        # decide what to print
+        if show.FLAG:
+            print show.FLAG
+        hl = filter(operator.truth, [show.Header, show.Legend])
+        if hl:
+            print "{0} {1}".format(pplt("show[{0}]:".format(curPlotType)), " ".join(hl))
 
     ## raw TaQL string manipulation ..
     def taqlStr(self, *args):
@@ -2027,6 +2087,21 @@ def run_plotter(cmdsrc, **kwargs):
         mkcmd(rx=ryScale, id="y", args=lambda x: x,
               cb=scale_fn, hlp=Help["xyscale"]) )
 
+    # Allow labels to be set on axes!
+    rxLabel = re.compile(r'label(\s+\S+.*)?$')
+    def label_fn(*args):
+        pt = j().getPlotType()
+        if not pt:
+            print "No plot type selected to operate on"
+            return
+        labels = plots.Plotters[pt].setLabel(*args)
+        for (which, tp, txt) in labels:
+            print "{0}: {1}[{2}] '{3}'".format(pt, which, tp, txt)
+
+    c.addCommand( \
+            mkcmd(rx=rxLabel, id="label", args=lambda x : re.sub(r"^label\s*", "", x), \
+                  cb=label_fn, hlp=Help["label"])) #"""label [<axis1>:'<label1 text>' [<axisN>:'<labelN text>' ...]]\n\tShow or set axis label(s)""") )
+
     # allow sorting by arbitrary keys
     #  sort [p ch fq etc]
     def sort_fn(*args):
@@ -2416,36 +2491,61 @@ def run_plotter(cmdsrc, **kwargs):
 
     # control what to show: flagged, unflagged, both
     c.addCommand( \
-            mkcmd(rx=re.compile(r"^show(\s\S+)?$"), hlp=Help["show"], \
-            args=lambda x: re.sub("^show\s*", "", x), \
+            mkcmd(rx=re.compile(r"^show(\s\S+)*$"), hlp=Help["show"], \
+            args=lambda x: re.sub("^show\s*", "", x).split(), \
             cb=lambda *args: j().showSetting(*args), id="show") )
 
     # produce a hardcopy postscript file
-    rxExt = re.compile(r"^.+\.ps(?P<ft>/v?cps)?$", re.I)
-
+    rxExt    = re.compile(r"(\.[^./]+)$")
+    rxType   = re.compile(r'(/[a-z]+)$', re.I)
+    type2ext = functools.partial(re.compile(r'^[/vc]*', re.I).sub, '.')
+    ext2type = {".ps":"/CPS", ".pdf":"/PDF", ".png":"/PNG"}
     def mk_postscript(e, filenm):
+        if not filenm:
+            ppgplot.pgldev()
+            return
         refresh(e)
         if not e.plots:
             print "No plots to save, sorry"
             return
-        mo = rxExt.match(filenm)
-        if not mo:
-            filenm = filenm + ".ps/cps"
-        elif not mo.group('ft'):
-            filenm = filenm + "/cps"
+
+        ext, tp = None, None
+        pgfn    = copy.deepcopy(filenm)
+        # check if trailing type was given
+        mo = rxType.search(pgfn)
+        if mo:
+            # yes, remember it + strip it
+            tp   = mo.group(1)
+            pgfn = rxType.sub("", pgfn)
+        # id. for extension
+        mo = rxExt.search(pgfn)
+        if mo:
+            # yarrrs. remember + strip
+            # because there is
+            ext  = mo.group(1)
+            pgfn = rxExt.sub("", pgfn)
+        # if there was a type but not extension, use that for extension
+        # if there was an extension but no type don't change that
+        # if there were none, use defaults
+        tbl = { (True, True)  : lambda e, t: (".ps", "/cps"),
+                (True, False) : lambda e, t: (type2ext(t), t),
+                (False, True) : lambda e, t: (e, ext2type.get(e.lower(),"Unknown")),
+                (False, False): lambda e, t: (e, t)}
+        (pext, ptp) = tbl[(ext is None, tp is None)](ext, tp)
+        fn          = pgfn+pext
         try:
-            f = open_file( filenm )
+            f = ppgplot.pgopen(fn+ptp)
         except:
-            raise RuntimeError, "Sorry, failed to open file '{0}'".format(e.wd +"/"+filenm if not filenm[0] == "/" else filenm)
+            raise RuntimeError, "Sorry, failed to open file '{0}'".format(e.wd +"/"+fn if not fn[0] == "/" else fn)
         ppgplot.pgslct(f)
         ppgplot.pgask( False )
         j().drawFunc(e.plots, ppgplot, 0, ncol=e.devNColor)
         ppgplot.pgclos()
         e.select()
-        print "Plots saved to [{0}]".format(filenm)
+        print "Plots saved to [{0}]".format(fn)
 
     c.addCommand( \
-        mkcmd(rx=re.compile("^save\s+\S+$"), id="save",
+        mkcmd(rx=re.compile("^save(\s+\S+)?$"), id="save",
               args=lambda x: re.sub("^save\s*", "", x),
               cb=lambda x: mk_postscript(env(), x),
               hlp="save <filename>\n\tsave current plots to file <filename> in PostScript format.\nThe extension .ps and default lands cape '/cps' orientation will be added automatically if not given") )
