@@ -5,6 +5,8 @@ import sys, os, re, jplotter, command
 NoWgt   = True    # do not produce weight plots
 ScanNo  = None    # automatic scan selection
 Version = "$Id: standardplots,v 1.1 2014-08-08 15:38:41 jive_cc Exp $"
+# Polarization colour scheme as per JIVE standard
+PolCMap = "ckey p['RR']=2 p['LL']=3 p['RL']=4 p['LR']=5"
 
 # One-liner to split a list of things into two lists, one satisfying the predicate, the other not
 partition = lambda p, l: reduce(lambda (y,n), x: (y+[x], n) if p(x) else (y, n+[x]), l, ([], []))
@@ -134,28 +136,11 @@ def mk_anp_chan_cross_plot(settings, scansel, num):
     yield "new all false bl true sb false"
     yield "multi true"
     yield "sort bl" 
-    yield "ckey p['RR']=2 p['LL']=3 p['RL']=4 p['LR']=5"
+    yield PolCMap
     yield "nxy 2 4"
-    #yield "save {0}-cross-{1}.ps/cps".format( settings.myBasename, num )
     yield "refile {0}-cross-{1}.ps/cps".format( settings.myBasename, num )
     yield "pl"
     print "done cross plots on calibrator scan"
-
-def mk_anp_chan_auto_plot(settings, scansel, num):
-    print "generating auto plots [anp/channel] calibrator scan [{0}]".format( num )
-    yield "bl auto"
-    yield "fq *;ch none"
-    yield "new all f bl t sb t"
-    yield "avt scalar;avc none"
-    yield "pt anpchan"
-    yield "y local"
-    # select the scan
-    yield "scan mid-30s to mid+30s where {0}".format( scansel.format(settings.calsrc) )
-    yield "sort bl sb" 
-    #yield "save {0}-auto-{1}.ps/cps".format( settings.myBasename, num )
-    yield "refile {0}-auto-{1}.ps/cps".format( settings.myBasename, num )
-    yield "pl"
-    print "done auto plots on calibrator scan"
 
 def mk_amp_chan_auto_plot(settings, scansel, num):
     print "generating auto plots [amp/channel] calibrator scan [{0}]".format( num )
@@ -170,28 +155,26 @@ def mk_amp_chan_auto_plot(settings, scansel, num):
     yield "new all false bl true sb false time true"
     yield "multi true"
     yield "sort bl" 
-    yield "ckey p['RR']=2 p['LL']=3"
+    yield PolCMap
     yield "nxy 2 4"
-    #yield "save {0}-auto-{1}.ps/cps".format( settings.myBasename, num )
     yield "refile {0}-auto-{1}.ps/cps".format( settings.myBasename, num )
     yield "pl"
     print "done auto plots on calibrator scan"
 
-def mk_amp_time_auto_plot(settings, scansel):
+def mk_amp_time_auto_plot(settings, scansel, num):
     print "generating auto plots [amp/time] calibrator scan"
     yield "bl auto"
     # select inner 90% of the channels
     yield "fq *;ch 0.1*last:0.9*last"
     yield "new all f bl t"
     yield "avt none;avc vector"
-    yield "pt anptime"
+    yield "pt amptime"
     yield "y local"
     # select the scan
     yield "scan start-20m to end+100m where {0}".format( scansel.format(settings.calsrc) )
     yield "time"
     yield "sort bl" 
-    #yield "save {0}-ampphase.ps/cps".format( settings.myBasename )
-    yield "refile {0}-ampphase.ps/cps".format( settings.myBasename )
+    yield "refile {0}-amptime-{1}.ps/cps".format( settings.myBasename, num )
     yield "pl" 
     print "done auto plots on calibrator scan"
 
@@ -211,7 +194,6 @@ def mk_anp_time_cross_plot(settings, timesel, num):
     yield "sort bl" 
     yield "ckey src"
     yield "ptsz 2"
-    #yield "save {0}-ampphase.ps/cps".format( settings.myBasename )
     yield "refile {0}-ampphase-{1}.ps/cps".format( settings.myBasename, num )
     yield "pl" 
     print "done auto plots on calibrator scan"
@@ -230,7 +212,6 @@ def mk_weight_plot(settings):
     yield "new all f bl t"
     yield "y local"
     yield "sort bl"
-    #yield "save {0}-weight.ps/cps".format( settings.myBasename )
     yield "refile {0}-weight.ps/cps".format( settings.myBasename )
     yield "pl"
     print "done weight plot"
@@ -249,13 +230,10 @@ todo = [open_ms(s)]
 # and for the amp/phase vs. time we either use the user
 # selected scan or the first/last calibrator scan
 scans       = []
-anptimescan = None
 
 if ScanNo:
-    anptimescan = "scan_number={0}".format(ScanNo)
-    scans = [anptimescan]
+    scans = ["scan_number={0}".format(ScanNo)]
 else:
-    anptimescan = "field ~ /{0}/i"
     scans = [ "field ~ /{0}/i order by start asc limit 1",
               "field ~ /{0}/i order by end desc limit 1" ]
 for (i, cond) in enumerate(scans):
@@ -265,8 +243,6 @@ for (i, cond) in enumerate(scans):
 # And the anp versus time
 for (i, cond) in enumerate(('none', '$start-5m to +55m')):
     todo.append( mk_anp_time_cross_plot(s, cond, i) )
-
-# todo.append( mk_anp_time_cross_plot(s, aptimescan) )
 
 if not NoWgt:
     todo.append( mk_weight_plot(s) )
