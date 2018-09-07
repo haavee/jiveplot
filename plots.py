@@ -567,11 +567,13 @@ class Page(object):
         self.bottomShift_ = 0
         # and the given layout
         self.layout = copy.deepcopy(plotter.layout())
-        # depending on how to re-arrange the amount of plots come up with a new layout
+        # depending on if it's allowed and how to re-arrange the amount of plots come up with a new layout
         if onePage is AllInOne:
-            # we must grow the layout such that everything fits on one page
+            # we must grow the layout such that everything fits on one page, note: this is non-negotiable
+            if plotter.fixedLayout:
+                print "Warning: fixed layout overridden by AllInOne requirement"
             self._growlayout(nplot, **kwargs)
-        else:
+        elif not plotter.fixedLayout:
             nplot = min(nplot, self.layout.nplots()) if onePage else nplot
             # shrinkage is allowed if number of plots < layout 
             # AND (either nx,ny==1 OR spillage > 25%)
@@ -959,6 +961,7 @@ class Plotter(object):
         self.yHeights            = [0.97]*len(self.yAxis) if yheights is None else CP(yheights)
         self.Description         = CP(desc)
         self.defaultLayout       = CP(lo)
+        self.defaultFixedLayout  = False
         self.defaultDrawer       = CP(Drawers.Points) if drawer is None else CP(drawer)
         self.defaultxScaling     = CP(xscaling) if xscaling is not None else CP(Scaling.auto_global)
         self.defaultyScaling     = CP(yscaling) if yscaling is not None else [Scaling.auto_global] * len(self.yAxis)
@@ -1007,6 +1010,7 @@ class Plotter(object):
         # currently support two subplots in y axis. both subplots share
         # the x-axis
         self.layOut       = CP(self.defaultLayout)
+        self.fixedLayout  = CP(self.defaultFixedLayout)
         self.xScale       = CP(self.defaultxScaling)
         self.yScale       = CP(self.defaultyScaling)
         self.sortOrder    = CP(self.defaultsortOrder)
@@ -1100,12 +1104,20 @@ class Plotter(object):
         except IndexError:
             raise RuntimeError, "This plot type has no panel {0}".format(idx)
 
-    # query or set the layout
-    # the optional argument must be a plots.layout object
+    # query or set the layout.
+    # args is either nothing or a list of strings which are two numbers and/or one string 'fixed'/'flexible'
     def layout(self, *args):
         if not args:
             return self.layOut
-        self.layOut = args[0]
+        flagIdx = -1 if len(args)==1 or len(args)==3 else None # always the last
+        nxy     = slice(0,2) if len(args)>=2 else None
+        if nxy:
+            self.layOut = layout(*map(int, args[nxy]))
+        if flagIdx is not None:
+            self.fixedLayout = (args[flagIdx].lower() == 'fixed')
+
+    def layoutStyle(self):
+        return "fixed" if self.fixedLayout else "flexible"
 
     # set line width, point size or marker size
     def setLineWidth(self, *args):

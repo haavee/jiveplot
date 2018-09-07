@@ -1996,16 +1996,17 @@ def run_plotter(cmdsrc, **kwargs):
         if not pt:
             print "No plot type selected to operate on"
             return
+        plotter = plots.Plotters[pt]
         if args:
-            plots.Plotters[pt].layout( plots.layout(*args) )
-        print "{0} {1}".format(pplt("layout[{0}]:".format(pt)), plots.Plotters[pt].layout() )
+            plotter.layout( *args )
+        print "{0} {1} [{2}]".format(pplt("layout[{0}]:".format(pt)), plotter.layout(), plotter.layoutStyle() )
 
     c.addCommand( \
-        mkcmd(rx=re.compile(r"^nxy(\s+[0-9]+\s+[0-9]+)?$"), \
-              # convert arguments to list-of-integers for the layout_f() function
-              args=lambda x: map(int, re.sub("^nxy\s*", "", x).split()), \
+        mkcmd(rx=re.compile(r"^nxy(\s+[0-9]+\s+[0-9]+)?(\s+(fixed|flexible))?$", re.I), \
+              # don't convert to integers just yet - leave that up to the actual layout function
+              args=lambda x: re.sub("^nxy\s*", "", x).split(), \
               cb=layout_f, id="nxy", \
-              hlp="nxy [nx ny]\n\tprint or set the current plot layout") )
+              hlp="nxy [nx ny] [fixed|flexible]\n\tprint or set the current plot layout\n\nThe layout can be marked as fixed or flexible. In the latter case jplotter might re-arrange the layout to fit all plots on one page when this seems feasible. By default plot layouts are 'flexible'") )
 
 
     # list known plot-types "lp"
