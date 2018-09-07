@@ -1267,6 +1267,19 @@ class weight_time(plotbase):
     def makePlots(self, msname, selection, mapping, **kwargs):
         ## initialize the base class (opens table, does selection)
         super(weight_time, self).__init__(msname, selection, mapping, **kwargs)
+
+        # Support "time averaging" by aggregating data points in time bins of 'solint' length
+        solint          = CP(selection.solint)
+        solint_fn       = solint_none
+        self.timebin_fn = lambda x: x 
+        if not (solint is None):
+            ti = mapping.timeRange.inttm[0]
+            if solint<ti: 
+                raise RuntimeError, "solint value {0:.3f} is less than integration time {1:.3f}".format(solint, ti)
+            self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
+
+            # decide which solint function to use
+            solint_fn = solint_pure_python2a
         
         ## we plot using the WEIGHT column
 
@@ -1282,8 +1295,12 @@ class weight_time(plotbase):
         #print "ANDALSO ",len(self.ts)," TIME STAMPS"
 
         rv  = {}
+        dt  = 0.0
         for (label, dataset) in pts.iteritems():
+            dt += solint_fn( dataset )
             rv[ self.MKLAB(fields, label) ] = dataset
+        if solint:
+            print "SOLINT processing took\t{0:.3f}s".format( dt )
         return rv
 
     def __call__(self, acc, a1, a2, tm, dd, fld, weight, *flag_row):
@@ -1293,6 +1310,7 @@ class weight_time(plotbase):
         flags = unflagged() if not flag_row else flag_row[0]
         # single-pol data will have shape (nrow,) 
         # but our code really would like it to be (nrow, npol), even if 'npol' == 1. (FFS casacore!)
+        tm  = self.timebin_fn( tm )
         d2d = m2d(weight)
         for row in range(shp[0]):
             (fq, sb, plist) = self.ddSelection[ dd[row] ]
