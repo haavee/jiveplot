@@ -1784,24 +1784,28 @@ For the 'time' attribute the full time selection syntax can be used:
     # show
     ##################################################################
 "show":
-"""show [flagged|unflagged|both] [[no]header|legend]
+"""show [flagged|unflagged|both] [[no]header|legend|source]
     display or change which datapoints are being plotted and what meta data is displayed on the page
 
 Controlling the meta data display
 ---------------------------------
 
 By default each page is decorated with a header containg (lots) of meta data
-about the plot and a footer containing the legend for the colours. The display
-of these areas is now optional and can be set/inspected through this command.
-Any space not used for meta data becomes available for plot area. This setting
-is kept per plot type.
+about the plot and a footer containing the legend for the colours. The
+*-versus-time plots also show the source name(s) at their first appearance in
+the plot panels themselves. This latter can, when displaying a lot of
+scans/sources, clutter the plot and hide useful information.
+
+The display of all of this metadata is now optional and can be set/inspected
+through this command. Any space not used for meta data becomes available for
+plot area. These settings are kept per plot type.
 
     # switch off all metadata - whole page is dedicated to plot surface
     jcli> pt ampchan
     jcli> show
     show[ampchan]:            Header Legend
-    jcli> show noheader 
-    show[ampchan]:            NoHeader Legend
+    jcli> show noheader nolegend
+    show[ampchan]:            NoHeader NoLegend
 
 
 Controlling which data points are plotted

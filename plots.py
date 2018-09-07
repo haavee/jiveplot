@@ -485,6 +485,10 @@ class Viewport(object):
     # in three heights. Use world coordinates for this
     @check_attribute('subPlot')
     def printSrcNameByTime(self, device, datasets, xform_x=lambda x: x):
+        # if parent page's parent plot [that's ancestry for you ...] indicates
+        # don't show source name(s) then let's not do that
+        if not self.page.plotter.showSource:
+            return
         # do each source only once
         seensrces        = set()
         # must be done in world coordinates
@@ -977,6 +981,7 @@ class Plotter(object):
         self.defaultyLabel       = [""] * len(self.yAxis)
         self.defaultShowHeader   = True
         self.defaultShowLegend   = True
+        self.defaultShowSource   = True
 
         # dict mapping a specific drawer to a method call on self
         self.drawfuncs = { Drawers.Points: lambda dev, x, y, tp: self.drawPoints(dev, x, y, tp),
@@ -1032,6 +1037,7 @@ class Plotter(object):
         self.yLabel       = CP(self.defaultyLabel)
         self.showHeader   = CP(self.defaultShowHeader)
         self.showLegend   = CP(self.defaultShowLegend)
+        self.showSource   = CP(self.defaultShowSource)
 
     # self.drawers    = [ [drawers-for-yaxis0], [drawers-for-yaxis1], ... ]
     # self.drawMethod = "yaxis0:method yaxis1:method ...."

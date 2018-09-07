@@ -1425,25 +1425,30 @@ class jplotter:
         print "{0} {1}".format(pplt("new plots on:"), 
                 hvutil.dictfold(lambda (ax,val), acc: acc+"{0} ".format(ax) if val else acc, "", self.selection.newPlot))
 
-    _isHeaderLegend = re.compile(r'^(?P<not>no)?(?P<what>header|legend)$', re.I).match
+    _isHeaderLegend = re.compile(r'^(?P<not>no)?(?P<what>header|legend|source)$', re.I).match
     def showSetting(self, *args):
         curPlotType                      = self.getPlotType()
         curPlot                          = None if curPlotType is None else plots.Plotters[curPlotType]
         args                             = filter(operator.truth, args)
         # default: no arguments given? display everything (if there is a current plot type) otherwise show nothing
-        #showFLAG, showHeader, showLegend = [False]*3 if args else [True] + ([True if curPlotType is not None else False])*2
-
+        # note: we cannot return early if curPlot is None because the Flagged/UnFlagged setting is
+        #       not a plot-type dependent setting. If there is a current plot type selected then
+        #       the plot specific settings are displayed/can be changed
         getFlag   = lambda: "{0} {1}{2}".format(pplt("show:"), self._showSetting, " ({0:s} + {1:s})".format(FLAG.Flagged, FLAG.Unflagged) if self._showSetting is FLAG.Both else "")
         getAttr   = lambda which, nm: "" if curPlot is None else "{0}{1}".format("" if getattr(curPlot, which) else "No", nm)
         getHeader = lambda          : getAttr('showHeader', 'Header')
         getLegend = lambda          : getAttr('showLegend', 'Legend')
+        getSource = lambda          : getAttr('showSource', 'Source')
+        setAttr   = lambda which    : (lambda _: None) if curPlot is None else (lambda f: setattr(curPlot, which, f is None))
+        setFlag   = {'header': (setAttr('showHeader'), getHeader, lambda s, v: setattr(s, 'Header', v)),
+                     'legend': (setAttr('showLegend'), getLegend, lambda s, v: setattr(s, 'Legend', v)),
+                     'source': (setAttr('showSource'), getSource, lambda s, v: setattr(s, 'Source', v))}
 
         # In order to be let the proc_arg() function below modify values
         # outside of its scope (i.e. the values at /this/ stack frame) we must
         # either put them in a list or make them attributes of an object.
         # I chose the 2nd approach
-        show      = type('',(), {'FLAG':"", 'Header':"", 'Legend':""} if args else {'FLAG':getFlag(), 'Header':getHeader(), 'Legend':getLegend()})()
-
+        show      = type('',(), {'FLAG':"", 'Header':"", 'Legend':"", 'Source':""} if args else {'FLAG':getFlag(), 'Header':getHeader(), 'Legend':getLegend(), 'Source':getSource()})()
         def proc_arg(acc, arg):
             # expect 'arg' to be one of FLAG enums or (no)?(header|legend)
             newSetting = arg.capitalize()
@@ -1461,22 +1466,29 @@ class jplotter:
                 if curPlot is None:
                     raise RuntimeError("No plot type selected to operate on")
                 # kool. update showing header/legend
-                if mo.group('what').lower()=='header':
-                    curPlot.showHeader = mo.group('not') is None
-                    acc.npmodify       = acc.npmodify + 1
-                    show.Header        = getHeader() #getAttr('showHeader') #True
-                else:
-                    curPlot.showLegend = mo.group('not') is None
-                    acc.npmodify       = acc.npmodify + 1
-                    #showLegend         = True
-                    show.Legend        = getLegend() #getAttr('showLegend') #True
+                fns = setFlag.get(mo.group('what').lower(), None)
+                if fns is None:
+                    raise RuntimeError("Unhandled show setting case '{0}'".format(mo.group('what')))
+                # entry in dict is tuple of set-in-plot + get-current-from-plot and set-in-show-object functions
+                (setf, curf, showf) = fns
+                # get previous value from plot
+                prev = curf()
+                # set the target flag in the plotter
+                setf( mo.group('not') )
+                # get new value from plot
+                new  = curf()
+                # update the current value in the 'show' object (such that we collect
+                # all the updated flags so we can display them later)
+                showf( show, new )
+                # and indicate that something has changed if the value has, in fact, changed
+                acc.npmodify = acc.npmodify + (0 if new==prev else 1)
             return acc
         # process all arguments
         reduce(proc_arg, args, self)
         # decide what to print
         if show.FLAG:
             print show.FLAG
-        hl = filter(operator.truth, [show.Header, show.Legend])
+        hl = filter(operator.truth, [show.Header, show.Legend, show.Source])
         if hl:
             print "{0} {1}".format(pplt("show[{0}]:".format(curPlotType)), " ".join(hl))
 
