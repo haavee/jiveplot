@@ -196,6 +196,7 @@ class plt_dataset(object):
                   numpy.ma.core.MaskedArray: lambda a, m: numpy.ma.MaskedArray(a, mask=numpy.logical_or(a.mask, False if m is None else m))}
 
     def __init__(self, x, y, m=None):
+        print "Create plt_dataset with: type(x)=",type(x)," type(y)=",type(y)," m=",m
         self._yval        = numpy.ma.array( plt_dataset._xformMap[type(y)](y, m) )
         self._xval        = numpy.ma.array( numpy.array(x), mask=CP(self._yval.mask) )
         # cache the masks so that switching between them is easy
