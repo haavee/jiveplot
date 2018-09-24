@@ -247,6 +247,9 @@ for (i, cond) in enumerate(('none', '$start-5m to +55m')):
 if not NoWgt:
     todo.append( mk_weight_plot(s) )
 
+# Just to do a 'r' to show the MS info at the very end
+todo.append("r")
+
 try:
     jplotter.run_plotter(command.scripted(*todo), debug=('-d' in opts))
 except:
