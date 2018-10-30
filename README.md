@@ -22,6 +22,21 @@ select what to plot and go.
 
 This README will not explain any further because there is a colourful [PDF cookbook/tutorial/explanation](jplotter-cookbook-draft-v2.pdf) with far more detail.
 
+As of 30 October 2018 a Singularity image is available. If you have have
+[[Singularity](https://www.sylabs.io/)] installed on your system (or in a VM
+...) getting access to `jiveplot` is as easy as
+
+```
+$ singularity run --bind <local dir>:<container dir> shub:haavee/jiveplot
++++++++++++++++++++++ Welcome to cli +++++++++++++++++++
+$Id: command.py,v 1.16 2015-11-04 13:30:10 jive_cc Exp $
+  'exit' exits, 'list' lists, 'help' helps
+jcli>
+```
+where `<local dir>` is the/a directory on your host where your CASA
+MeasurementSet(s) live and `<container dir>` is the desired mount point
+_inside_ the container.
+
 ## What can be visualized?
 
 Quantities that can be visualized are, e.g., amplitude-versus-time,
