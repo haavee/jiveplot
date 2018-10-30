@@ -8,6 +8,7 @@ radio-astronomical data contained in a MeasurementSet (`ms`).
 
 After downloading and having the
 [[dependencies](https://github.com/haavee/jiveplot#dependencies)] installed
+(as of 30 Oct 2018 you can run from a [[singularity](https://github.com/haavee/jiveplot#singularity)] image)
 type:
 
 ```bash
@@ -21,21 +22,6 @@ and you're in the command line environment. Then open a MS, select data,
 select what to plot and go.
 
 This README will not explain any further because there is a colourful [PDF cookbook/tutorial/explanation](jplotter-cookbook-draft-v2.pdf) with far more detail.
-
-As of 30 October 2018 a Singularity image is available. If you have have
-[[Singularity](https://www.sylabs.io/)] installed on your system (or in a VM
-...) getting access to `jiveplot` is as easy as
-
-```
-$ singularity run --bind <local dir>:<container dir> shub:haavee/jiveplot
-+++++++++++++++++++++ Welcome to cli +++++++++++++++++++
-$Id: command.py,v 1.16 2015-11-04 13:30:10 jive_cc Exp $
-  'exit' exits, 'list' lists, 'help' helps
-jcli>
-```
-where `<local dir>` is the/a directory on your host where your CASA
-MeasurementSet(s) live and `<container dir>` is the desired mount point
-_inside_ the container.
 
 ## What can be visualized?
 
@@ -97,3 +83,31 @@ Python binding to access data.
 
 It uses pgplot to visualize (it was faster and easier than matplotlib):
 [Python binding to pgplot](http://www.jive.eu/~verkout/ppgplot-1.4.tar.gz)
+
+
+# Singularity
+
+As of 30 October 2018 a Singularity image is available. This image contains
+`jiveplot` and all its dependencies.
+
+If you have have [[Singularity](https://www.sylabs.io/)] installed on your
+system (or in a VM ...) getting access to `jiveplot` is as easy as
+
+```bash
+$ singularity run --bind <local dir>:<container dir> shub://haavee/jiveplot
+```
+
+where `<local dir>` is the/a directory on your host where your CASA
+MeasurementSet(s) live and `<container dir>` is the desired mount point
+_inside_ the container.
+
+The `singularity run ...` command should drop you immediately into the `jiveplot` command line interface:
+
+```bash
++++++++++++++++++++++ Welcome to cli +++++++++++++++++++
+$Id: command.py,v 1.16 2015-11-04 13:30:10 jive_cc Exp $
+  'exit' exits, 'list' lists, 'help' helps
+jcli> ms <container dir>/path/to/my_data.ms
+MS my_data.ms opened &cet
+jcli> 
+```
