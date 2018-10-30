@@ -1,3 +1,5 @@
+[![https://www.singularity-hub.org/static/img/hosted-singularity--hub-%23e32929.svg](https://www.singularity-hub.org/static/img/hosted-singularity--hub-%23e32929.svg)](https://singularity-hub.org/collections/1847)
+
 # jplotter / jiveplot
 Python based visualization tool for AIPS++/CASA MeasurementSet data
 
