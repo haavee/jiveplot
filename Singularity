@@ -1,2 +1,2 @@
 Bootstrap: docker
-From:haavee/jiveplot:initial
+From:haavee/jiveplot

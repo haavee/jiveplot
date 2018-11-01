@@ -1,0 +1,2 @@
+sudo docker build -t haavee/jiveplot .
+sudo docker push haavee/jiveplot
