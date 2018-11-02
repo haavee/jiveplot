@@ -10,7 +10,7 @@ radio-astronomical data contained in a MeasurementSet (`ms`).
 
 After downloading and having the
 [[dependencies](https://github.com/haavee/jiveplot#dependencies)] installed
-(as of 30 Oct 2018 you can run from a [[singularity](https://github.com/haavee/jiveplot#singularity)] image)
+(as of 30 Oct 2018 you can run from a [singularity or Docker](https://github.com/haavee/jiveplot#singularity) image)
 type:
 
 ```bash
@@ -87,13 +87,19 @@ It uses pgplot to visualize (it was faster and easier than matplotlib):
 [Python binding to pgplot](http://www.jive.eu/~verkout/ppgplot-1.4.tar.gz)
 
 
-# Singularity
+# Singularity and Docker container images
 
-As of 30 October 2018 a Singularity image is available. This image contains
-`jiveplot` and all its dependencies.
+As of 30 October 2018 [Singularity](https://www.sylabs.io/) and [Docker](https://www.docker.com/) images are available. In fact, the Singularity image just runs the Docker image. The [jiveplot Docker image](https://hub.docker.com/r/haavee/jiveplot/) contains `jiveplot` and all its dependencies and is built on top of the excellent [kernsuite/kern-4](http://kernsuite.info) project.
 
-If you have have [[Singularity](https://www.sylabs.io/)] installed on your
-system (or in a VM ...) getting access to `jiveplot` is as easy as
+Even though all functionality is in the Docker image, we advise to run/install Singularity (if you have a choice) for the following reasons:
+
+- X11 forwarding works out of the box with Singularity, which is convenient if you wish to actually *see* the plots on your screen. According to the interwebs X forwarding can be done through Docker as well but it didn't for me (see below)
+
+- Your `${HOME}` directory is visible by default inside the Singularity container. This has the nice effect that your `jiveplot` command history and aliases are persisted between runs of the image (`~/.jcli.history` for the history). This in turn means that `^r` (reverse-search-history) is actually useful
+
+- I'm not even going to mention the security issues of Docker which has to run as root
+
+### Running the Singularity image
 
 ```bash
 $ singularity run --bind <local dir>:<container dir> shub://haavee/jiveplot
@@ -103,7 +109,15 @@ where `<local dir>` is the/a directory on your host where your CASA
 MeasurementSet(s) live and `<container dir>` is the desired mount point
 _inside_ the container.
 
-The `singularity run ...` command should drop you immediately into the `jiveplot` command line interface:
+### Running the Docker image
+
+Allegedly, running Docker like this:
+```bash
+$ docker run -it --init --network=host -v /tmp/.X11-unix:/tmp/.X11-unix:ro -e DISPLAY="$DISPLAY" -v <local dir>:<container dir> jiveplot
+```
+does X11 forwarding but yours truly has seen it also *not* work. YMMV.
+
+Both commands should drop you immediately into the `jiveplot` command line interface:
 
 ```bash
 +++++++++++++++++++++ Welcome to cli +++++++++++++++++++
