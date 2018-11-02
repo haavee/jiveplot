@@ -9,8 +9,8 @@ radio-astronomical data contained in a MeasurementSet (`ms`).
 ## 5 second workflow
 
 After downloading and having the
-[[dependencies](https://github.com/haavee/jiveplot#dependencies)] installed
-(as of 30 Oct 2018 you can run from a [singularity or Docker](https://github.com/haavee/jiveplot#singularity) image)
+[dependencies](https://github.com/haavee/jiveplot#dependencies) installed
+(as of 30 Oct 2018 you can run from a [singularity or Docker](https://github.com/haavee/jiveplot#singularity) image) [test link](https://github.com/haavee/jiveplot#singularity-and-docker-container-images)
 type:
 
 ```bash
@@ -84,7 +84,11 @@ The package uses the [pyrap, python casacore](https://github.com/casacore/python
 Python binding to access data.
 
 It uses pgplot to visualize (it was faster and easier than matplotlib):
-[Python binding to pgplot](http://www.jive.eu/~verkout/ppgplot-1.4.tar.gz)
+[Python binding to pgplot](https://github.com/haavee/ppgplot) (the github version is preferred over this old  link: http://www.jive.eu/~verkout/ppgplot-1.4.tar.gz)
+
+The github version became online during the course of 2018 and has a `setup.py` which has support for Python2 and 3, where the `ppgplot-1.4.tar.gz` lacks this.
+
+Note: if the original `PGPLOT` is giving too many headaches, the [Giza](https://github.com/danieljprice/giza) library can be used as drop-in replacement for `ppgplot` to link against for its `libpgplot.so`. My [ppgplot fork](https://github.com/haavee/ppgplot)'s `setup.py` has support for having both FORTRAN PGPLOT and Giza installed and allows for compile-time selection of which *actual* pgplot backend to use.
 
 
 # Singularity and Docker container images
