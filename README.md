@@ -10,8 +10,7 @@ radio-astronomical data contained in a MeasurementSet (`ms`).
 
 After downloading and having the
 [dependencies](https://github.com/haavee/jiveplot#dependencies) installed
-(as of 30 Oct 2018 you can run from a [singularity or Docker](https://github.com/haavee/jiveplot#singularity) image) [test link](https://github.com/haavee/jiveplot#singularity-and-docker-container-images)
-type:
+(as of 30 Oct 2018 you can run from a [singularity or Docker](https://github.com/haavee/jiveplot#singularity-and-docker-container-images) image) type:
 
 ```bash
 $ /path/to/jiveplot/jplotter
