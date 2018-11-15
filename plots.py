@@ -573,10 +573,13 @@ class Page(object):
         self.layout = copy.deepcopy(plotter.layout())
         # depending on if it's allowed and how to re-arrange the amount of plots come up with a new layout
         if onePage is AllInOne:
-            # we must grow the layout such that everything fits on one page, note: this is non-negotiable
+            # we must grow or shrink the layout such that everything fits on one page, note: this is non-negotiable
             if plotter.fixedLayout:
                 print "Warning: fixed layout overridden by AllInOne requirement"
-            self._growlayout(nplot, **kwargs)
+            if nplot > self.layout.nplots():
+                self._growLayout(nplot, **kwargs)
+            else:
+                self._shrinkLayout(nplot, **kwargs)
         elif not plotter.fixedLayout:
             nplot = min(nplot, self.layout.nplots()) if onePage else nplot
             # shrinkage is allowed if number of plots < layout 
