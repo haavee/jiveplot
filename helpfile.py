@@ -482,9 +482,10 @@ amount of points to be plotted.
 The averaged data will be time stamped with the midpoint of the 'solint'
 interval.
 
-The 'solint' duration can be specified in d(ays), h(ours), m(inutes) and s(seconds) and
-combinations thereof, honouring the hierarchy - "smaller" units must follow
-"larger" units of time:
+The 'solint' duration can be specified in
+    d(ays), h(ours), m(inutes) and s(seconds)
+and combinations thereof, honouring the hierarchy:
+    "smaller" units must follow "larger" units of time:
 
     > solint 1.2s     (set to 1.2 seconds)
     > solint 1.2m     (set to 1.2 minutes, i.e. 72.0s)
@@ -547,11 +548,61 @@ Of course this parameter's name pays homage to Classic AIPS.
 """,
 
     ##################################################################
+    # nchav
+    ##################################################################
+    "nchav":
+"""nchav [none|<#-of-channels>]
+    set/display channel averaging interval
+
+When channel averaging is requested (see 'avc') this parameter governs how the
+selected channels are processed.
+
+Either all selected channels are averaged down to one or they are binned in
+groups of nchav channels. The table below summarizes what the effects of the
+settings are.
+
+  nchav       result
+  -----       --------------------------------------------------------------
+
+  none        all selected channels [even if they are a disjoint set] are 
+              averaged down to one value. the channel label in the plots 
+              will be '*' in stead of the channel number
+
+  >1          for each selected channel the system computes a destination
+              bin number using integer divide on "<channel #> / nchav".
+              Data will be averaged per destination bin. The channel label
+              will be "<bin number>*"
+
+
+Example:
+    > avc scalar   # turn on channel averaging for nchav to have effect
+    > ch 2:9 21:27 # select some channels
+    > nchav 4      # bin in groups of 4
+
+    Now the output will contain data sets with the following 'channel' labels
+        "0*"    containing data from channel 2,3        (only two channels)
+        "1*"             ,,                  4..7       (full group of 4)
+        "2*"             ,,                  8,9        (two channels again)
+        "5*"             ,,                  21,22,23   (only three channels)
+        "6*"             ,,                  24..27     (guess what)
+
+Of course this parameter's name also pays homage to Classic AIPS.
+""",
+
+    ##################################################################
     # wt
     ##################################################################
 	"wt":
 """wt [double]
-   set/display weight threshold""",
+   set/display weight threshold
+   
+Data with a weigth less than this threshold will be marked as flagged. When
+averaging data in time and/or frequency these points do not count towards the
+average.
+
+See the 'show' command to control the (un)display of flagged data.
+
+""",
 
     ##################################################################
     # new

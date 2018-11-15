@@ -12,7 +12,7 @@ _defaults = dict((zip(_attrl, _nones)))
 
 fmtStr    = "{1}".format
 fmtInt    = "{0}{1}".format
-#            AX.P    AX.CH    AX.SB  AX.FQ   AX.BL   AX.SRC  AX.TIME
+#            AX.P    AX.CH   AX.SB   AX.FQ   AX.BL   AX.SRC  AX.TIME
 _fmt      = [fmtStr, fmtInt, fmtInt, fmtStr, fmtStr, fmtStr, fmtStr]
 _fmtDict  = dict((zip(_attrf, _fmt)))
 

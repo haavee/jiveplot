@@ -1369,6 +1369,22 @@ class jplotter:
             self.dirty = True
         print "{0} {1}{2}".format(pplt("solint:"), self.selection.solint, "" if self.selection.solint is None else "s")
 
+    def nchav(self, *args):
+        if args:
+            if len(args)>1:
+                raise RuntimeError, "nchav() takes only one or no parameters"
+            if args[0].lower()=="none":
+                self.selection.solchan = None
+            else:
+                try:
+                    tmp = int(args[0])
+                    assert tmp > 1, "Invalid nchav value - cannot bin by less than one channel"
+                    self.selection.solchan  = tmp
+                except Exception as E:
+                    raise RuntimeError, "'{0}' is not a valid channel averaging number ({1})".format( args[0], str(E) )
+            self.dirty = True
+        print "{0} {1}".format(pplt("nchav:"), self.selection.solchan)
+
     def getNewPlot(self):
         return copy.deepcopy(self.selection.newPlot)
 
@@ -1533,8 +1549,8 @@ class jplotter:
             return errf("No plot type selected yet")
 
         ## Cannot do both time AND frequency averaging at the moment :-(
-        if sel_.averageTime!=AVG.None and sel_.averageChannel!=AVG.None:
-            raise RuntimeError, "Unfortunately, we cannot do time *and* channel averaging at the same time at the moment. Please disable one (or both)"
+        #if sel_.averageTime!=AVG.None and sel_.averageChannel!=AVG.None:
+        #    raise RuntimeError, "Unfortunately, we cannot do time *and* channel averaging at the same time at the moment. Please disable one (or both)"
 
         ## Create the plots!
         with plotiterator.Iterators[self.selection.plotType] as p:
@@ -1550,7 +1566,7 @@ class jplotter:
         plotar2.limits   = plots.Dict()
 
         E   = os.environ
-        S   = lambda env, deflt: E[env] if env in E else deflt 
+        S   = E.get #lambda env, deflt: E[env] if env in E else deflt 
 
         plotar2.msname        = CP(self.msname)
         plotar2.column        = CP(self.mappings.domain.column)
@@ -1602,11 +1618,15 @@ class jplotter:
 
         if sel_.averageChannel != AVG.None:
             plotar2.comment = plotar2.comment + "[" + str(sel_.averageChannel) + "averaged channels " + \
-                    hvutil.range_repr(hvutil.find_consecutive_ranges(sel_.chanSel)) if sel_.chanSel else "*" + "]"
+                    (hvutil.range_repr(hvutil.find_consecutive_ranges(sel_.chanSel)) if sel_.chanSel else "*") + ("" if sel_.solchan is None else ":{0}".format(sel_.solchan)) + "]"
 
         # transform into plots.Dict() structure
         for (label, dataset) in pl.iteritems():
-            plotar2[label] = plots.plt_dataset(dataset.x, dataset.y, dataset.m)
+            tmp  = plots.plt_dataset(dataset.x, dataset.y, dataset.m)
+            if tmp.useless:
+                print label,": ",tmp.useless
+                continue
+            plotar2[label] = tmp
         return plotar2
 
     def organizeAsPlots(self, plts, np):
@@ -1621,8 +1641,6 @@ class jplotter:
         # 2. Go through all of the plots and reorganize
         def proc_ds(acc, (l, dataset)):
             (plot_l, dataset_l) = splitter(l)
-            #print "Unflatten: {0} => {1}  {2}".format(l, plot_l, dataset_l)
-            #print "           {0} points".format( len(dataset.xval) )
             ds = dataset.prepare_for_display( self._showSetting )
             if ds is None:
                 return acc
@@ -2408,6 +2426,7 @@ def run_plotter(cmdsrc, **kwargs):
         j().averageTime()
         j().averageChannel()
         j().solint()
+        j().nchav()
         j().weightThreshold()
         j().newPlot()
         j().showSetting()
@@ -2871,6 +2890,10 @@ def run_plotter(cmdsrc, **kwargs):
         mkcmd(rx=re.compile(r"^solint\b.*$"), hlp=Help["solint"], \
               args=lambda x: re.sub("^solint\s*", "", x).split(), \
               cb=lambda *args: j().solint(*args), id="solint") )
+    c.addCommand( \
+        mkcmd(rx=re.compile(r"^nchav\b.*$"), hlp=Help["nchav"], \
+              args=lambda x: re.sub("^nchav\s*", "", x).split(), \
+              cb=lambda *args: j().nchav(*args), id="nchav") )
 
     # Weigth threshold
     c.addCommand( \

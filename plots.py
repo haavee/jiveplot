@@ -190,20 +190,38 @@ class minidataset(object):
         self.ylims  = yl
 
 class plt_dataset(object):
-    __slots__ = ('_xval', '_yval', '_xlims', '_ylims', 'isSorted', 'prevFlag', 'n', 'n_nan', '__xval', '__yval', '_m_flagged','_m_unflagged', '_m_nan')
+    __slots__ = ('_xval', '_yval', '_xlims', '_ylims', 'isSorted', 'prevFlag', 'n', 'n_nan', '__xval', '__yval', '_m_flagged','_m_unflagged', '_m_nan', '_m_useless')
     _xformMap = { list:                      lambda a, m: numpy.ma.MaskedArray(numpy.array(a), mask=m),
                   numpy.ndarray:             lambda a, m: numpy.ma.MaskedArray(a, mask=m),
                   numpy.ma.core.MaskedArray: lambda a, m: numpy.ma.MaskedArray(a, mask=numpy.logical_or(a.mask, False if m is None else m))}
 
+
+    @property
+    def useless(self):
+        if self._m_useless is None:
+            self._m_useless = "all NaN!" if numpy.all(self._m_nan) else ""
+            #rv = []
+            #if numpy.all(self._m_nan):
+            #    rv.append("all NaN")
+            #if numpy.all(self._m_flagged) or not numpy.any(self._m_unflagged):
+            #    rv.append("no unflagged data")
+            #self._m_useless = ",".join(rv)
+        return self._m_useless
+
     def __init__(self, x, y, m=None):
-        print "Create plt_dataset with: type(x)=",type(x)," type(y)=",type(y)," m=",m
+        #print "Create plt_dataset with: type(x)=",type(x)," type(y)=",type(y)," m=",m
+        #print "Create plt_dataset with: dtype(x)=",x.dtype," dtype(y)=",y.dtype," m=",m
+        #print "  x.shape=", x.shape, " y.shape=", y.shape
         self._yval        = numpy.ma.array( plt_dataset._xformMap[type(y)](y, m) )
         self._xval        = numpy.ma.array( numpy.array(x), mask=CP(self._yval.mask) )
         # cache the masks so that switching between them is easy
         self._m_flagged   = CP(self._yval.mask)
         self._m_unflagged = ~self._m_flagged
         self._m_nan       = ~numpy.isfinite(self._yval.data)
+        self._m_useless   = None
         self.isSorted     = False
+        #print "    all(flagged)? ", numpy.all(self._m_flagged)," all(unflagged)? ",numpy.all(self._m_unflagged)," all(NaN)? ",numpy.all(self._m_nan)
+        #print "    any(flagged)? ", numpy.any(self._m_flagged)," any(unflagged)? ",numpy.any(self._m_unflagged)," any(NaN)? ",numpy.any(self._m_nan)
 
     # sort by x-axis value. do that once
     def sort(self):
