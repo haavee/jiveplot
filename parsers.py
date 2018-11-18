@@ -2099,12 +2099,12 @@ def parse_filter_expr(qry, **kwargs):
 
 ######  Our grammar
 
-#    animate <selection> by <attributes> <eof>
+#    animate <selection> by <attributes> [with <options>] <eof>
 #    (The 'animate' keyword is taken to be matched out in the command parser)
 #
 #    # empty selection means "current"
 #    <selection>  = "" | <dataset>
-#    <attributes> = <attribute> { ',' <attribute> }
+#    <attributes> = <attribute> { ',' <attributes> }
 #
 #    <dataset>    = {<identifier> ':'} <expression>
 #    <identifier> = [a-zA-Z][0-9a-zA-Z]*   # alphanumeric variable name
@@ -2112,6 +2112,9 @@ def parse_filter_expr(qry, **kwargs):
 #    <attribute>  = <attrname> { <sortorder> }
 #    <attrname>   = 'time' | 'src' | 'bl' | 'p' | 'sb' | 'ch' | 'type'
 #    <sortorder>  = 'asc' | 'desc'
+#
+#    <options>    = <option> { ',', <options> }
+#    <option>     = 'fps' '=' <float>
 #
 #    <expression> = <expr> { 'and' <expression> | 'or' <expression> }
 #    <expr>       = <condition> | 'not' <expression> | '(' <expression> ')'
@@ -2127,6 +2130,8 @@ def parse_filter_expr(qry, **kwargs):
 #    <value>      = <number> | <text> 
 #    <text>       = ''' <characters> '''
 #    <regex>      = '/' <text> '/'
+#    <number>     = [0-9]+
+#    <float>      = (see FLOAT above)
 
 
 
@@ -2175,7 +2180,7 @@ def parse_animate_expr(qry, **kwargs):
     # basic lexical elements
     # These are the tokens for the tokenizer
     tokens = [
-        token_def(r"\b(animate|by|asc|desc)\b",    keyword_t()),
+        token_def(r"\b(animate|by|asc|desc|with)\b",    keyword_t()),
         # the attribute names we support
         #(re.compile(r"\b(p|ch|sb|fq|bl|time|src|type)\b", re.I), xform_t('attribute', mk_attribute_getter)),
         (re.compile(r"\b(p|ch|sb|fq|bl|time|src|type)\b", re.I), xform_t('attribute', str.upper)),
@@ -2214,6 +2219,7 @@ def parse_animate_expr(qry, **kwargs):
         token_def(r":",                                     simple_t('colon')),
         token_def(r"-|\+|\*|/",                             operator_t('operator')),
         # values + regex
+        float_token(),
         int_token(),
         token_def(r"/[^/]+/i?\b",                           xform_t('regex', regex2regex)),
         token_def(r"\$(?P<sym>[a-zA-Z][a-zA-Z_]*)",         resolve_t('external', 'sym')),
@@ -2255,13 +2261,15 @@ def parse_animate_expr(qry, **kwargs):
         next(s)
         # now we must parse the <attributes>
         groupby_f = parse_attributes(s)
+        # now we may see 'with' followed by settings
+        options  = parse_options(s)
         # the only token left should be 'eof' AND, after consuming it,
         # the stream should be empty. Anything else is a syntax error
         try:
             if tok(s).type is None:
                 next(s)
         except StopIteration:
-            return (selection_f, groupby_f)
+            return (selection_f, groupby_f, options)
         raise SyntaxError, "(at least one)token left after parsing: {0}".format(tok(s))
     
     #    <selection>  = "" | <dataset>
@@ -2569,6 +2577,45 @@ def parse_animate_expr(qry, **kwargs):
         # (see https://wiki.python.org/moin/HowTo/Sorting ) we must apply the sorting
         # functions in reverse order
         return (operator.attrgetter(*groupby), lambda x: reduce(lambda acc, sortfn: sortfn(acc), reversed(sortfns), x))
+
+    # parse the options, if any
+    def parse_options(s):
+        options = type('',(),{})()
+        # are we looking at the correct keyword, 'with'?
+        if tok(s).type!='with':
+            return options
+        # stay here to parse key=value as long as we find'em
+        next(s)
+        while True:
+            option = parse_option(s)
+            setattr(options, option[0], option[1])
+            # if we don't see ',' we assume there's no more options
+            # so break from the loop and let the next step check validity
+            # of input
+            next(s)
+            if tok(s).type is not 'comma':
+                break
+        return options
+   
+    option_type_map = {'fps': (float, ['int','float'])}
+    def parse_option(s):
+        # need to see an identifier
+        key = tok(s)
+        if key.type != 'identifier':
+            raise SyntaxError("option specifier does not start with an identifier (found {0})".format(key))
+        # next up '='
+        next(s)
+        equal = tok(s)
+        if equal.type != 'compare' or equal.value != operator.eq:
+            raise SyntaxError("Did not find '=' after option key but {0}".format(equal))
+        # depending on recognized option type look for specific following token
+        (convert, expect) = option_type_map.get( key.value.lower(), (lambda x: x, None) )
+        next(s)
+        got = tok(s)
+        if expect is not None and got.type not in expect:
+            raise SyntaxError("Expected value of type {0} for key {1}, got {2} instead".format(expect, key.value, got))
+        # convert the parsed value
+        return (key.value.lower(), convert(got.value))
 
 
     class state_type:

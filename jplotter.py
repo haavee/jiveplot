@@ -2274,9 +2274,9 @@ def run_plotter(cmdsrc, **kwargs):
         # check what the parser gave us
         # ( (dataset, filter), (groupby_f, sortfns) )
         # if the dataset is not available, not much to do is there?
-        (ds_filter, grp_sort)  = cruft
-        (dataset_id, filter_f) = ds_filter
-        (groupby_f,  sort_f)   = grp_sort
+        (ds_filter, grp_sort, settings) = cruft
+        (dataset_id, filter_f)          = ds_filter
+        (groupby_f,  sort_f)            = grp_sort
         e = env() 
         if dataset_id is None:
             # no dataset from memory so we'll have to refresh
@@ -2307,7 +2307,7 @@ def run_plotter(cmdsrc, **kwargs):
         e_time = NOW()
         print "Preparing animation took\t{0:.3f}s                ".format( e_time - s_time )
         # loop indefinitely
-        fps = 0.7#3
+        fps = settings.fps if hasattr(settings, 'fps') else 0.7
         try:
             env().select()
             dT = 1.0/fps
@@ -2318,7 +2318,7 @@ def run_plotter(cmdsrc, **kwargs):
                     # TODO: expand nx/ny to accomodate this?
                     s = NOW()
                     with plots.pgenv(ppgplot) as p:
-                        j().drawFunc(page_plots, ppgplot, 0, plots.AllInOne, ncol=env().devNColor)
+                        j().drawFunc(page_plots, ppgplot, 0, plots.AllInOne, ncol=env().devNColor, verbose=False)
                     while True:
                         nsec = (s + dT) - NOW()
                         if nsec<=0:

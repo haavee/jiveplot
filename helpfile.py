@@ -1728,17 +1728,32 @@ Examples:
     # animate
     ##################################################################
 "animate":
-"""animate [<selection>] by <attribute> [, <attribute> ...]
+"""animate [<selection>] by <attribute> [, <attribute> ...] [with <options>]
     animate current set of plots by e.g. 'time' for a movie
 
 Groups all the (selected) plots by distinct <attribute> value and cycles through
-those. A simple case would be:
+those. Use 'with <options>' to override default options, currently only the
+framerate can be set, see below. A simple case would be:
 
-    > animate by time
+    > animate by time with fps = 3
 
-to make a time series ("movie") of the current data set. This can be used to see
-if a particular feature persists in time, say RFI in a amplitude-vs-channel
-plot.
+to make a time series ("movie") of the current data set at 3 frames per second
+in stead of the default 0.7 frames per second.  This can be used to see if a
+particular feature persists in time, say RFI in a amplitude-vs-channel plot.
+
+<options> are specified as a comma-separated list of 'key=value' entries:
+    <options> = <option> { ',' <options> }
+    <option>  = <key> '=' value
+
+Currently recognized options:
+    fps = <number>       Set the target frame rate to 'fps' frames-per-second.
+                         The default frame rate is 0.7.
+                         Note that if drawing a single frame takes longer than
+                         1.0/fps seconds (e.g. large data sets) the frame rate
+                         may deviate from what is requested
+
+Any other <key> '=' <value> options will be parsed, checked for 'validity' and
+then completely ignored silently.
 
 <selection> is an optional filter to subselect data from a stored dataset
 where the default is the currently loaded one:
