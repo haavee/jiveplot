@@ -1621,12 +1621,15 @@ class jplotter:
                     (hvutil.range_repr(hvutil.find_consecutive_ranges(sel_.chanSel)) if sel_.chanSel else "*") + ("" if sel_.solchan is None else ":{0}".format(sel_.solchan)) + "]"
 
         # transform into plots.Dict() structure
+        nUseless = 0
         for (label, dataset) in pl.iteritems():
             tmp  = plots.plt_dataset(dataset.x, dataset.y, dataset.m)
             if tmp.useless:
-                print label,": ",tmp.useless
+                nUseless += 1
                 continue
             plotar2[label] = tmp
+        if nUseless>0:
+            print "WARNING: {0} out of {1} data sets contained only NaN values ({2:.2f}%)!".format( nUseless, len(pl), 100.0*(float(nUseless)/len(pl)) )
         return plotar2
 
     def organizeAsPlots(self, plts, np):
@@ -1868,12 +1871,10 @@ class environment(object):
         if self.device:
             ppgplot.pgslct(self.device)
             ppgplot.pgclos()
-            self.device = None
+        self.device = None
 
     def changeDev(self, newDevName):
-        if self.device:
-            ppgplot.pgclos()
-            self.device = None
+        self.close()
         self.devName = newDevName
         self.select()
 

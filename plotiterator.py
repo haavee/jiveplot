@@ -165,6 +165,7 @@ AX       = jenums.Axes
 AVG      = jenums.Averaging
 YTypes   = plots.YTypes
 Quantity = collections.namedtuple('Quantity', ['quantity_name', 'quantity_fn'])
+MA       = numpy.ma.array
 
 # We support different kinds of averaging
 def avg_vectornorm(ax):
@@ -614,8 +615,8 @@ class dataset_solint:
         #print "dataset solint: add yv={0} [m={1}] to bin {2}".format(yv, m, xv)
         #if type(yv) is not numpy.ma.MaskedArray:
         #    print "dataset_solint.append() yv is not masked, it is ",type(yv)
-        if type(yv) is numpy.ma.core.MaskedConstant:
-            print "dataset_solint.append() yv is not masked, it is ",yv
+        #if type(yv) is numpy.ma.core.MaskedConstant:
+        #    raise RuntimeError("dataset_solint.append() yv is not masked, it is {0}".format(yv))
         self.d[xv] = numpy.ma.add(yv, self.d[xv])
         self.m[xv] = numpy.add(~m, self.m[xv])
 
@@ -629,6 +630,7 @@ class dataset_solint:
             return
         # normal average = arithmetic mean i.e. summed value / count of valid values
         fn = numpy.ma.divide
+        #fn = numpy.divide
         if method==AVG.Vectornorm:
             # for vector norm we divide by the largest complex amplitude
             fn = lambda x, _: x/numpy.max(numpy.abs(x))
@@ -642,8 +644,19 @@ class dataset_solint:
         while self.d:
             (x, ys) = self.d.popitem()
             counts  = self.m.pop(x)
+            #ys      = numpy.ma.array(ys    , mask= ~numpy.isfinite(ys))
+            #counts  = numpy.ma.array(counts, mask= counts==0)
+            self.a[x] = fn(MA(ys , mask=~numpy.isfinite(ys)), MA(counts, mask= counts==0))
+            #self.a[x] = fn(ys, counts) #numpy.ma.MaskedArray(data, mask=mask)
             #print "   item[{0}] x={1} ys={2} counts={3}".format(cnt, x, ys, counts)
-            self.a[x] = numpy.ma.MaskedArray(fn(ys, counts), mask=numpy.logical_or(ys.mask, ~numpy.array(counts, dtype=numpy.bool)))
+            #mask    = numpy.array(counts==0, dtype=numpy.bool)
+            #data    = fn(ys, counts)
+            #print "handling x={0} counts={1}".format(x, counts)
+            #print "         ys={0} => fn(ys, count)={1}".format( ys, data )
+            #self.a[x] = data #numpy.ma.MaskedArray(data, mask=mask)
+            #self.a[x] = numpy.ma.MaskedArray(fn(ys, counts), mask=numpy.array(counts==0, dtype=numpy.bool))
+            #self.a[x] = numpy.ma.MaskedArray(fn(ys, counts), mask=numpy.logical_or(ys.mask if hasattr(ys,'mask') else False,
+            #                                                                       ~numpy.array(counts, dtype=numpy.bool)))
             #print "     -> ",self.a[x]
             #cnt = cnt + 1
         #self.y = self.y / self.n
@@ -1072,14 +1085,39 @@ class data_quantity_time(plotbase):
         # some sanity checks
         if solchan is not None and avgChannel==AVG.None:
             raise RuntimeError("nchav value was set without specifiying a channel averaging method; please tell me how you want them averaged")
+        if solint is not None and avgTime==AVG.None:
+            raise RuntimeError("solint value was set without specifiying a time averaging method; please tell me how you want your time range(s) averaged")
+
+        ## initialize the base class
+        super(data_quantity_time, self).__init__(msname, selection, mapping, **kwargs)
+
+        # channel selection+averaging schemes; support averaging over channels (or chunks of channels)
+        chansel  = Ellipsis #None
+        n_chan   = self.table[0]['DATA'].shape[0]
+        if selection.chanSel:
+            channels = list(sorted(set(CP(selection.chanSel))))
+            max_chan = max(channels)
+            # if any of the indexed channels > n_chan that's an error
+            if max_chan>=n_chan:
+                raise RuntimeError("At least one selected channel ({0}) > largest channel index ({1})".format(max_chan, n_chan-1))
+            # also <0 is not quite acceptable
+            if min(channels)<0:
+                raise RuntimeError("Negative channel number {0} is not acceptable".format(min(channels)))
+            # if the user selected all channels (by selection
+            # 'ch 0:<last>' in stead of 'ch none' we don't 
+            # override the default channel selection (which is more efficient)
+            if channels!=range(n_chan):
+                chansel = channels
+            # ignore channel averaging if only one channel specified
+            if len(chansel)==1 and avgChannel != AVG.None:
+                print "WARNING: channel averaging method {0} ignored because only one channel selected".format( avgChannel )
+                avgChannel = AVG.None
+
         # Test if the selected combination of averaging settings makes sense
         setup = data_quantity_time._averaging.get((avgChannel, avgTime), None)
         if setup is None:
             raise RuntimeError("the combination of {0} channel + {1} time averaging is not supported".format(avgChannel, avgTime))
         (avgchan_fn, avgtime_fn, postpone) = setup
-
-        ## initialize the base class
-        super(data_quantity_time, self).__init__(msname, selection, mapping, **kwargs)
 
         # How integration/averaging actually is implemented is by modifying the
         # time stamp.  By massaging the time stamp into buckets of size
@@ -1112,8 +1150,6 @@ class data_quantity_time(plotbase):
                     ranges = filter(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
                     return reduce(lambda acc, (s, e, m): numpy.put(acc, numpy.where((acc>=s) & (acc<=e)), m) or acc, ranges, x) 
                 self.timebin_fn = do_it
-                #self.timebin_fn = lambda x: \
-                #        reduce(lambda acc, (s, e, m): numpy.put(acc, numpy.where((acc>=s) & (acc<=e)), m) or acc, timerng, x)
             else:
                 # Check if solint isn't too small
                 ti = mapping.timeRange.inttm[0]
@@ -1121,23 +1157,6 @@ class data_quantity_time(plotbase):
                     raise RuntimeError("solint value {0:.3f} is less than integration time {1:.3f}".format(solint, ti))
                 self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
 
-        # channel selection+averaging schemes; support averaging over channels (or chunks of channels)
-        chansel  = Ellipsis #None
-        n_chan   = self.table[0]['DATA'].shape[0]
-        if selection.chanSel:
-            channels = list(sorted(set(CP(selection.chanSel))))
-            max_chan = max(channels)
-            # if any of the indexed channels > n_chan that's an error
-            if max_chan>=n_chan:
-                raise RuntimeError("At least one selected channel ({0}) > largest channel index ({1})".format(max_chan, n_chan-1))
-            # also <0 is not quite acceptable
-            if min(channels)<0:
-                raise RuntimeError("Negative channel number {0} is not acceptable".format(min(channels)))
-            # if the user selected all channels (by selection
-            # 'ch 0:<last>' in stead of 'ch none' we don't 
-            # override the default channel selection (which is more efficient)
-            if channels!=range(n_chan):
-                chansel = channels
 
         # chansel now is Ellipsis (all channels) or a list of some selected channels
         self.chanidx   = list()
@@ -1395,7 +1414,7 @@ class data_quantity_time(plotbase):
                     l = ["", (a1[row], a2[row]), fq, sb, fld[row], pname, chn]
                     for (qnm, qval) in qd:
                         l[0] = qnm
-                        acc[tuple(l)].append(tm[row], qval[row, chi, pidx], qval.mask[row, chi, pidx])
+                        acc[tuple(l)].append(tm[row], qval.data[row, chi, pidx], qval.mask[row, chi, pidx])
         return acc
 
 
