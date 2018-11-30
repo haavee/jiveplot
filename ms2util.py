@@ -1144,7 +1144,7 @@ def indexr(msname, **kwargs):
     rv = []
     ag = operator.itemgetter('SCAN_NUMBER', 'ARRAY_ID', 'FIELD_ID', 'EXPOSURE')
     with opentable(msname) as ms:
-        ti = ms.iter(["ARRAY_ID", "SCAN_NUMBER"])
+        ti = ms.iter(["ARRAY_ID", "SCAN_NUMBER", "FIELD_ID"])
         for tab in ti:
             (sn, aid, fld, exp) = ag(tab[0])
             tms                 = tab.getcol('TIME')
