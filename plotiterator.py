@@ -165,7 +165,11 @@ AX       = jenums.Axes
 AVG      = jenums.Averaging
 YTypes   = plots.YTypes
 Quantity = collections.namedtuple('Quantity', ['quantity_name', 'quantity_fn'])
-MA       = numpy.ma.array
+ARRAY    = numpy.array
+MARRAY   = numpy.ma.array
+_ArrayT  = numpy.ndarray
+_MArrayT = numpy.ma.core.MaskedArray
+IsArray  = lambda x: isinstance(x, _ArrayT) or isinstance(x, _MArrayT)
 
 # We support different kinds of averaging
 def avg_vectornorm(ax):
@@ -617,7 +621,17 @@ class dataset_solint:
         #    print "dataset_solint.append() yv is not masked, it is ",type(yv)
         #if type(yv) is numpy.ma.core.MaskedConstant:
         #    raise RuntimeError("dataset_solint.append() yv is not masked, it is {0}".format(yv))
-        self.d[xv] = numpy.ma.add(yv, self.d[xv])
+        # Masked values should not add towards the average
+        if IsArray(yv):
+            yv[m] = 0
+        elif m:
+            yv = 0 
+        #self.d[xv] = numpy.ma.add(MARRAY(yv, mask=m).filled(0).data, self.d[xv])
+        #print "SOLINT.append: xv={0} yv={1} m={2}".format(xv, yv, m)
+        #print "    append-to: {0}".format( self.d[xv] )
+        #self.d[xv] = numpy.add(MARRAY(yv, mask=m).filled(0).data, self.d[xv])
+        #self.d[xv] = numpy.ma.add(yv, self.d[xv])
+        self.d[xv] = numpy.add(yv, self.d[xv])
         self.m[xv] = numpy.add(~m, self.m[xv])
 
     # integrate into the current buffer
@@ -629,8 +643,8 @@ class dataset_solint:
         if self.a is not None:
             return
         # normal average = arithmetic mean i.e. summed value / count of valid values
-        fn = numpy.ma.divide
-        #fn = numpy.divide
+        #fn = numpy.ma.divide
+        fn = numpy.divide
         if method==AVG.Vectornorm:
             # for vector norm we divide by the largest complex amplitude
             fn = lambda x, _: x/numpy.max(numpy.abs(x))
@@ -645,8 +659,22 @@ class dataset_solint:
             (x, ys) = self.d.popitem()
             counts  = self.m.pop(x)
             #ys      = numpy.ma.array(ys    , mask= ~numpy.isfinite(ys))
+            #ys      = numpy.array(ys)
             #counts  = numpy.ma.array(counts, mask= counts==0)
-            self.a[x] = fn(MA(ys , mask=~numpy.isfinite(ys)), MA(counts, mask= counts==0))
+            #counts  = numpy.array(counts)
+            #data    = fn(ys, counts)
+            #print "handling x={0} counts={1}".format(x, counts)
+            #print "         ys={0} => fn(ys, count)={1}".format( ys, data )
+            #self.a[x] = MA(data, mask=numpy.logical_or(~numpy.isfinite(data), (counts==0)))
+            # ---- latest ---------------
+            counts  = ARRAY(counts)
+            data    = fn(ARRAY(ys), counts)
+            #print "handling x={0} counts={1}".format(x, counts)
+            #print "         ys={0} => fn(ys, count)={1}".format(ARRAY(ys), data)
+            self.a[x] = MARRAY(data, mask=numpy.logical_or(~numpy.isfinite(data), (counts==0)))
+            # ---------------------------
+            #self.a[x] = fn(MA(ys , mask=~numpy.isfinite(ys)), numpy.array(counts))
+            #self.a[x] = fn(MA(ys , mask=~numpy.isfinite(ys)), MA(counts, mask=(counts==0)))
             #self.a[x] = fn(ys, counts) #numpy.ma.MaskedArray(data, mask=mask)
             #print "   item[{0}] x={1} ys={2} counts={3}".format(cnt, x, ys, counts)
             #mask    = numpy.array(counts==0, dtype=numpy.bool)
