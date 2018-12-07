@@ -213,6 +213,7 @@ def mk_weight_plot(settings):
     yield "y local"
     yield "sort bl"
     yield "refile {0}-weight.ps/cps".format( settings.myBasename )
+    yield "wt 0.1"
     yield "pl"
     print "done weight plot"
 
@@ -222,7 +223,7 @@ def mk_weight_plot(settings):
 ##                     And finally run them
 ##
 #####################################################################
-s = Settings(args[0], args[1], args[2])
+s = Settings(args[0] if args[0][-1] != '/' else args[0][:-1], args[1], args[2])
 
 todo = [open_ms(s)]
 
