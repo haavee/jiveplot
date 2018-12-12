@@ -80,7 +80,8 @@ class Settings(object):
         self.measurementset = ms
         self.refant         = refant
         self.calsrc         = re.sub(r'(\.|\+|\(|\)|\[|\])', r'\\\1', calsrc)
-        self.myBasename     = re.sub(r"\.ms", "", os.path.basename(self.measurementset))
+        self.myBasename     = re.sub(r"\.ms", "", os.path.basename(self.measurementset \
+                      if self.measurementset[-1] != '/' else self.measurementset[:-1]))
         self.tempFileName   = "/tmp/sptf-{0}.ps".format( os.getpid() )
 
     def cleanup(self):
@@ -135,7 +136,7 @@ def mk_anp_chan_cross_plot(settings, scansel, num):
     yield "scan mid-30s to mid+30s where {0}".format( scansel.format(settings.calsrc) )
     yield "new all false bl true sb false"
     yield "multi true"
-    yield "sort bl" 
+    yield "sort bl"
     yield PolCMap
     yield "nxy 2 4"
     yield "refile {0}-cross-{1}.ps/cps".format( settings.myBasename, num )
@@ -154,7 +155,7 @@ def mk_amp_chan_auto_plot(settings, scansel, num):
     yield "scan mid-30s to mid+30s where {0}".format( scansel.format(settings.calsrc) )
     yield "new all false bl true sb false time true"
     yield "multi true"
-    yield "sort bl" 
+    yield "sort bl"
     yield PolCMap
     yield "nxy 2 4"
     yield "refile {0}-auto-{1}.ps/cps".format( settings.myBasename, num )
@@ -173,9 +174,9 @@ def mk_amp_time_auto_plot(settings, scansel, num):
     # select the scan
     yield "scan start-20m to end+100m where {0}".format( scansel.format(settings.calsrc) )
     yield "time"
-    yield "sort bl" 
+    yield "sort bl"
     yield "refile {0}-amptime-{1}.ps/cps".format( settings.myBasename, num )
-    yield "pl" 
+    yield "pl"
     print "done auto plots on calibrator scan"
 
 def mk_anp_time_cross_plot(settings, timesel, num):
@@ -191,11 +192,11 @@ def mk_anp_time_cross_plot(settings, timesel, num):
     # yield "scan start-20m to end+100m where {0}".format( scansel.format(settings.calsrc) )
     yield "src none"
     yield "time {0}".format(timesel)
-    yield "sort bl" 
+    yield "sort bl"
     yield "ckey src"
     yield "ptsz 2"
     yield "refile {0}-ampphase-{1}.ps/cps".format( settings.myBasename, num )
-    yield "pl" 
+    yield "pl"
     print "done auto plots on calibrator scan"
 
 def mk_weight_plot(settings):
@@ -213,6 +214,7 @@ def mk_weight_plot(settings):
     yield "y local"
     yield "sort bl"
     yield "refile {0}-weight.ps/cps".format( settings.myBasename )
+    yield "wt 0.1"
     yield "pl"
     print "done weight plot"
 
