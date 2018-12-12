@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import sys, os, re, jplotter, command
+import sys, os, re, jplotter, command, functools.partial
 
 # program default(s)
 NoWgt   = True    # do not produce weight plots
@@ -10,6 +10,11 @@ PolCMap = "ckey p['RR']=2 p['LL']=3 p['RL']=4 p['LR']=5"
 
 # One-liner to split a list of things into two lists, one satisfying the predicate, the other not
 partition = lambda p, l: reduce(lambda (y,n), x: (y+[x], n) if p(x) else (y, n+[x]), l, ([], []))
+# function composition is really great
+compose   = lambda *fns: lambda x: reduce(lambda a, f: f(a), reversed(fns), x)
+
+# full MS path to plot base name transformation
+mk_basenm = compose(partial(re.sub, r'\.ms', ''), os.path.basename, partial(re.sub, r'/*$', ''))
 
 # returns None if the argument wasn't present, tp(<value>) if it was
 # (such that it will give an exception if e.g. you expect int but
@@ -79,9 +84,8 @@ class Settings(object):
     def __init__(self, ms, refant, calsrc):
         self.measurementset = ms
         self.refant         = refant
-        self.calsrc         = re.sub(r'(\.|\+|\(|\)|\[|\])', r'\\\1', calsrc)
-        self.myBasename     = re.sub(r"\.ms", "", os.path.basename(self.measurementset \
-                      if self.measurementset[-1] != '/' else self.measurementset[:-1]))
+        self.calsrc         = re.escape(calsrc) # builtin is better than bad homegrown :D
+        self.myBasename     = mk_basenm( self.measurementset )
         self.tempFileName   = "/tmp/sptf-{0}.ps".format( os.getpid() )
 
     def cleanup(self):
@@ -133,7 +137,7 @@ def mk_anp_chan_cross_plot(settings, scansel, num):
     yield "pt anpchan"
     yield "y local"
     # select the scan
-    yield "scan mid-30s to mid+30s where {0}".format( scansel.format(settings.calsrc) )
+    yield "scan mid-30s to mid+30s where {0}".format( scansel(settings.calsrc) )
     yield "new all false bl true sb false"
     yield "multi true"
     yield "sort bl"
@@ -152,7 +156,7 @@ def mk_amp_chan_auto_plot(settings, scansel, num):
     yield "pt ampchan"
     yield "y 0 2"
     # select the scan
-    yield "scan mid-30s to mid+30s where {0}".format( scansel.format(settings.calsrc) )
+    yield "scan mid-30s to mid+30s where {0}".format( scansel(settings.calsrc) )
     yield "new all false bl true sb false time true"
     yield "multi true"
     yield "sort bl"
@@ -172,7 +176,7 @@ def mk_amp_time_auto_plot(settings, scansel, num):
     yield "pt amptime"
     yield "y local"
     # select the scan
-    yield "scan start-20m to end+100m where {0}".format( scansel.format(settings.calsrc) )
+    yield "scan start-20m to end+100m where {0}".format( scansel(settings.calsrc) )
     yield "time"
     yield "sort bl"
     yield "refile {0}-amptime-{1}.ps/cps".format( settings.myBasename, num )
@@ -189,7 +193,7 @@ def mk_anp_time_cross_plot(settings, timesel, num):
     yield "pt anptime"
     yield "y local"
     # select the scan
-    # yield "scan start-20m to end+100m where {0}".format( scansel.format(settings.calsrc) )
+    # yield "scan start-20m to end+100m where {0}".format( scansel(settings.calsrc) )
     yield "src none"
     yield "time {0}".format(timesel)
     yield "sort bl"
@@ -231,13 +235,17 @@ todo = [open_ms(s)]
 # Per selected scan we plot the auto and cross spectra
 # and for the amp/phase vs. time we either use the user
 # selected scan or the first/last calibrator scan
+# Note: 'scans' is now a list of functions that, when called
+#       with an argument, return a proper scan selection string.
+#       (if a ScanNo is given that argument is ignored :D)
+#       Allows for more freedom producing the scan selection query.
 scans       = []
 
 if ScanNo:
-    scans = ["scan_number={0}".format(ScanNo)]
+    scans = ["scan_number={0}".format(ScanNo).format]
 else:
-    scans = [ "field ~ /{0}/i order by start asc limit 1",
-              "field ~ /{0}/i order by end desc limit 1" ]
+    scans = [ "field ~ /{0}/i order by start asc limit 1".format,
+              "field ~ /{0}/i order by end desc limit 1".format ]
 for (i, cond) in enumerate(scans):
     todo.append( mk_anp_chan_cross_plot(s, cond, i) )
     todo.append( mk_amp_chan_auto_plot(s, cond, i) )
