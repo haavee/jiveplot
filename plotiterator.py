@@ -159,17 +159,22 @@ except:
     havePyCasa = False
 
 ## Introduce some shorthands
-NOW      = time.time
-CP       = copy.deepcopy
-AX       = jenums.Axes
-AVG      = jenums.Averaging
-YTypes   = plots.YTypes
-Quantity = collections.namedtuple('Quantity', ['quantity_name', 'quantity_fn'])
-ARRAY    = numpy.array
-MARRAY   = numpy.ma.array
-_ArrayT  = numpy.ndarray
-_MArrayT = numpy.ma.core.MaskedArray
-IsArray  = lambda x: isinstance(x, _ArrayT) or isinstance(x, _MArrayT)
+NOW        = time.time
+CP         = copy.deepcopy
+AX         = jenums.Axes
+AVG        = jenums.Averaging
+YTypes     = plots.YTypes
+Quantity   = collections.namedtuple('Quantity', ['quantity_name', 'quantity_fn'])
+# do not drag in all numpy.* names but by "resolving" them at this level
+# we shave off a lot of python name lookups. this has an effect on code which
+# is called a lot of times per second - like the code in here
+ARRAY      = numpy.array
+MARRAY     = numpy.ma.array
+ISFINITE   = numpy.isfinite
+LOGICAL_OR = numpy.logical_or
+_ArrayT    = numpy.ndarray
+_MArrayT   = numpy.ma.core.MaskedArray
+IsArray    = lambda x: isinstance(x, _ArrayT) or isinstance(x, _MArrayT)
 
 # We support different kinds of averaging
 def avg_vectornorm(ax):
@@ -521,7 +526,12 @@ class dataset_fixed:
     def __repr__(self):
         return str(self)
 
-# append means append to list, fastest for collecting individual samples
+#################################################################################
+#
+# .append() means append to list, fastest for collecting individual samples
+# .average() verifies that no averaging is requested - this one can't handle that
+#
+#################################################################################
 class dataset_list:
     __slots__ = ['x', 'y', 'n', 'a', 'm']
 
@@ -545,7 +555,6 @@ class dataset_list:
         self.y  = list() if y is None else y
         self.m  = list() if m is None else m
         self.n  = 0 if x is None else 1
-        #self.sf = dataset.init_sumy if x is None else dataset.add_sumy
         self.a  = False
 
     def append(self, xv, yv, m):
@@ -553,16 +562,9 @@ class dataset_list:
         self.y.append(yv)
         self.m.append(m)
 
-    # integrate into the current buffer
-    #def sumy(self, xs, ys, m):
-    #    self.sf(self, xs, ys, m)
-
     def average(self, method):
         if method != AVG.None:
             raise RuntimeError("dataset_list was not made for time averaging")
-        #if not self.a and self.n>1:
-        #    self.y = self.y / self.n
-        #self.a = True
 
     def is_numarray(self):
         return (type(self.x) is numpy.array and type(self.y) is numpy.ma.MaskedArray)
@@ -578,116 +580,71 @@ class dataset_list:
 
     def __str__(self):
         return "DATASET<list>: len(x)={0}, len(y)={1} len(m)={2}".format(len(self.x), len(self.y), len(self.m))
-        #return "DATASET<list>: {0} MASK: {1}".format(zip(self.x, self.y), self.m)
 
     def __repr__(self):
         return str(self)
 
 
-# .append() does an implicit group-by on the x value
-class dataset_solint:
+#################################################################################
+#
+# specialization of dataset for grouping multiple channels w/ mask by x value
+# (think solint/group by time interval)
+#
+# the .append() accumulates the channels grouped by the x value
+# .average() computes the channel averages over all data collected for each x value
+#
+#################################################################################
+class dataset_solint_array:
     __slots__ = ['x', 'y', 'a', 'd', 'm']
 
-    @classmethod
-    def add_sumy(self, obj, xs, ys, m):
-        obj.y = obj.y + ys
-        obj.n = obj.n + 1
-        obj.m = numpy.logical_and(obj.m, m)
-
-    @classmethod
-    def init_sumy(self, obj, xs, ys, m):
-        obj.x  = numpy.array(xs)
-        obj.y  = numpy.array(ys)
-        obj.sf = dataset.add_sumy
-        obj.m  = m
-
-    def __init__(self):#, x=None, y=None, m=None):
+    def __init__(self):
         self.x = self.y = None
         self.a = None
         self.d = collections.defaultdict(int)
         self.m = collections.defaultdict(int)
-#        if x is not None and len(x)!=len(y):
-#            raise RuntimeError, "attempt to construct data set where len(x) != len(y)?!!!"
-#        self.x  = list() if x is None else x
-#        self.y  = list() if y is None else y
-#        self.m  = list() if m is None else m
-#        self.n  = 0 if x is None else 1
-#        self.sf = dataset.init_sumy if x is None else dataset.add_sumy
-#        self.a  = False
 
+    # this specialization assumes yv, m are instances of numpy.ndarray or numpy.ma.core.MaskedArray
     def append(self, xv, yv, m):
-        #print "dataset solint: add yv={0} [m={1}] to bin {2}".format(yv, m, xv)
-        #if type(yv) is not numpy.ma.MaskedArray:
-        #    print "dataset_solint.append() yv is not masked, it is ",type(yv)
-        #if type(yv) is numpy.ma.core.MaskedConstant:
-        #    raise RuntimeError("dataset_solint.append() yv is not masked, it is {0}".format(yv))
-        # Masked values should not add towards the average
-        if IsArray(yv):
-            yv[m] = 0
-        elif m:
-            yv = 0 
-        #self.d[xv] = numpy.ma.add(MARRAY(yv, mask=m).filled(0).data, self.d[xv])
-        #print "SOLINT.append: xv={0} yv={1} m={2}".format(xv, yv, m)
-        #print "    append-to: {0}".format( self.d[xv] )
-        #self.d[xv] = numpy.add(MARRAY(yv, mask=m).filled(0).data, self.d[xv])
-        #self.d[xv] = numpy.ma.add(yv, self.d[xv])
+        # masked data shall not count towards the total for computing the average
+        #yv[m]      = 0
+        # Also: any floating point aggregation function (sum, mean, etc.) will barf on
+        # any of the aggregated values being [+-]Inf or NaN - i.e. the net result
+        # will be NaN/Inf whatever. Therefore we must replace these with 0.
+        # We'll put back NaN if it turns out that no unmasked values were averaged because
+        # in such a situation there IS no average/sum/etc. ("what is the sum of no values?"):
+        #   >>> import numpy
+        #   >>> numpy.sum([1,2,numpy.nan])
+        #   nan
+        yv[ LOGICAL_OR(~ISFINITE(yv), m) ] = 0
+        # accumulate in the bin for this specific x value
         self.d[xv] = numpy.add(yv, self.d[xv])
         self.m[xv] = numpy.add(~m, self.m[xv])
 
-    # integrate into the current buffer
-#    def sumy(self, xs, ys, m):
-#        self.sf(self, xs, ys, m)
-
     def average(self, method):
-        #print "dataset_solint.average(method={0})".format(method)
         if self.a is not None:
             return
         # normal average = arithmetic mean i.e. summed value / count of valid values
-        #fn = numpy.ma.divide
         fn = numpy.divide
         if method==AVG.Vectornorm:
             # for vector norm we divide by the largest complex amplitude
             fn = lambda x, _: x/numpy.max(numpy.abs(x))
         elif method==AVG.None:
             fn = lambda x, _: x
-        # construct a new dict with the averaged data values and set mask based on
-        # number of unmasked 
+        # construct a new dict with the averaged data values and set mask wether
+        # any unmasked values were collected for that x, channel 
         self.a = dict()
-        #print "  need to process {0} bins".format(len(self.d))
-        #cnt = 0
         while self.d:
-            (x, ys) = self.d.popitem()
-            counts  = self.m.pop(x)
-            #ys      = numpy.ma.array(ys    , mask= ~numpy.isfinite(ys))
-            #ys      = numpy.array(ys)
-            #counts  = numpy.ma.array(counts, mask= counts==0)
-            #counts  = numpy.array(counts)
-            #data    = fn(ys, counts)
-            #print "handling x={0} counts={1}".format(x, counts)
-            #print "         ys={0} => fn(ys, count)={1}".format( ys, data )
-            #self.a[x] = MA(data, mask=numpy.logical_or(~numpy.isfinite(data), (counts==0)))
+            (x, ys)    = self.d.popitem()
+            counts     = self.m.pop(x)
             # ---- latest ---------------
-            counts  = ARRAY(counts)
-            data    = fn(ARRAY(ys), counts)
-            #print "handling x={0} counts={1}".format(x, counts)
-            #print "         ys={0} => fn(ys, count)={1}".format(ARRAY(ys), data)
-            self.a[x] = MARRAY(data, mask=numpy.logical_or(~numpy.isfinite(data), (counts==0)))
+            counts     = ARRAY(counts)
+            data       = fn(ARRAY(ys), counts)
+            # after averaging, points with zero counts should be set to NaN
+            # to effectively remove them.
+            mask       = ARRAY(counts==0, dtype=numpy.bool)
+            data[mask] = numpy.nan
+            self.a[x]  = MARRAY(data, mask=mask)
             # ---------------------------
-            #self.a[x] = fn(MA(ys , mask=~numpy.isfinite(ys)), numpy.array(counts))
-            #self.a[x] = fn(MA(ys , mask=~numpy.isfinite(ys)), MA(counts, mask=(counts==0)))
-            #self.a[x] = fn(ys, counts) #numpy.ma.MaskedArray(data, mask=mask)
-            #print "   item[{0}] x={1} ys={2} counts={3}".format(cnt, x, ys, counts)
-            #mask    = numpy.array(counts==0, dtype=numpy.bool)
-            #data    = fn(ys, counts)
-            #print "handling x={0} counts={1}".format(x, counts)
-            #print "         ys={0} => fn(ys, count)={1}".format( ys, data )
-            #self.a[x] = data #numpy.ma.MaskedArray(data, mask=mask)
-            #self.a[x] = numpy.ma.MaskedArray(fn(ys, counts), mask=numpy.array(counts==0, dtype=numpy.bool))
-            #self.a[x] = numpy.ma.MaskedArray(fn(ys, counts), mask=numpy.logical_or(ys.mask if hasattr(ys,'mask') else False,
-            #                                                                       ~numpy.array(counts, dtype=numpy.bool)))
-            #print "     -> ",self.a[x]
-            #cnt = cnt + 1
-        #self.y = self.y / self.n
 
     def is_numarray(self):
         return (type(self.x) is numpy.ndarray and type(self.y) is numpy.ma.MaskedArray)
@@ -704,7 +661,75 @@ class dataset_solint:
         return self
 
     def __str__(self):
-        return "DATASET<solint>: len(d)={0} len(m)={1}".format(len(self.d), len(self.m))
+        return "DATASET<solint-array>: len(d)={0} len(m)={1}".format(len(self.d), len(self.m))
+
+    def __repr__(self):
+        return str(self)
+
+
+#################################################################################
+#
+# specialization of dataset for grouping a single channels w/ mask by x value
+# (think solint/group by time interval)
+#
+# the .append() accumulates the values  grouped by the x value
+# .average() computes the value averages over all data collected for each x value
+#
+#################################################################################
+class dataset_solint_scalar:
+    __slots__ = ['x', 'y', 'a', 'd', 'm']
+
+    def __init__(self):
+        self.x = self.y = None
+        self.a = None
+        self.d = collections.defaultdict(list)
+        self.m = collections.defaultdict(int)
+
+    # this specialization assumes yv, m are scalar value + boolean (or anything
+    # indicating the truth of yv)
+    def append(self, xv, yv, m):
+        # don't let masked or Inf/NaN values count towards the total before averaging
+        self.d[xv].append( 0 if m or not IS_FINITE(yv) else yv )
+        # do count truth values
+        self.m[xv] += 0 if m else 1
+
+    def average(self, method):
+        if self.a is not None:
+            return
+        # normal average = arithmetic mean i.e. summed value / count of valid values
+        fn = operator.truediv
+        if method==AVG.Vectornorm:
+            # for vector norm we divide by the largest complex amplitude
+            fn = lambda x, _: x/max(map(abs,x))
+        elif method==AVG.None:
+            fn = lambda x, _: x
+        # construct a new dict with the averaged data values and set mask based on
+        # number of unmasked 
+        self.a = dict()
+        while self.d:
+            (x, ys) = self.d.popitem()
+            counts  = self.m.pop(x)
+            # ---- latest ---------------
+            # if no valid data at all substitute a value of nan
+            self.a[x] = fn(sum(ys), counts) if counts else numpy.nan
+            # ---------------------------
+
+    def is_numarray(self):
+        return (type(self.x) is numpy.ndarray and type(self.y) is numpy.ma.MaskedArray)
+
+    def as_numarray(self):
+        if self.is_numarray():
+            return self
+        # note to self: float32 has insufficient precision for e.g.
+        # the <time> axis in <quantity> versus time datasets
+        if self.a is None:
+            raise RuntimeError("solint dataset has not been averaged yet")
+        self.x  = numpy.fromiter(self.a.iterkeys(), dtype=numpy.float64, count=len(self.a))
+        self.y  = numpy.ma.array(self.a.values())
+        return self
+
+    def __str__(self):
+        return "DATASET<solint-scalar>: len(d)={0} len(m)={1}".format(len(self.d), len(self.m))
 
     def __repr__(self):
         return str(self)
@@ -1228,6 +1253,11 @@ class data_quantity_time(plotbase):
                 #           start + end indices from that
                 bins    = numpy.unique(numpy.array(chansel)//solchan) if chansel is not Ellipsis else numpy.arange(0, n_chan, solchan)
 
+                # we're going to apply channel binning so we must replace 'chansel'
+                # by 'bins' in order for downstream accounting of how many "channels" there will 
+                # be in the data
+                chansel = bins
+
                 # Did timings on comparing simplistic 'loop over list of slices' and numpy.add.reduceat based approaches.
                 # Results: grab bag - depending on problem set size:
                 #      - simplistic approach between 2.5-6x faster (!) when averaging small number of
@@ -1291,16 +1321,28 @@ class data_quantity_time(plotbase):
                         # mask out channels that we don't want averaged, joining it
                         # with the mask that excludes flagged data (by the user) and/or
                         # whatever was weight-thresholded ...
+                        print "====> previous mask shape=", tmpx.mask.shape,"/",tmpx.mask[-1]
+                        print "      channel mask shape", ch_mask.shape,"/",ch_mask
+                        print "      indices=",indices
+                        print "      data=",tmpx.data[-1]
                         tmpx.mask = numpy.logical_or(tmpx.mask, ch_mask)
-                        # set all masked values to 0 such that they don't count towards the average
+                        print "      final mask shape", tmpx.mask.shape,"/",tmpx.mask[-1]
+                        if tmpx.mask.all():
+                            print "   NO UNMASKED DATA"
+                        # set all masked values to numpy.nan such that they don't ever count towards *anything*
+                        # e.g. suppose all channels in a bin are masked then the average should be NaN or something
+                        #      unrepresentable because there was no valid data at all
                         tmpx.data[tmpx.mask] = 0
+                        print "      data after masking=",tmpx.data[-1]
                         # do the summation.
-                        #result = numpy.add.reduceat(tmpx.data,  indices, axis=1)[:,keepbins]
-                        tmp = numpy.add.reduceat(tmpx.data,  indices, axis=1)
-                        result = tmp[:,keepbins]
+                        result = numpy.add.reduceat(tmpx.data, indices, axis=1)[:,keepbins]
+                        print " RESULT=",result
+                        #tmp = numpy.add.reduceat(tmpx.data, indices, axis=1)
+                        #result = tmp[:,keepbins]
                         # also count the number of unmasked values that went into each point
                         # we may use it for averaging, definitely be using it to create the mask
                         counts = numpy.add.reduceat(~tmpx.mask, indices, axis=1)[:,keepbins]
+                        print " COUNTS=",counts
                         # Because we do things different here than in the ordinary averaging,
                         # we must look at what was requested in order to mimic that behaviour
                         if avgchan_fn is avg_vectornorm:
@@ -1311,9 +1353,14 @@ class data_quantity_time(plotbase):
                             result /= counts
                         # return masked array - can reuse the counts array by converting them
                         # to bool and inverting: no counts => False
+                        mask = numpy.array(counts == 0, dtype=numpy.bool)
+                        # set entries where counts==0 to NaN to make it explicit
+                        # that, mathematically speaking, there is nothing there
+                        result[mask] = numpy.nan
                         # unshape + untranspose from 2-d ((n_int * n_pol), n_output_channels)
                         #                       into 3-d (n_int, n_pol, n_ouput_channels)
-                        return transpose_ch(numpy.ma.array(result.reshape((n_int, n_pol, -1)), mask=numpy.array(counts == 0, dtype=numpy.bool).reshape((n_int, n_pol, -1))))
+                        return transpose_ch(numpy.ma.array(result.reshape((n_int, n_pol, -1)), mask=mask.reshape((n_int, n_pol, -1))))
+                        #return transpose_ch(numpy.ma.array(result.reshape((n_int, n_pol, -1)), mask=numpy.array(counts == 0, dtype=numpy.bool).reshape((n_int, n_pol, -1))))
                     # set chbin_fn to use reduceat()
                     chbin_fn = use_reduceat
                 else:
@@ -1366,9 +1413,6 @@ class data_quantity_time(plotbase):
             post_quantities = lambda _, x: map(lambda q: (q.quantity_name, q.quantity_fn(x)), org_quantities)
             self.quantities = [Quantity('raw', functional.identity)]
 
-        # Let's keep the channels together as long as possible. If only one channel remains then we can do it
-        # in our inner loop
-        dataset_proto = dataset_list if avgTime == AVG.None else dataset_solint
         if len(self.chanidx)==1:
             # post_channel doesn't do nothing, self.chanidx remains a list of length 1
             post_channel  = lambda ch, x: [(ch, x)]
@@ -1380,6 +1424,17 @@ class data_quantity_time(plotbase):
             # replace self.chanidx with a single entry which captures all channels and sets the 
             # associated label to None - which we could use as a sentinel, if needed
             self.chanidx  = [(Ellipsis, None)]
+
+        # Let's keep the channels together as long as possible. If only one channel remains then we can do it
+        # in our inner loop
+        #dataset_proto = dataset_list if avgTime == AVG.None else dataset_solint_array
+        if avgTime == AVG.None:
+            dataset_proto = dataset_list
+        else:
+            # depending on wether we need to solint one or more channels in one go
+            # loop over the current self.chanidx and count nr of channels
+            nChannel = reduce(lambda acc, chi: acc + ((n_chan if chansel is Ellipsis else len(chansel)) if chi[0] is Ellipsis else 1), self.chanidx, 0)
+            dataset_proto = dataset_solint_array if nChannel>1 else dataset_solint_scalar
 
         ## Now we can start the reduction of the table
         # Note: there will /always/ be WEIGHT+FLAGCOL - either read from the table or invented
@@ -1407,6 +1462,9 @@ class data_quantity_time(plotbase):
 
     ## Here we make the plots
     def __call__(self, acc, a1, a2, tm, dd, fld, weight, flag_row, flag, data):
+        print "************************************************"
+        print "*   __call__ data.shape=",data.shape
+        print "************************************************"
 
         # Create masked array from the data with invalid data already masked off
         data = numpy.ma.masked_invalid(data)
