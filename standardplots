@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import sys, os, re, jplotter, command, functools.partial
+import sys, os, re, jplotter, command, functools
 
 # program default(s)
 NoWgt   = True    # do not produce weight plots
@@ -14,7 +14,7 @@ partition = lambda p, l: reduce(lambda (y,n), x: (y+[x], n) if p(x) else (y, n+[
 compose   = lambda *fns: lambda x: reduce(lambda a, f: f(a), reversed(fns), x)
 
 # full MS path to plot base name transformation
-mk_basenm = compose(partial(re.sub, r'\.ms', ''), os.path.basename, partial(re.sub, r'/*$', ''))
+mk_basenm = compose(functools.partial(re.sub, r'\.ms', ''), os.path.basename, functools.partial(re.sub, r'/*$', ''))
 
 # returns None if the argument wasn't present, tp(<value>) if it was
 # (such that it will give an exception if e.g. you expect int but
