@@ -1281,7 +1281,7 @@ class data_quantity_time(plotbase):
                 # reduction boundaries are!
                 # First up: the actual bin numbers we're interested in, we compute the actual
                 #           start + end indices from that
-                bins    = numpy.unique(numpy.array(chansel)//solchan) if chansel is not Ellipsis else numpy.arange(0, n_chan, solchan)
+                bins    = numpy.unique((numpy.array(chansel) if chansel is not Ellipsis else numpy.arange(0, n_chan, solchan))//solchan)
                 bins.sort()
 
                 # we're going to apply channel binning so we must replace 'chansel'
@@ -1394,7 +1394,6 @@ class data_quantity_time(plotbase):
                         # unshape + untranspose from 2-d ((n_int * n_pol), n_output_channels)
                         #                       into 3-d (n_int, n_pol, n_ouput_channels)
                         return transpose_ch(numpy.ma.array(result.reshape((n_int, n_pol, -1)), mask=mask.reshape((n_int, n_pol, -1))))
-                        #return transpose_ch(numpy.ma.array(result.reshape((n_int, n_pol, -1)), mask=numpy.array(counts == 0, dtype=numpy.bool).reshape((n_int, n_pol, -1))))
                     # set chbin_fn to use reduceat()
                     chbin_fn = use_reduceat
                 else:
