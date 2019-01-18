@@ -168,6 +168,8 @@ Quantity   = collections.namedtuple('Quantity', ['quantity_name', 'quantity_fn']
 # do not drag in all numpy.* names but by "resolving" them at this level
 # we shave off a lot of python name lookups. this has an effect on code which
 # is called a lot of times per second - like the code in here
+ANY        = numpy.any
+ALL        = numpy.all
 ARRAY      = numpy.array
 MARRAY     = numpy.ma.array
 ISFINITE   = numpy.isfinite
@@ -190,7 +192,24 @@ def avg_vectornorm(ax):
 def avg_arithmetic(ax):
     # normal arithmetic mean, should work both on complex or scalar data
     def do_it(x):
-        return numpy.ma.mean(x, axis=ax, keepdims=True)
+        # first set all flagged + NaN/Inf values to 0 such that 
+        #  (1) any NaN/Inf's don't screw up the total sum
+        #  (2) flagged data doesn't count towards the sum
+        x[ LOGICAL_OR(~ISFINITE(x.data), x.mask) ] = 0
+        total  = numpy.sum(x.data,  axis=ax, keepdims=True)
+        counts = numpy.sum(~x.mask, axis=ax, keepdims=True)
+        # figure out where the counts are 0 - effectively
+        # remove those data points
+        nmask  = ARRAY(counts==0, dtype=numpy.bool)
+        # we have computed where the count==0 so we can now 
+        # overwrite with 1 to prevent divide-by-zero errors.
+        # Later we'll replace those values with NaN
+        counts[nmask]=1
+        total       /= counts
+        # And indicate where there was no average at all
+        total[nmask] = numpy.NaN
+        return MARRAY(total, mask = nmask)
+        #return numpy.ma.mean(x, axis=ax, keepdims=True)
     return do_it
 
 def avg_sum(ax):
@@ -561,6 +580,17 @@ class dataset_list:
         self.x.append(xv)
         self.y.append(yv)
         self.m.append(m)
+#        try:
+#            if not m and ISFINITE(yv):
+#                self.x.append(xv)
+#                self.y.append(yv)
+#                self.m.append(m)
+#        except Exception as E:
+#            print "dataset_list::append() - ",E
+#            print "   inputs:"
+#            print "   xv = ",xv
+#            print "   yv = ",yv
+#            print "   m  = ",m
 
     def average(self, method):
         if method != AVG.None:
@@ -689,7 +719,7 @@ class dataset_solint_scalar:
     # indicating the truth of yv)
     def append(self, xv, yv, m):
         # don't let masked or Inf/NaN values count towards the total before averaging
-        self.d[xv].append( 0 if m or not IS_FINITE(yv) else yv )
+        self.d[xv].append( 0 if m or not ISFINITE(yv) else yv )
         # do count truth values
         self.m[xv] += 0 if m else 1
 
@@ -1252,6 +1282,7 @@ class data_quantity_time(plotbase):
                 # First up: the actual bin numbers we're interested in, we compute the actual
                 #           start + end indices from that
                 bins    = numpy.unique(numpy.array(chansel)//solchan) if chansel is not Ellipsis else numpy.arange(0, n_chan, solchan)
+                bins.sort()
 
                 # we're going to apply channel binning so we must replace 'chansel'
                 # by 'bins' in order for downstream accounting of how many "channels" there will 
@@ -1290,7 +1321,7 @@ class data_quantity_time(plotbase):
                 if adjacent_bins:
                     # we're going to use reduceat() which means it's good enough
                     # to generate [bin0*solchan, bin1*solchan, ..., bin<nbin-1>*solchan]
-                    indices = bins
+                    indices = CP(bins)
                     # generate the channel index labels for correct labelling
                     self.chanidx = list()
                     for (ch_idx, start) in enumerate(indices):
@@ -1299,15 +1330,18 @@ class data_quantity_time(plotbase):
                     # need to carefully check last entry in there; if 'last bin' < 'n_chan//solchan'
                     # we must add an extra final boundary or else reduceat() will add up to the end
                     # of the number of channels in stead of until the end of the bin ...
-                    if bins[-1]<n_chan//solchan:
+                    if bins[-1]<((n_chan-1)//solchan):
+                        #print "Must add one more bin limit; bins=",bins
                         # add one more bin limit, set slice to keep only n-1 bins
                         keepbins = slice(0, len(indices))
                         indices  = numpy.r_[indices, [indices[-1]+1]]
-                        # indices are in units of solchan bins so for reduceat must
-                        # scale them back to actual channels
-                        indices  *= solchan
+                        #print "  indices now = ",indices
                     else:
                         keepbins = Ellipsis
+                    # indices are in units of solchan bins so for reduceat must
+                    # scale them back to actual channels
+                    indices  *= solchan
+                    #print "  indices now = ",indices
                     # This is where the magic happens
                     transpose_ch = operator.methodcaller('transpose', (0, 2, 1))
                     def use_reduceat(x):
@@ -1321,28 +1355,28 @@ class data_quantity_time(plotbase):
                         # mask out channels that we don't want averaged, joining it
                         # with the mask that excludes flagged data (by the user) and/or
                         # whatever was weight-thresholded ...
-                        print "====> previous mask shape=", tmpx.mask.shape,"/",tmpx.mask[-1]
-                        print "      channel mask shape", ch_mask.shape,"/",ch_mask
-                        print "      indices=",indices
-                        print "      data=",tmpx.data[-1]
+                        #print "====> previous mask shape=", tmpx.mask.shape,"/",tmpx.mask[-1]
+                        #print "      channel mask shape", ch_mask.shape,"/",ch_mask
+                        #print "      indices=",indices
+                        #print "      data=",tmpx.data[-1]
                         tmpx.mask = numpy.logical_or(tmpx.mask, ch_mask)
-                        print "      final mask shape", tmpx.mask.shape,"/",tmpx.mask[-1]
-                        if tmpx.mask.all():
-                            print "   NO UNMASKED DATA"
+                        #print "      final mask shape", tmpx.mask.shape,"/",tmpx.mask[-1]
+                        #if tmpx.mask.all():
+                        #    print "   NO UNMASKED DATA"
                         # set all masked values to numpy.nan such that they don't ever count towards *anything*
                         # e.g. suppose all channels in a bin are masked then the average should be NaN or something
                         #      unrepresentable because there was no valid data at all
                         tmpx.data[tmpx.mask] = 0
-                        print "      data after masking=",tmpx.data[-1]
+                        #print "      data after masking=",tmpx.data[-1]
                         # do the summation.
                         result = numpy.add.reduceat(tmpx.data, indices, axis=1)[:,keepbins]
-                        print " RESULT=",result
+                        #print " RESULT=",result
                         #tmp = numpy.add.reduceat(tmpx.data, indices, axis=1)
                         #result = tmp[:,keepbins]
                         # also count the number of unmasked values that went into each point
                         # we may use it for averaging, definitely be using it to create the mask
                         counts = numpy.add.reduceat(~tmpx.mask, indices, axis=1)[:,keepbins]
-                        print " COUNTS=",counts
+                        #print " COUNTS=",counts
                         # Because we do things different here than in the ordinary averaging,
                         # we must look at what was requested in order to mimic that behaviour
                         if avgchan_fn is avg_vectornorm:
@@ -1462,9 +1496,9 @@ class data_quantity_time(plotbase):
 
     ## Here we make the plots
     def __call__(self, acc, a1, a2, tm, dd, fld, weight, flag_row, flag, data):
-        print "************************************************"
-        print "*   __call__ data.shape=",data.shape
-        print "************************************************"
+        #print "************************************************"
+        #print "*   __call__ data.shape=",data.shape
+        #print "************************************************"
 
         # Create masked array from the data with invalid data already masked off
         data = numpy.ma.masked_invalid(data)
