@@ -1751,8 +1751,9 @@ def getXYlims(plotarray, ytype, curplotlabel, xscaling, yscaling):
         dx = xlims[1] - xlims[0]
         # if x-range too small, safeguard against that?
         # make sure dx is positive and non-zero. SEE NOTE ABOVE
-        # Apparently x-axis of ~1E-6 is still OK
-        dx = max(dx, 1e-6)
+        # Apparently x-axis of ~1E-6 is still OK.
+        # Apparently not, go to 100*epsilon in stead
+        dx = max(dx, 100*epsilon) #1e-6)
         if not fixed:
             mid      = (xlims[1] + xlims[0])/2
             xlims[0] = mid - 0.55*dx
