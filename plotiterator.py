@@ -176,7 +176,13 @@ ISFINITE   = numpy.isfinite
 LOGICAL_OR = numpy.logical_or
 _ArrayT    = numpy.ndarray
 _MArrayT   = numpy.ma.core.MaskedArray
-IsArray    = lambda x: isinstance(x, _ArrayT) or isinstance(x, _MArrayT)
+IsArray    = lambda x: isinstance(x, _ArrayT) or isinstance(x, _MArrayT) or isinstance(x, list)
+
+# Useful simple functions
+
+# take the current channel selection, and produce a list of the sorted unique channels
+mk_chansel = functional.compose(list, sorted, set, CP)
+print_if   = functional.choice(operator.truth, functional.printf, functional.const(None))
 
 # We support different kinds of averaging
 def avg_vectornorm(ax):
@@ -225,7 +231,6 @@ def avg_arithmetic(ax):
         # And indicate where there was no average at all
         total[nmask] = numpy.NaN
         return MARRAY(total, mask = nmask)
-        #return numpy.ma.mean(x, axis=ax, keepdims=True)
     return do_it
 
 def avg_sum(ax):
@@ -744,7 +749,7 @@ class dataset_chan:
         if method==AVG.Vectornorm:
             # for vector norm we divide by the largest (complex) amplitude
             fn = lambda x, _: x/numpy.max(numpy.abs(x))
-        elif method==AVG.None:
+        elif method in [AVG.None, AVG.Sum, AVG.Vectorsum]:
             fn = lambda x, _: x
         # from counts form mask [note: do not clobber obj.m just yet, we need the counts!]
         m          = ARRAY(obj.m==0, dtype=numpy.bool)
@@ -772,6 +777,8 @@ class dataset_chan:
         raise NotImplemented("dataset_chan not meant for appending")
 
     def add_y(self, xv, yv, m):
+        if not IsArray(xv):
+            raise RuntimeError("dataset_chan:add_y() adding xv of non-array type! xv = {0}".format(xv))
         self.sf(self, xv, yv, m)
 
     def average(self, method):
@@ -844,7 +851,8 @@ class dataset_solint_array:
         if method==AVG.Vectornorm:
             # for vector norm we divide by the largest complex amplitude
             fn = lambda x, _: x/numpy.max(numpy.abs(x))
-        elif method==AVG.None:
+        elif method in [AVG.None, AVG.Sum, AVG.Vectorsum]:
+            # because we already integrate (==sum) then no averaging equals summing and v.v. :-)
             fn = lambda x, _: x
         # construct a new dict with the averaged data values and set mask wether
         # any unmasked values were collected for that x, channel 
@@ -918,7 +926,8 @@ class dataset_solint_scalar:
         if method==AVG.Vectornorm:
             # for vector norm we divide by the largest complex amplitude
             fn = lambda x, _: x/max(map(abs,x))
-        elif method==AVG.None:
+        elif method in [AVG.None, AVG.Sum, AVG.Vectorsum]:
+            # because our data is already summed then no averaging == summing
             fn = lambda x, _: x
         # construct a new dict with the averaged data values and set mask based on
         # number of unmasked 
@@ -1313,6 +1322,8 @@ class data_quantity_time(plotbase):
         # only time averaging requested
         # scalar in time means we can collect the quantities themselves
         (AVG.None, AVG.Scalar):           (avg_none, avg_arithmetic, False),
+        (AVG.None, AVG.Sum):              (avg_none, avg_sum,        False),
+        (AVG.None, AVG.Vectorsum):        (avg_none, avg_sum,        True),
         # when vector(norm) averaging we must first collect all time data
         # before we can compute the quantities, i.e. their computation  must be postponed
         (AVG.None, AVG.Vector):           (avg_none, avg_arithmetic, True),
@@ -1320,10 +1331,13 @@ class data_quantity_time(plotbase):
         # When scalar averaging the channels no vector averaging in time possible
         # Also no need to postpone computing the quantities
         (AVG.Scalar, AVG.None):           (avg_arithmetic, avg_none, False),
+        (AVG.Scalar, AVG.Sum):            (avg_arithmetic, avg_sum,  False),
         (AVG.Scalar, AVG.Scalar):         (avg_arithmetic, avg_arithmetic, False),
         # When vector averaging the channels, the time averaging governs 
         # the choice of when to compute the quantity(ies)
         (AVG.Vector, AVG.None):           (avg_arithmetic, avg_none, False),
+        (AVG.Vector, AVG.Sum):            (avg_arithmetic, avg_sum,  False),
+        (AVG.Vector, AVG.Vectorsum):      (avg_arithmetic, avg_sum,  True),
         (AVG.Vector, AVG.Scalar):         (avg_arithmetic, avg_arithmetic, False),
         # when doing vector in both dims we must first add up all the complex numbers
         # for each channel(selection) and then in time and THEN compute the quantity(ies)
@@ -1333,7 +1347,19 @@ class data_quantity_time(plotbase):
         (AVG.Vectornorm, AVG.None):       (avg_vectornorm, avg_none, False),
         (AVG.Vectornorm, AVG.Scalar):     (avg_vectornorm, avg_arithmetic, False),
         (AVG.Vectornorm, AVG.Vector):     (avg_vectornorm, avg_arithmetic, True),
-        (AVG.Vectornorm, AVG.Vectornorm): (avg_vectornorm, avg_vectornorm, True)
+        (AVG.Vectornorm, AVG.Vectornorm): (avg_vectornorm, avg_vectornorm, True),
+        (AVG.Vectornorm, AVG.Sum):        (avg_vectornorm, avg_sum,        False),
+        (AVG.Vectornorm, AVG.Vectorsum):  (avg_vectornorm, avg_sum,        True),
+
+        (AVG.Sum, AVG.None):              (avg_sum, avg_none,        False),
+        (AVG.Sum, AVG.Sum):               (avg_sum, avg_sum,         False),
+        (AVG.Sum, AVG.Scalar):            (avg_sum, avg_arithmetic,  False),
+
+        (AVG.Vectorsum, AVG.None):        (avg_sum, avg_none,        False),
+        (AVG.Vectorsum, AVG.Scalar):      (avg_sum, avg_arithmetic,  False),
+        (AVG.Vectorsum, AVG.Sum):         (avg_sum, avg_sum,         False),
+        (AVG.Vectorsum, AVG.Vectorsum):   (avg_sum, avg_sum,         True),
+        (AVG.Vectorsum, AVG.Vectornorm):  (avg_sum, avg_vectornorm,  True),
     }
 
 
@@ -1364,9 +1390,9 @@ class data_quantity_time(plotbase):
 
         # channel selection+averaging schemes; support averaging over channels (or chunks of channels)
         chansel  = Ellipsis #None
-        n_chan   = self.table[0]['DATA'].shape[0]
+        n_chan   = self.table[0][self.datacol].shape[0]
         if selection.chanSel:
-            channels = list(sorted(set(CP(selection.chanSel))))
+            channels = mk_chansel(selection.chanSel)
             max_chan = max(channels)
             # if any of the indexed channels > n_chan that's an error
             if max_chan>=n_chan:
@@ -1424,7 +1450,7 @@ class data_quantity_time(plotbase):
             else:
                 # Check if solint isn't too small
                 ti = mapping.timeRange.inttm[0]
-                if solint<ti: 
+                if solint<=ti: 
                     raise RuntimeError("solint value {0:.3f} is less than integration time {1:.3f}".format(solint, ti))
                 self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
 
@@ -1551,7 +1577,7 @@ class data_quantity_time(plotbase):
                         #print "      final mask shape", tmpx.mask.shape,"/",tmpx.mask[-1]
                         #if tmpx.mask.all():
                         #    print "   NO UNMASKED DATA"
-                        # set all masked values to numpy.nan such that they don't ever count towards *anything*
+                        # set all masked values to 0 such that they don't ever count towards *anything*
                         # e.g. suppose all channels in a bin are masked then the average should be NaN or something
                         #      unrepresentable because there was no valid data at all
                         tmpx.data[tmpx.mask] = 0
@@ -1576,6 +1602,9 @@ class data_quantity_time(plotbase):
                             # take proper care of flagged/inf data
                             tmpx.data[tmpx.mask] = -numpy.inf
                             result /= (numpy.maximum.reduceat(numpy.abs(tmpx.data), indices, axis=1)[:,keepbins])
+                        elif avgchan_fn in [avg_sum, avg_none]:
+                            # either vector or scalar sum or no averaging, don't do anything
+                            pass
                         else:
                             # ordinary arithmetic mean
                             # sets counts = 1 where counts == 0 so we don't divided by 0
@@ -1739,6 +1768,8 @@ class data_quantity_chan(plotbase):
     _averaging = {
         # no averaging at all, no need to postpone computing the quantity(ies)
         (AVG.None, AVG.None):             (avg_none, avg_none, False),
+        (AVG.None, AVG.Sum):              (avg_none, avg_sum,  False),
+        (AVG.None, AVG.Vectorsum):        (avg_none, avg_sum,  True),
         # only time averaging requested
         # scalar in time means we can collect the quantities themselves
         (AVG.None, AVG.Scalar):           (avg_none, avg_arithmetic, False),
@@ -1749,10 +1780,13 @@ class data_quantity_chan(plotbase):
         # When scalar averaging the channels no vector averaging in time possible
         # Also no need to postpone computing the quantities
         (AVG.Scalar, AVG.None):           (avg_arithmetic, avg_none, False),
+        (AVG.Scalar, AVG.Sum):            (avg_arithmetic, avg_sum,  False),
         (AVG.Scalar, AVG.Scalar):         (avg_arithmetic, avg_arithmetic, False),
         # When vector averaging the channels, the time averaging governs 
         # the choice of when to compute the quantity(ies)
         (AVG.Vector, AVG.None):           (avg_arithmetic, avg_none, False),
+        (AVG.Vector, AVG.Sum):            (avg_arithmetic, avg_sum,  False),
+        (AVG.Vector, AVG.Vectorsum):      (avg_arithmetic, avg_sum,  True),
         (AVG.Vector, AVG.Scalar):         (avg_arithmetic, avg_arithmetic, False),
         # when doing vector in both dims we must first add up all the complex numbers
         # for each channel(selection) and then in time and THEN compute the quantity(ies)
@@ -1762,7 +1796,19 @@ class data_quantity_chan(plotbase):
         (AVG.Vectornorm, AVG.None):       (avg_vectornorm, avg_none, False),
         (AVG.Vectornorm, AVG.Scalar):     (avg_vectornorm, avg_arithmetic, False),
         (AVG.Vectornorm, AVG.Vector):     (avg_vectornorm, avg_arithmetic, True),
-        (AVG.Vectornorm, AVG.Vectornorm): (avg_vectornorm, avg_vectornorm, True)
+        (AVG.Vectornorm, AVG.Vectornorm): (avg_vectornorm, avg_vectornorm, True),
+        (AVG.Vectornorm, AVG.Sum):        (avg_vectornorm, avg_sum,        False),
+        (AVG.Vectornorm, AVG.Vectorsum):  (avg_vectornorm, avg_sum,        True),
+
+        (AVG.Sum, AVG.None):              (avg_sum, avg_none,        False),
+        (AVG.Sum, AVG.Sum):               (avg_sum, avg_sum,         False),
+        (AVG.Sum, AVG.Scalar):            (avg_sum, avg_arithmetic,  False),
+
+        (AVG.Vectorsum, AVG.None):        (avg_sum, avg_none,        False),
+        (AVG.Vectorsum, AVG.Scalar):      (avg_sum, avg_arithmetic,  False),
+        (AVG.Vectorsum, AVG.Sum):         (avg_sum, avg_sum,         False),
+        (AVG.Vectorsum, AVG.Vectorsum):   (avg_sum, avg_sum,         True),
+        (AVG.Vectorsum, AVG.Vectornorm):  (avg_sum, avg_vectornorm,  True),
     }
 
 
@@ -1794,7 +1840,7 @@ class data_quantity_chan(plotbase):
 
         # channel selection+averaging schemes; support averaging over channels (or chunks of channels)
         chansel  = Ellipsis #None
-        n_chan   = self.table[0]['DATA'].shape[0]
+        n_chan   = self.table[0][self.datacol].shape[0]
         if selection.chanSel:
             channels = list(sorted(set(CP(selection.chanSel))))
             max_chan = max(channels)
@@ -1849,17 +1895,20 @@ class data_quantity_chan(plotbase):
             else:
                 # Check if solint isn't too small
                 ti = mapping.timeRange.inttm[0]
-                if solint<ti: 
+                if solint<=ti: 
                     raise RuntimeError("solint value {0:.3f} is less than integration time {1:.3f}".format(solint, ti))
                 self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
 
-
         # chansel now is Ellipsis (all channels) or a list of some selected channels
         self.chanidx   = list()
+        self.chanidx_fn= None
         self.vectorAvg = functional.identity
         self.scalarAvg = functional.identity
         self.tmVectAvg = functional.identity
         self.tmScalAvg = functional.identity
+
+        # if the x-axis is frequency ... *gulp*
+        self.freq_of_dd=CP(self.ddFreqs)
 
         if avgChannel==AVG.None:
             # No channel averaging - the new x-axis will be the indices of the selected channels
@@ -1868,6 +1917,10 @@ class data_quantity_chan(plotbase):
             # are mapped to 0..n-1. This is only necessary in case not all channels were selected
             if chansel is not Ellipsis:
                 self.vectorAvg = lambda x: x[:,chansel,:]
+            if self.byFrequency:
+                self.chanidx_fn = lambda dd: self.freq_of_dd[dd][self.chanidx]
+            else:
+                self.chanidx_fn = functional.const(self.chanidx)
         else:
             # ok channel averaging requested
             chbin_fn = None
@@ -1878,6 +1931,13 @@ class data_quantity_chan(plotbase):
                 # average the selected channels according the requested averaging method
                 chbin_fn      = lambda x: avgchan_fn(1)(x[:,chansel,:])
                 self.chanidx  = [numpy.mean(chansel)] # compute average channel number #[(0, '*')]
+                # transform all frequencies to an average frequency
+                for dd in self.freq_of_dd.keys():
+                    self.freq_of_dd[dd] = [numpy.mean(self.freq_of_dd[dd][chansel])]
+                if self.byFrequency:
+                    self.chanidx_fn = lambda dd: self.freq_of_dd[dd]
+                else:
+                    self.chanidx_fn = functional.const(self.chanidx)
             else:
                 # average bins of solchan channels down to one
                 if solchan > n_chan:
@@ -1937,24 +1997,18 @@ class data_quantity_chan(plotbase):
                     indices = CP(bins)
                     # generate the channel index labels for correct labelling
                     self.chanidx = CP(indices) #list()
-                    #for (ch_idx, start) in enumerate(indices):
-                    #    self.chanidx.append( (ch_idx, start) )
-                    #    #self.chanidx.append( (ch_idx, "{0}*".format(start)) )
                     # need to carefully check last entry in there; if 'last bin' < 'n_chan//solchan'
                     # we must add an extra final boundary or else reduceat() will add up to the end
                     # of the number of channels in stead of until the end of the bin ...
                     if bins[-1]<((n_chan-1)//solchan):
-                        #print "Must add one more bin limit; bins=",bins
                         # add one more bin limit, set slice to keep only n-1 bins
                         keepbins = slice(0, len(indices))
                         indices  = numpy.r_[indices, [indices[-1]+1]]
-                        #print "  indices now = ",indices
                     else:
                         keepbins = Ellipsis
                     # indices are in units of solchan bins so for reduceat must
                     # scale them back to actual channels
                     indices  *= solchan
-                    #print "  indices now = ",indices
                     # This is where the magic happens
                     transpose_ch = operator.methodcaller('transpose', (0, 2, 1))
                     def use_reduceat(x):
@@ -1968,33 +2022,30 @@ class data_quantity_chan(plotbase):
                         # mask out channels that we don't want averaged, joining it
                         # with the mask that excludes flagged data (by the user) and/or
                         # whatever was weight-thresholded ...
-                        #print "====> previous mask shape=", tmpx.mask.shape,"/",tmpx.mask[-1]
-                        #print "      channel mask shape", ch_mask.shape,"/",ch_mask
-                        #print "      indices=",indices
-                        #print "      data=",tmpx.data[-1]
                         tmpx.mask = numpy.logical_or(tmpx.mask, ch_mask)
-                        #print "      final mask shape", tmpx.mask.shape,"/",tmpx.mask[-1]
-                        #if tmpx.mask.all():
-                        #    print "   NO UNMASKED DATA"
-                        # set all masked values to numpy.nan such that they don't ever count towards *anything*
+                        # set all masked values to 0 such that they don't ever count towards *anything*
                         # e.g. suppose all channels in a bin are masked then the average should be NaN or something
                         #      unrepresentable because there was no valid data at all
                         tmpx.data[tmpx.mask] = 0
-                        #print "      data after masking=",tmpx.data[-1]
                         # do the summation.
+                        #print "###############################################################"
+                        #print "    use_reduceat: x.shape=",x.shape
+                        #print "          tmpx.data.shape=",tmpx.data.shape
+                        #print "                  indices=",indices
+                        #print "                 keepbins=",keepbins
+                        #print "###############################################################"
                         result = numpy.add.reduceat(tmpx.data, indices, axis=1)[:,keepbins]
-                        #print " RESULT=",result
-                        #tmp = numpy.add.reduceat(tmpx.data, indices, axis=1)
-                        #result = tmp[:,keepbins]
                         # also count the number of unmasked values that went into each point
                         # we may use it for averaging, definitely be using it to create the mask
                         counts = numpy.add.reduceat(~tmpx.mask, indices, axis=1)[:,keepbins]
-                        #print " COUNTS=",counts
                         # Because we do things different here than in the ordinary averaging,
                         # we must look at what was requested in order to mimic that behaviour
                         if avgchan_fn is avg_vectornorm:
                             # ok need to find the maximum complex number in each bin to scale it by
                             result /= (numpy.maximum.reduceat(numpy.abs(tmpx.data), indices, axis=1)[:,keepbins])
+                        elif avgchan_fn in [avg_sum, avg_none]:
+                            # no averaging/summing boils down to not doing anything
+                            pass
                         else:
                             # ordinary arithmetic mean
                             result /= counts
@@ -2017,10 +2068,7 @@ class data_quantity_chan(plotbase):
                     indices = map(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
                     slices  = [(slice(i, i+1), slice(rng[0], rng[1]+1)) for i, rng in enumerate(indices)]
                     # for display + loopindexing create list of (array_index, "CH label") tuples
-                    self.chanidx = CP(bins) #list()
-                    #for (ch_idx, start_end) in enumerate(indices):
-                    #    self.chanidx.append( (ch_idx, start_end[0]) )
-                    #    #self.chanidx.append( (ch_idx, "{0}*".format(start_end[0])) )
+                    self.chanidx = CP(bins) 
                     n_slices = len(slices)
                     #  this is the simplistic approach 
                     def use_dumbass_method(x):
@@ -2034,6 +2082,22 @@ class data_quantity_chan(plotbase):
                     # and set the channel bin function to use to this'un
                     chbin_fn = use_dumbass_method
 
+                # transform all frequencies to an average frequency per bin
+                indices_l  = map(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
+                slices_l   = [(slice(i, i+1), slice(rng[0], rng[1]+1)) for i, rng in enumerate(indices_l)]
+                def mk_fbins(x):
+                    result = numpy.empty((len(slices_l)))
+                    for (dst_idx, src_idx) in slices_l:
+                        result[dst_idx]      = numpy.mean(x[src_idx])
+                    return result
+                for dd in self.freq_of_dd.keys():
+                    freqs               = ARRAY(self.freq_of_dd[dd])
+                    self.freq_of_dd[dd] = mk_fbins( ARRAY(self.freq_of_dd[dd]) )
+                if self.byFrequency:
+                    self.chanidx_fn = lambda dd: self.freq_of_dd[dd]
+                else:
+                    self.chanidx_fn = functional.const(self.chanidx)
+
             # Some channel averaging is to be applied so chbin_fn must not be None
             if chbin_fn is None:
                 raise RuntimeError("chbin_fn is None whilst some channel averaging requested. Please yell at H. Verkouter (verkouter@jive.eu)")
@@ -2044,6 +2108,9 @@ class data_quantity_chan(plotbase):
                 self.scalarAvg = chbin_fn
             else:
                 self.vectorAvg = chbin_fn
+
+        if self.chanidx_fn is None:
+            raise RuntimeError("The self.chanidx_fn is still None! Someone (verkouter@jive.eu) forgot something. Go yell at 'im!")
 
         # Now we must come up with a strategy for organizing the data processing chain
         #
@@ -2112,10 +2179,6 @@ class data_quantity_chan(plotbase):
 
     ## Here we make the plots
     def __call__(self, acc, a1, a2, tm, dd, fld, weight, flag_row, flag, data):
-        #print "************************************************"
-        #print "*   __call__ data.shape=",data.shape
-        #print "************************************************"
-
         # Create masked array from the data with invalid data already masked off
         data = numpy.ma.masked_invalid(data)
         # now we can easily add in flag information;
@@ -2139,17 +2202,20 @@ class data_quantity_chan(plotbase):
 
         # Now we can loop over all the rows in the data
         dds  = self.ddSelection
-        ci   = self.chanidx
+        #ci   = self.chanidx
+        cif  = self.chanidx_fn
         # We don't have to test *IF* the current data description id is 
         # selected; the fact that we see it here means that it WAS selected!
         # The only interesting bit is selecting the correct products
         for row in range(data.shape[0]):
-            (fq, sb, plist) = dds[ dd[row] ]
+            ddid            = dd[row]
+            (fq, sb, plist) = dds[ ddid ]
+            #(fq, sb, plist) = dds[ dd[row] ]
             for (pidx, pname) in plist:
                 l = ["", (a1[row], a2[row]), fq, sb, fld[row], pname, tm[row]]
                 for (qnm, qval) in qd:
                     l[0] = qnm
-                    acc[tuple(l)].add_y(ci, qval.data[row, :, pidx], qval.mask[row, :, pidx])
+                    acc[tuple(l)].add_y(cif(ddid), qval.data[row, :, pidx], qval.mask[row, :, pidx])
         return acc
 
 
@@ -2448,19 +2514,191 @@ class unflagged(object):
     def __getitem__(self, idx):
         return False
 
+#class weight_time_old(plotbase):
+#    def __init__(self):
+#        # nothing yet ...
+#        pass
+#
+#    def makePlots(self, msname, selection, mapping, **kwargs):
+#        ## initialize the base class (opens table, does selection)
+#        super(weight_time, self).__init__(msname, selection, mapping, **kwargs)
+#
+#        # Support "time averaging" by aggregating data points in time bins of 'solint' length
+#        solint          = CP(selection.solint)
+#        avgTime         = CP(selection.averageTime)
+#        #solint_fn       = solint_none
+#        self.timebin_fn = functional.identity
+#        if avgTime!=AVG.None:
+#            if solint is None:
+#                # Ah. Hmm. Have to integrate different time ranges
+#                # Let's transform our timerng list of (start, end) intervals into
+#                # a list of (start, end, mid) such that we can easily map
+#                # all time stamps [start, end] to mid
+#
+#                # It is important to KNOW that "selection.timeRange" (and thus our
+#                # local copy 'timerng') is a list or sorted, non-overlapping time ranges
+#                timerng = map(lambda (s, e): (s, e, (s+e)/2.0), timerng)
+#                if len(timerng)==1:
+#                    print "WARNING: averaging all data into one point in time!"
+#                    print "         This is because no solint was set. Your plot"
+#                    print "         may contain less useful info than expected"
+#
+#                # try to be a bit optimized in time stamp replacement - filter the 
+#                # list of time ranges to those applying to the time stamps we're 
+#                # replacing
+#                def do_it(x):
+#                    mi,ma  = numpy.min(x), numpy.max(x)
+#                    ranges = filter(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
+#                    return reduce(lambda acc, (s, e, m): numpy.put(acc, numpy.where((acc>=s) & (acc<=e)), m) or acc, ranges, x) 
+#                self.timebin_fn = do_it
+#            else:
+#                # Check if solint isn't too small
+#                ti = mapping.timeRange.inttm[0]
+#                if solint<ti: 
+#                    raise RuntimeError("solint value {0:.3f} is less than integration time {1:.3f}".format(solint, ti))
+#                self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
+#
+#        self.dataset_proto = dataset_list if avgTime == AVG.None else dataset_solint
+#        
+#        ## we plot using the WEIGHT column
+#
+#        fields = [AX.TYPE, AX.BL, AX.FQ, AX.SB, AX.SRC, AX.P]
+#
+#        #self.cnt = 0
+#        #self.ts  = set()
+#        ## Now we can start the reduction of the table
+#        columns = ["ANTENNA1", "ANTENNA2", "TIME", "DATA_DESC_ID", "FIELD_ID", "WEIGHT"] + ["FLAG_ROW"] if self.flags else []
+#        pts     =  ms2util.reducems2(self, self.table, {}, columns, verbose=True, chunksize=5000)
+#
+#        #print "WE SHOULD HAVE ",self.cnt," DATA POINTS"
+#        #print "ANDALSO ",len(self.ts)," TIME STAMPS"
+#
+#        rv  = {}
+#        #dt  = 0.0
+#        for (label, dataset) in pts.iteritems():
+#            #dt += solint_fn( dataset )
+#            dataset.average( avgTime )
+#            rv[ self.MKLAB(fields, label) ] = dataset
+#        #if solint:
+#        #    print "SOLINT processing took\t{0:.3f}s".format( dt )
+#        return rv
+#
+#    def __call__(self, acc, a1, a2, tm, dd, fld, weight, *flag_row):
+#        #print "__call__: ",a1,a2,tm,dd,fld,weight.shape
+#        # ok, process all the rows!
+#        shp   = weight.shape
+#        flags = unflagged() if not flag_row else flag_row[0]
+#        # single-pol data will have shape (nrow,) 
+#        # but our code really would like it to be (nrow, npol), even if 'npol' == 1. (FFS casacore!)
+#        tm  = self.timebin_fn( tm )
+#        d2d = m2d(weight)
+#        for row in range(shp[0]):
+#            (fq, sb, plist) = self.ddSelection[ dd[row] ]
+#            # we don't iterate over channels
+#            for (pidx, pname) in plist:
+#                acc.setdefault((YTypes.weight, (a1[row], a2[row]), fq, sb, fld[row], pname), self.dataset_proto()).append(tm[row], weight[row, pidx], flags[row])
+#        return acc
+
+
+
+
+
 class weight_time(plotbase):
+    # should set up a choice table based on the combination of averaging methods
+    # key into the lookup is '(avgChannelMethod, avgTimeMethod)'
+    # For the weights we can remove a lot of entries:
+    # no vector averaging applies here; weight IS a scalar.
+    # Also no point in postponing because the weight IS the quantity; 
+    # it is not a derived quantity.
+    # Note: we KEEP the postponed and have self.quantities be a list-of-quantities
+    #       (currently 1 entry with the identity transform ...) because that way
+    #       we could in the future have different flavours of this fn
+    _averaging = {
+        (AVG.None,   AVG.None):           (avg_none,       avg_none,       False),
+        (AVG.None,   AVG.Scalar):         (avg_none,       avg_arithmetic, False),
+        (AVG.Scalar, AVG.None):           (avg_arithmetic, avg_none,       False),
+        (AVG.Scalar, AVG.Scalar):         (avg_arithmetic, avg_arithmetic, False),
+        (AVG.None,   AVG.Sum):            (avg_none,       avg_sum,        False),
+        (AVG.Scalar, AVG.Sum):            (avg_arithmetic, avg_sum,        False),
+        (AVG.Sum,    AVG.Sum):            (avg_sum,        avg_sum,        False),
+    }
+
+
+    ## our construct0r
     def __init__(self):
-        # nothing yet ...
-        pass
+        # weight IS the quantity :-)
+        self.quantities = [Quantity('weight', functional.identity)]
 
     def makePlots(self, msname, selection, mapping, **kwargs):
-        ## initialize the base class (opens table, does selection)
+        # Deal with channel averaging
+        #   Scalar => average the derived quantity
+        avgChannel = CP(selection.averageChannel)
+        avgTime    = CP(selection.averageTime)
+        solchan    = CP(selection.solchan)
+        solint     = CP(selection.solint)
+        timerng    = CP(selection.timeRange)
+
+        # some sanity checks
+        if solchan is not None and avgChannel==AVG.None:
+            raise RuntimeError("nchav value was set without specifiying a channel averaging method; please tell me how you want them averaged")
+        if solint is not None and avgTime==AVG.None:
+            raise RuntimeError("solint value was set without specifiying a time averaging method; please tell me how you want your time range(s) averaged")
+
+        ## initialize the base class
         super(weight_time, self).__init__(msname, selection, mapping, **kwargs)
 
-        # Support "time averaging" by aggregating data points in time bins of 'solint' length
-        solint          = CP(selection.solint)
-        avgTime         = CP(selection.averageTime)
-        #solint_fn       = solint_none
+        n_chan   = self.table[0][self.datacol].shape[0]
+        colname  = 'WEIGHT_SPECTRUM' if 'WEIGHT_SPECTRUM' in self.table.colnames() else 'WEIGHT'
+        spectrum = (colname=='WEIGHT_SPECTRUM')
+        # start of with default channel selection, if there is weight-per-channel anyhoos
+        chansel  = Ellipsis if spectrum else None
+
+        if selection.chanSel:
+            if spectrum:
+                channels = mk_chansel(selection.chanSel)
+                max_chan = max(channels)
+                # if any of the indexed channels > n_chan that's an error
+                if max_chan>=n_chan:
+                    raise RuntimeError("At least one selected channel ({0}) > largest channel index ({1})".format(max_chan, n_chan-1))
+                # also <0 is not quite acceptable
+                if min(channels)<0:
+                    raise RuntimeError("Negative channel number {0} is not acceptable".format(min(channels)))
+                # if the user selected all channels (by selection
+                # 'ch 0:<last>' in stead of 'ch none' we don't 
+                # override the default channel selection (which is more efficient)
+                if channels!=range(n_chan):
+                    chansel = channels
+                # ignore channel averaging if only one channel specified
+                if len(chansel)==1 and avgChannel != AVG.None:
+                    print "WARNING: channel averaging method {0} ignored because only one channel selected".format( avgChannel )
+                    avgChannel = AVG.None
+            else:
+                # channel selection active but only WEIGHT column
+                print "WARNING: you have selected channels but there is no WEIGHT_SPECTRUM column"
+                print "         your channel selection will be IGNORED"
+                chansel = None
+                if avgChannel != AVG.None:
+                    print "WARNING: you specified {0} channel averaging".format(avgChannel)
+                    print "         but there is no WEIGHT_SPECTRUM column so IGNORING channel averaging"
+                    avgChannel = AVG.None
+        else:
+            # no channels selected by user, check wether we actually *have* channels if averaging requested
+            if avgChannel != AVG.None and not spectrum:
+                print "WARNING: you specified {0} channel averaging".format(avgChannel)
+                print "         but there is no WEIGHT_SPECTRUM column so IGNORING channel averaging"
+                avgChannel = AVG.None
+
+        # Test if the selected combination of averaging settings makes sense
+        setup = weight_time._averaging.get((avgChannel, avgTime), None)
+        if setup is None:
+            raise RuntimeError("the combination of {0} channel + {1} time averaging is not supported".format(avgChannel, avgTime))
+        (avgchan_fn, avgtime_fn, postpone) = setup
+
+        # How integration/averaging actually is implemented is by modifying the
+        # time stamp.  By massaging the time stamp into buckets of size
+        # 'solint', we influence the label of the TIME field, which will make
+        # all data points with the same TIME stamp be integrated into the same
+        # data set
         self.timebin_fn = functional.identity
         if avgTime!=AVG.None:
             if solint is None:
@@ -2468,13 +2706,15 @@ class weight_time(plotbase):
                 # Let's transform our timerng list of (start, end) intervals into
                 # a list of (start, end, mid) such that we can easily map
                 # all time stamps [start, end] to mid
+                # If no time ranges defined at all average everything down to middle of experiment?
 
                 # It is important to KNOW that "selection.timeRange" (and thus our
                 # local copy 'timerng') is a list or sorted, non-overlapping time ranges
-                timerng = map(lambda (s, e): (s, e, (s+e)/2.0), timerng)
+                timerng = map(lambda (s, e): (s, e, (s+e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
                 if len(timerng)==1:
                     print "WARNING: averaging all data into one point in time!"
-                    print "         This is because no solint was set. Your plot"
+                    print "         This is because no solint was set or no time"
+                    print "         ranges were selected to average. Your plot"
                     print "         may contain less useful info than expected"
 
                 # try to be a bit optimized in time stamp replacement - filter the 
@@ -2488,93 +2728,425 @@ class weight_time(plotbase):
             else:
                 # Check if solint isn't too small
                 ti = mapping.timeRange.inttm[0]
-                if solint<ti: 
+                if solint<=ti: 
                     raise RuntimeError("solint value {0:.3f} is less than integration time {1:.3f}".format(solint, ti))
                 self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
 
-        self.dataset_proto = dataset_list if avgTime == AVG.None else dataset_solint
-        
-        ## we plot using the WEIGHT column
 
-        fields = [AX.TYPE, AX.BL, AX.FQ, AX.SB, AX.SRC, AX.P]
+        # chansel now is Ellipsis (all channels) or a list of some selected channels
+        self.chanidx   = list()
+        self.vectorAvg = functional.identity
+        self.scalarAvg = functional.identity
+        self.tmVectAvg = functional.identity
+        self.tmScalAvg = functional.identity
 
-        #self.cnt = 0
-        #self.ts  = set()
+        if avgChannel==AVG.None:
+            if spectrum:
+                # No channel averaging - each selected channel goes into self.chanidx
+                self.chanidx = list(enumerate(range(n_chan) if chansel is Ellipsis else chansel))
+                # The vector average step will be misused to just apply the channel selection such that all selected channels
+                # are mapped to 0..n-1. This is only necessary in case not all channels were selected
+                if chansel is not Ellipsis:
+                    self.vectorAvg = lambda x: x[:,chansel,:]
+            else:
+                # no channels at all
+                self.chanidx = None
+        else:
+            # ok channel averaging requested
+            # note that the setup code already verifies that it makes sense to average channels.
+            # which is to say: if there is only the WEIGHT column then averaging will be disabled
+            chbin_fn = None
+            if solchan is None:
+                # average all selected channels down to one
+                # weight_spectrum array 'x' has shape (n_int, n_chan, n_pol)
+                # average the selected channels according the requested averaging method
+                chbin_fn      = lambda x: avgchan_fn(1)(x[:,chansel,:])
+                self.chanidx  = [(0, '*')]
+            else:
+                # average bins of solchan channels down to one
+                if solchan > n_chan:
+                    raise RuntimeError("request to average channels in bins of {0} channels but only {1} are available".format(solchan, n_chan))
+                # Create a mask which is the complement of the selected channels
+                # (remember: chansel == Ellipsis => all channels
+                ch_mask       = (numpy.zeros if chansel is Ellipsis else numpy.ones)(n_chan, dtype=numpy.bool)
+                # only in case chansel != everything we must modify the mask
+                if chansel:
+                    ch_mask[chansel] = False
+
+                # Since we're going to zap masked values (replace by 0) we can usefully use
+                # reduceat! So all we then need is an index array, informing reduceat what the 
+                # reduction boundaries are!
+                # First up: the actual bin numbers we're interested in, we compute the actual
+                #           start + end indices from that
+                bins    = numpy.unique((numpy.array(chansel) if chansel is not Ellipsis else numpy.arange(0, n_chan, solchan))//solchan)
+                bins.sort()
+
+                # we're going to apply channel binning so we must replace 'chansel'
+                # by 'bins' in order for downstream accounting of how many "channels" there will 
+                # be in the data
+                chansel = bins
+
+                # Did timings on comparing simplistic 'loop over list of slices' and numpy.add.reduceat based approaches.
+                # Results: grab bag - depending on problem set size:
+                #      - simplistic approach between 2.5-6x faster (!) when averaging small number of
+                #        channels in small number of bins (say <= 5 bins of ~5 channels)
+                #      - reduceat approach slightly more than 2x faster when binning
+                #        large number of channels in large-ish amount of bins (say 32 bins
+                #        of 4 channels)
+
+                # Update: the reduceat also only wins if all bins are adjacent.
+                #         the way <operator>.reduceat works is, given a list of indices [i,j,k]
+                #         and applied to an array A, it will produce the following outputs:
+                #             [ <operator>(A[i:j]), <operator>(A[j:k]), <operator>(A[k:-1]) ]
+                #         (see https://docs.scipy.org/doc/numpy/reference/generated/numpy.ufunc.reduceat.html)
+                #
+                #         Basically we can use this to efficiently bin i:j, j:k, ..., z:-1 ranges
+                #         If our bins (or in the future, arbitrary channels ranges)  are NOT adjacent, then we must 
+                #         feed these operators to <operator>.reduceat:
+                #             [ start0, end0, start1, end1, ..., startN, endN ] 
+                #         with the start, end indices of channel ranges 0..N
+                #         will produce the following outputs:
+                #             [ <operator>( A[start0:end0] ), <operator>( A[end0:start1] ), <operator>( A[start1:end1] ), ... ]
+                #         so we'd have to throw out every second entry in the output.
+                #         In numpy that's simple enough but it also means that <operator>.reduceat() does twice as must work 
+                #         for no apparent reason.
+
+                # Detect if the bins are adjacent
+                adjacent_bins = (len(set(bins[1:] - bins[:-1])) == 1) if len(bins)>1 else False
+                chbin_fn      = None
+
+                if adjacent_bins:
+                    # we're going to use reduceat() which means it's good enough
+                    # to generate [bin0*solchan, bin1*solchan, ..., bin<nbin-1>*solchan]
+                    indices = CP(bins)
+                    # generate the channel index labels for correct labelling
+                    self.chanidx = list()
+                    for (ch_idx, start) in enumerate(indices):
+                        self.chanidx.append( (ch_idx, start) )
+                    # need to carefully check last entry in there; if 'last bin' < 'n_chan//solchan'
+                    # we must add an extra final boundary or else reduceat() will add up to the end
+                    # of the number of channels in stead of until the end of the bin ...
+                    if bins[-1]<((n_chan-1)//solchan):
+                        # add one more bin limit, set slice to keep only n-1 bins
+                        keepbins = slice(0, len(indices))
+                        indices  = numpy.r_[indices, [indices[-1]+1]]
+                    else:
+                        keepbins = Ellipsis
+                    # indices are in units of solchan bins so for reduceat must
+                    # scale them back to actual channels
+                    indices  *= solchan
+                    # This is where the magic happens
+                    transpose_ch = operator.methodcaller('transpose', (0, 2, 1))
+                    def use_reduceat(x):
+                        # (n_int, n_ch, n_pol) => (n_int, n_pol, n_ch)
+                        tmpx = transpose_ch(x)
+                        # also we must reshape it to a 2-D array of ((n_int * n_pol), n_chan) shape orelse
+                        # the reduceat() don't work [https://docs.scipy.org/doc/numpy/reference/generated/numpy.ufunc.reduceat.html]
+                        # remember the dimensions for later
+                        n_int,n_pol = tmpx.shape[:-1]
+                        tmpx        = tmpx.reshape( (n_int*n_pol, -1) )
+                        # mask out channels that we don't want averaged, joining it
+                        # with the mask that excludes flagged data (by the user) and/or
+                        # whatever was weight-thresholded ...
+                        tmpx.mask = LOGICAL_OR(tmpx.mask, ch_mask)
+                        # set all masked values to 0 such that they don't ever count towards *anything*
+                        # e.g. suppose all channels in a bin are masked then the average should be NaN or something
+                        #      unrepresentable because there was no valid data at all
+                        tmpx.data[tmpx.mask] = 0
+                        # do the summation.
+                        result = numpy.add.reduceat(tmpx.data, indices, axis=1)[:,keepbins]
+                        # also count the number of unmasked values that went into each point
+                        # we may use it for averaging, definitely be using it to create the mask
+                        counts = numpy.add.reduceat(~tmpx.mask, indices, axis=1)[:,keepbins]
+                        # pre-create the masked based on places where the count of unflagged points == 0
+                        # these values have to be removed in the output (and also we can prevent
+                        # divide-by-zero errors)
+                        mask   = ARRAY(counts == 0, dtype=numpy.bool)
+                        # ******************************************************************
+                        # No vector* averaging for THIS data
+                        # ******************************************************************
+                        # ordinary arithmetic mean
+                        # sets counts = 1 where counts == 0 so we don't divided by 0
+                        counts[ mask ] = 1
+                        result /= counts
+#                        if avgchan_fn is avg_vectornorm:
+#                            # ok need to find the maximum complex number in each bin to scale it by
+#                            # take proper care of flagged/inf data
+#                            tmpx.data[tmpx.mask] = -numpy.inf
+#                            result /= (numpy.maximum.reduceat(numpy.abs(tmpx.data), indices, axis=1)[:,keepbins])
+#                        else:
+#                            # ordinary arithmetic mean
+#                            # sets counts = 1 where counts == 0 so we don't divided by 0
+#                            counts[ mask ] = 1
+#                            result /= counts
+                        # set entries where counts==0 to NaN to make it explicit
+                        # that, mathematically speaking, there is nothing there
+                        result[mask] = numpy.nan
+                        # unshape + untranspose from 2-d ((n_int * n_pol), n_output_channels)
+                        #                       into 3-d (n_int, n_pol, n_ouput_channels)
+                        return transpose_ch(numpy.ma.array(result.reshape((n_int, n_pol, -1)), mask=mask.reshape((n_int, n_pol, -1))))
+                    # set chbin_fn to use reduceat()
+                    chbin_fn = use_reduceat
+                else:
+                    # not going to use reduceat() just bruteforcing over a list of slices()
+                    # do some extra pre-processing for the simplistic approach
+                    # it uses slice() indexing so we pre-create the slice objects for it
+                    # for each range of channels to average we compute src and dst slice
+                    indices = map(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
+                    slices  = [(slice(i, i+1), slice(rng[0], rng[1]+1)) for i, rng in enumerate(indices)]
+                    # for display + loopindexing create list of (array_index, "CH label") tuples
+                    self.chanidx = list()
+                    for (ch_idx, start_end) in enumerate(indices):
+                        self.chanidx.append( (ch_idx, start_end[0]) )
+                    n_slices = len(slices)
+                    #  this is the simplistic approach 
+                    def use_dumbass_method(x):
+                        # get an output array
+                        n_int,_,n_pol = x.shape
+                        result        = numpy.ma.empty((n_int, n_slices, n_pol), dtype=x.dtype)
+                        for (dst_idx, src_idx) in slices:
+                            result[:,dst_idx,:]      = numpy.ma.mean(x[:,src_idx,:], axis=1, keepdims=True)
+                            result.mask[:,dst_idx,:] = (numpy.sum(x.mask[:,src_idx,:], axis=1, keepdims=True) == 0)
+                        return result
+                    # and set the channel bin function to use to this'un
+                    chbin_fn = use_dumbass_method
+
+            # Some channel averaging is to be applied so chbin_fn must not be None
+            if chbin_fn is None:
+                raise RuntimeError("chbin_fn is None whilst some channel averaging requested. Please yell at H. Verkouter (verkouter@jive.eu)")
+
+            # depending on which kind of channel averaging, we apply it to the complex data before
+            # producing quantities or on the scalars after computing the quantities
+            if avgChannel == AVG.Scalar:
+                self.scalarAvg = chbin_fn
+            else:
+                self.vectorAvg = chbin_fn
+
+        # Now we must come up with a strategy for organizing the data processing chain
+        #
+        # If avgTime is Vector-like then we can only compute the quantities after all data's been
+        # read & averaged. We've already ruled out that avgChannel == Scalar (for that makes no sense)
+        #
+        # So we may have to postpone computing of the quantities until after having collected + integrated all data
+        post_quantities = lambda tp, x: [(tp, x)]
+        org_quantities  = None
+        if postpone:
+            # create data sets based on the averaged data in a dataset
+            org_quantities  = CP(self.quantities)
+            post_quantities = lambda _, x: map(lambda q: (q.quantity_name, q.quantity_fn(x)), org_quantities)
+            self.quantities = [Quantity('raw', functional.identity)]
+
+        if self.chanidx is None or len(self.chanidx)==1:
+            # post_channel doesn't do nothing, self.chanidx remains a list of length 1
+            post_channel  = lambda ch, x: [(ch, x)]
+        else:
+            # here the post_channel yields a list of extracted channels from the data 'x' coupled
+            # with the assigned label from self.chanidx
+            org_chanidx   = CP(self.chanidx)
+            post_channel  = lambda _, x: map(lambda chi: (chi[1], x[:,chi[0]]), org_chanidx)
+            # replace self.chanidx with a single entry which captures all channels and sets the 
+            # associated label to None - which we could use as a sentinel, if needed
+            self.chanidx  = [(Ellipsis, None)]
+
+        # Let's keep the channels together as long as possible. If only one channel remains then we can do it
+        # in our inner loop
+        if avgTime == AVG.None:
+            dataset_proto = dataset_list
+        else:
+            # depending on wether we need to solint one or more channels in one go
+            # loop over the current self.chanidx and count nr of channels
+            if self.chanidx:
+                nChannel = reduce(lambda acc, chi: acc + ((n_chan if chansel is Ellipsis else len(chansel)) if chi[0] is Ellipsis else 1), self.chanidx, 0)
+            else:
+                nChannel = 1
+            dataset_proto = dataset_solint_array if nChannel>1 else dataset_solint_scalar
+
+        # Depending on wether we have channels or not, we choose different processing routines; one
+        # having per-channel processing and one without
+        if self.chanidx is None:
+            # only WEIGHT column
+            print "WARNING: weight-per-polarization (WEIGHT column) implies only FLAG_ROW column used for flags"
+            fields  = [AX.TYPE, AX.BL, AX.FQ, AX.SB, AX.SRC, AX.P]
+            columns = ["ANTENNA1", "ANTENNA2", "TIME", "DATA_DESC_ID", "FIELD_ID", "WEIGHT", "FLAG_ROW"]
+            self.actual_fn = self.process_weight
+        else:
+            # Note: there will /always/ be WEIGHT+FLAGCOL - either read from the table or invented
+            #          0        1      2      3      4       5     6
+            fields  = [AX.TYPE, AX.BL, AX.FQ, AX.SB, AX.SRC, AX.P, AX.CH]
+            columns = ["ANTENNA1", "ANTENNA2", "TIME", "DATA_DESC_ID", "FIELD_ID", "WEIGHT_SPECTRUM", "FLAG_ROW", "FLAG"]
+            self.actual_fn = self.process_weight_spectrum
+
         ## Now we can start the reduction of the table
-        columns = ["ANTENNA1", "ANTENNA2", "TIME", "DATA_DESC_ID", "FIELD_ID", "WEIGHT"] + ["FLAG_ROW"] if self.flags else []
-        pts     =  ms2util.reducems2(self, self.table, {}, columns, verbose=True, chunksize=5000)
+        pts     =  ms2util.reducems2(self, self.table, collections.defaultdict(dataset_proto), columns, verbose=True, slicers=self.slicers, chunksize=5000)
 
-        #print "WE SHOULD HAVE ",self.cnt," DATA POINTS"
-        #print "ANDALSO ",len(self.ts)," TIME STAMPS"
+        # after the reduction's done we can put back our quantities if we did remove them before
+        if org_quantities is not None:
+            self.quantities = org_quantities
 
         rv  = {}
-        #dt  = 0.0
-        for (label, dataset) in pts.iteritems():
-            #dt += solint_fn( dataset )
-            dataset.average( avgTime )
-            rv[ self.MKLAB(fields, label) ] = dataset
-        #if solint:
-        #    print "SOLINT processing took\t{0:.3f}s".format( dt )
+        if self.chanidx:
+            for (label, dataset) in pts.iteritems():
+                dl = list(label)
+                dataset.average( avgTime )
+                # convert x,y to numarrays
+                dataset.as_numarray()
+                for qn,qd in post_quantities(label[0], dataset.y):
+                    for chn,chd in post_channel(label[6], qd):
+                        dl[0] = qn
+                        dl[6] = chn
+                        rv[ self.MKLAB(fields, dl) ] = dataset_fixed(dataset.x, chd)
+        else:
+            for (label, dataset) in pts.iteritems():
+                dl = list(label)
+                dataset.average( avgTime )
+                # convert x,y to numarrays
+                dataset.as_numarray()
+                for qn,qd in post_quantities(label[0], dataset.y):
+                    dl[0] = qn
+                    rv[ self.MKLAB(fields, dl) ] = dataset_fixed(dataset.x, qd)
         return rv
 
-    def __call__(self, acc, a1, a2, tm, dd, fld, weight, *flag_row):
-        #print "__call__: ",a1,a2,tm,dd,fld,weight.shape
-        # ok, process all the rows!
-        shp   = weight.shape
-        flags = unflagged() if not flag_row else flag_row[0]
-        # single-pol data will have shape (nrow,) 
-        # but our code really would like it to be (nrow, npol), even if 'npol' == 1. (FFS casacore!)
-        tm  = self.timebin_fn( tm )
-        d2d = m2d(weight)
-        for row in range(shp[0]):
-            (fq, sb, plist) = self.ddSelection[ dd[row] ]
-            # we don't iterate over channels
+    ## Here we make the plots
+    def __call__(self, *args):
+        return self.actual_fn(*args)
+
+    # handle WEIGHT = (n_int, n_pol), no FLAG data
+    def process_weight(self, acc, a1, a2, tm, dd, fld, weight, flag_row):
+        # Create masked array from the data with invalid data already masked off
+        data      = numpy.ma.masked_invalid(weight)
+        # now we can easily add in flag information:
+        # FLAG_ROW = (n_int) do logical_or with data.mask.T [data.mask.T = (n_int,n_pol).T == (n_pol, n_int)]
+        #            so the FLAG_ROW(n_int) will broadcast nicely across polarizations
+        data.mask = numpy.logical_or(data.mask.T, flag_row).T
+        # weight handling. A lot easier for this one :-)
+        data.mask = numpy.logical_or(data.mask, weight<self.threshold)
+
+        # possibly vector-average the data
+        data      = self.vectorAvg(data)
+        # Now create the quantity data - map the quantity functions over the (vector averaged)
+        # data and, if needed, scalar average them
+        qd        = map(lambda q: (q.quantity_name, self.scalarAvg(q.quantity_fn(data))), self.quantities)
+
+        # Transform the time stamps, if necessary
+        tm        = self.timebin_fn(tm)
+
+        # Now we can loop over all the rows in the data
+        dds  = self.ddSelection
+        # We don't have to test *IF* the current data description id is 
+        # selected; the fact that we see it here means that it WAS selected!
+        # The only interesting bit is selecting the correct products
+        for row in range(data.shape[0]):
+            (fq, sb, plist) = dds[ dd[row] ]
             for (pidx, pname) in plist:
-                acc.setdefault((YTypes.weight, (a1[row], a2[row]), fq, sb, fld[row], pname), self.dataset_proto()).append(tm[row], weight[row, pidx], flags[row])
+                l = ["", (a1[row], a2[row]), fq, sb, fld[row], pname]
+                for (qnm, qval) in qd:
+                    l[0] = qnm
+                    acc[tuple(l)].append(tm[row], qval.data[row, pidx], qval.mask[row, pidx])
         return acc
+
+    # handle WEIGHT_SPECTRUM = (n_int, n_chan, n_pol)
+    def process_weight_spectrum(self, acc, a1, a2, tm, dd, fld, weight_spectrum, flag_row, flag):
+        # Create masked array from the data with invalid data already masked off
+        data      = numpy.ma.masked_invalid(weight_spectrum)
+        # now we can easily add in flag information;
+        # flags either has shape of data or it's a single bool False
+        data.mask = numpy.logical_or(data.mask, self.untranspose_flag(numpy.logical_or(self.transpose_flag(flag), flag_row)))
+        # weight thresholding - is easier for this one! 
+        data.mask = numpy.logical_or(data.mask, weight_spectrum<self.threshold)
+
+        # possibly vector-average the data
+        data      = self.vectorAvg(data)
+        # Now create the quantity data - map the quantity functions over the (vector averaged)
+        # data and, if needed, scalar average them
+        qd        = map(lambda q: (q.quantity_name, self.scalarAvg(q.quantity_fn(data))), self.quantities)
+
+        # Transform the time stamps, if necessary
+        tm        = self.timebin_fn(tm)
+
+        # Now we can loop over all the rows in the data
+        dds  = self.ddSelection
+        ci   = self.chanidx
+        # We don't have to test *IF* the current data description id is 
+        # selected; the fact that we see it here means that it WAS selected!
+        # The only interesting bit is selecting the correct products
+        for row in range(data.shape[0]):
+            (fq, sb, plist) = dds[ dd[row] ]
+            for (chi, chn) in ci:
+                for (pidx, pname) in plist:
+                    l = ["", (a1[row], a2[row]), fq, sb, fld[row], pname, chn]
+                    for (qnm, qval) in qd:
+                        l[0] = qnm
+                        acc[tuple(l)].append(tm[row], qval.data[row, chi, pidx], qval.mask[row, chi, pidx])
+        return acc
+
+
 
 class uv(plotbase):
     def __init__(self):
         # nothing yet ...
         pass
 
+    _sep = "\n\t - "
     def makePlots(self, msname, selection, mapping, **kwargs):
         ## initialize the base class (opens table, does selection)
         super(uv, self).__init__(msname, selection, mapping, **kwargs)
+
+        # warn about any averaging or channel selection
+
+        print_if("WARNING: Ignoring the following settings:"+uv._sep + uv._sep.join(
+                 map(lambda tup: tup[0](tup[1]),
+                     filter(lambda tup: tup[1] not in [AVG.None, None],
+                            zip(["your channel selection".format, "solint {0}".format, "{0} avg in time".format, "nchav of {0}".format, "{0} avg in frequency".format, "weight threshold of {0}".format],
+                                [selection.chanSel, selection.solint, selection.averageTime, selection.solchan, selection.averageChannel, selection.weightThreshold])))))
         
         ## we plot using the UVW column
         ## UVW is not a function of POL (it should be a function
         ##     of CH but that would mean we'd have to actually
         ##     do computations - yikes)
-
         fields = [AX.TYPE, AX.BL, AX.FQ, AX.SB, AX.SRC]
 
         ## Now we can start the reduction of the table
-        columns = ["ANTENNA1", "ANTENNA2", "DATA_DESC_ID", "FIELD_ID", "UVW"] + ["FLAG_ROW"] if self.flags else []
+        # The base class will have set up FLAG/FLAG_ROW accessors based on wether the user
+        # specified reading flags or not. We can just use the transpose/untranspose functions
+        # and expect them to Do The Right Thing (tm)
+        columns = ["ANTENNA1", "ANTENNA2", "DATA_DESC_ID", "FIELD_ID", "UVW", "FLAG_ROW"] 
         pts     =  ms2util.reducems2(self, self.table, {}, columns, verbose=True, chunksize=5000)
 
         rv  = {}
         for (label, dataset) in pts.iteritems():
             rv[ self.MKLAB(fields, label) ] = dataset
-        #for k in rv.keys():
-        #    print "Plot:",str(k),"/",map(str, rv[k].keys())
         return rv
 
-    def __call__(self, acc, a1, a2, dd, fld, uvw, *flag_row):
+    def __call__(self, acc, a1, a2, dd, fld, uvw, row_flag):
+        # transform the data into a masked array with inf/nan masked off
+        uvw      = numpy.ma.masked_invalid(uvw)
+        # uvw = (nrow, 3), flag_row = (nrow) 
+        # so to broadcast row_flag across the mask we use uvw.T [shape = (3, nrow)]
+        uvw.mask = numpy.logical_or(uvw.mask.T, row_flag).T
+        # now condense the (nrow, [u,v,w]) array to (nrow, [uflag || vflag]) [shape: (nrow,1)]:
+        # one flag for the (u,v) data point: if either u or v was nan/inf or the row was
+        # flagged, flag that datapoint
+        row_flag = numpy.logical_or(uvw.mask[:,0], uvw.mask[:,1])
+        u        = uvw.data[:,0]
+        v        = uvw.data[:,1]
         # ok, process all the rows!
-        flags = unflagged() if not flag_row else flag_row[0]
         for row in range(uvw.shape[0]):
             (fq, sb, _plist) = self.ddSelection[ dd[row] ]
             # we don't iterate over channels nor over polarizations
-            ds = acc.setdefault(('V', (a1[row], a2[row]), fq, sb, fld[row]), dataset())
-            f  = flags[row]
-            ds.append( uvw[row, 0],  uvw[row, 1], f)
-            ds.append(-uvw[row, 0], -uvw[row, 1], f)
+            ds = acc.setdefault(('V', (a1[row], a2[row]), fq, sb, fld[row]), dataset_list())
+            f  = row_flag[row]
+            ds.append( u[row],  v[row], f)
+            ds.append(-u[row], -v[row], f)
         return acc
+
+
+
+
+
 
 ## This plotter will iterate over "DATA" or "LAG_DATA"
 ## and produce a number of quantities per data point
-class data_quantity_uvdist(plotbase):
+class data_quantity_uvdist_old(plotbase):
 
     ## our construct0r
     ##   qlist = [ (quantity_name, quantity_fn), ... ]
