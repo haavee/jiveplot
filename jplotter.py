@@ -2028,7 +2028,7 @@ def run_plotter(cmdsrc, **kwargs):
             print x
         # compute longest plot type name
         longest = max( map(compose(len, str), plots.Types) )
-        map(lambda x : p("{0:{1}} => {2}".format(x, longest, plots.Plotters[x].description())), plots.Types)
+        map(lambda x : p("{0:{1}} => {2}".format(x, longest, plots.Plotters[x].description())), sorted(plots.Types))
     c.addCommand( \
         mkcmd(rx=re.compile(r"^lp$"), hlp=Help["lp"], \
               cb=list_pt, id="lp") )
