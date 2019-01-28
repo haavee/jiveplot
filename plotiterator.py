@@ -1389,7 +1389,7 @@ class data_quantity_time(plotbase):
         super(data_quantity_time, self).__init__(msname, selection, mapping, **kwargs)
 
         # channel selection+averaging schemes; support averaging over channels (or chunks of channels)
-        chansel  = Ellipsis #None
+        chansel  = Ellipsis 
         n_chan   = self.table[0][self.datacol].shape[0]
         if selection.chanSel:
             channels = mk_chansel(selection.chanSel)
@@ -1406,8 +1406,8 @@ class data_quantity_time(plotbase):
             if channels!=range(n_chan):
                 chansel = channels
             # ignore channel averaging if only one channel specified
-            if len(chansel)==1 and avgChannel != AVG.None:
-                print "WARNING: channel averaging method {0} ignored because only one channel selected".format( avgChannel )
+            if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.None:
+                print "WARNING: channel averaging method {0} ignored because only one channel selected or available".format( avgChannel )
                 avgChannel = AVG.None
 
         # Test if the selected combination of averaging settings makes sense
@@ -1856,7 +1856,7 @@ class data_quantity_chan(plotbase):
             if channels!=range(n_chan):
                 chansel = channels
             # ignore channel averaging if only one channel specified
-            if len(chansel)==1 and avgChannel != AVG.None:
+            if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.None:
                 print "WARNING: channel averaging method {0} ignored because only one channel selected".format( avgChannel )
                 avgChannel = AVG.None
 
@@ -2669,7 +2669,7 @@ class weight_time(plotbase):
                 if channels!=range(n_chan):
                     chansel = channels
                 # ignore channel averaging if only one channel specified
-                if len(chansel)==1 and avgChannel != AVG.None:
+                if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.None:
                     print "WARNING: channel averaging method {0} ignored because only one channel selected".format( avgChannel )
                     avgChannel = AVG.None
             else:
@@ -3146,7 +3146,7 @@ class uv(plotbase):
 
 ## This plotter will iterate over "DATA" or "LAG_DATA"
 ## and produce a number of quantities per data point
-class data_quantity_uvdist_old(plotbase):
+class data_quantity_uvdist(plotbase):
 
     ## our construct0r
     ##   qlist = [ (quantity_name, quantity_fn), ... ]
