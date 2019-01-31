@@ -482,64 +482,64 @@ def m2d(ar):
         shp.insert(-1, 1)
     return ar.reshape( shp )
 
-class dataset_org:
-    __slots__ = ['x', 'y', 'n', 'a', 'sf', 'm']
-
-    @classmethod
-    def add_sumy(self, obj, xs, ys, m):
-        obj.y = obj.y + ys
-        obj.n = obj.n + 1
-        obj.m = numpy.logical_and(obj.m, m)
-
-    @classmethod
-    def init_sumy(self, obj, xs, ys, m):
-        obj.x  = numpy.array(xs)
-        obj.y  = numpy.array(ys)
-        obj.sf = dataset_org.add_sumy
-        obj.m  = m
-
-    def __init__(self, x=None, y=None, m=None):
-        if x is not None and len(x)!=len(y):
-            raise RuntimeError, "attempt to construct data set where len(x) != len(y)?!!!"
-        self.x  = list() if x is None else x
-        self.y  = list() if y is None else y
-        self.m  = list() if m is None else m
-        self.n  = 0 if x is None else 1
-        self.sf = dataset_org.init_sumy if x is None else dataset_org.add_sumy
-        self.a  = False
-
-    def append(self, xv, yv, m):
-        self.x.append(xv)
-        self.y.append(yv)
-        self.m.append(m)
-
-    # integrate into the current buffer
-    def sumy(self, xs, ys, m):
-        self.sf(self, xs, ys, m)
-
-    def average(self):
-        if not self.a and self.n>1:
-            self.y = self.y / self.n
-        self.a = True
-
-    def is_numarray(self):
-        return (type(self.x) is numpy.ndarray and type(self.y) is numpy.ndarray)
-
-    def as_numarray(self):
-        if self.is_numarray():
-            return self
-        # note to self: float32 has insufficient precision for e.g.
-        # <quantity> versus time
-        self.x  = numpy.array(self.x, dtype=numpy.float64)
-        self.y  = numpy.array(self.y, dtype=numpy.float64)
-        self.m  = numpy.array(self.m, dtype=numpy.bool)
-        return self
-
-    def __str__(self):
-        return "DATASET: {0} MASK: {1}".format(zip(self.x, self.y), self.m)
-
-    def __repr__(self):
-        return str(self)
+#class dataset_org:
+#    __slots__ = ['x', 'y', 'n', 'a', 'sf', 'm']
+#
+#    @classmethod
+#    def add_sumy(self, obj, xs, ys, m):
+#        obj.y = obj.y + ys
+#        obj.n = obj.n + 1
+#        obj.m = numpy.logical_and(obj.m, m)
+#
+#    @classmethod
+#    def init_sumy(self, obj, xs, ys, m):
+#        obj.x  = numpy.array(xs)
+#        obj.y  = numpy.array(ys)
+#        obj.sf = dataset_org.add_sumy
+#        obj.m  = m
+#
+#    def __init__(self, x=None, y=None, m=None):
+#        if x is not None and len(x)!=len(y):
+#            raise RuntimeError, "attempt to construct data set where len(x) != len(y)?!!!"
+#        self.x  = list() if x is None else x
+#        self.y  = list() if y is None else y
+#        self.m  = list() if m is None else m
+#        self.n  = 0 if x is None else 1
+#        self.sf = dataset_org.init_sumy if x is None else dataset_org.add_sumy
+#        self.a  = False
+#
+#    def append(self, xv, yv, m):
+#        self.x.append(xv)
+#        self.y.append(yv)
+#        self.m.append(m)
+#
+#    # integrate into the current buffer
+#    def sumy(self, xs, ys, m):
+#        self.sf(self, xs, ys, m)
+#
+#    def average(self):
+#        if not self.a and self.n>1:
+#            self.y = self.y / self.n
+#        self.a = True
+#
+#    def is_numarray(self):
+#        return (type(self.x) is numpy.ndarray and type(self.y) is numpy.ndarray)
+#
+#    def as_numarray(self):
+#        if self.is_numarray():
+#            return self
+#        # note to self: float32 has insufficient precision for e.g.
+#        # <quantity> versus time
+#        self.x  = numpy.array(self.x, dtype=numpy.float64)
+#        self.y  = numpy.array(self.y, dtype=numpy.float64)
+#        self.m  = numpy.array(self.m, dtype=numpy.bool)
+#        return self
+#
+#    def __str__(self):
+#        return "DATASET: {0} MASK: {1}".format(zip(self.x, self.y), self.m)
+#
+#    def __repr__(self):
+#        return str(self)
 
 class dataset_fixed:
     __slots__ = ['x', 'y', 'm']
@@ -562,15 +562,16 @@ class dataset_fixed:
         raise NotImplemented("average() does not apply to dataset_fixed!")
 
     def is_numarray(self):
-        return (type(self.x) is numpy.ndarray and type(self.y) is numpy.ndarray)
+        return type(self) is _ArrayT and type(self.y) is _MArrayT
 
     def as_numarray(self):
         if self.is_numarray():
             return self
         # note to self: float32 has insufficient precision for e.g.
         # <quantity> versus time
-        self.x  = numpy.array(self.x, dtype=numpy.float64)
-        self.y  = numpy.array(self.y, dtype=numpy.float64)
+        self.x  = ARRAY(self.x, dtype=numpy.float64)
+        if type(self.y) is not _MArrayT: #numpy.ma.MaskedArray:
+            self.y  = MARRAY(self.y, mask=~ISFINITE(self.y), dtype=numpy.float64)
         return self
 
     def __str__(self):
@@ -620,15 +621,15 @@ class dataset_list:
             raise RuntimeError("dataset_list was not made for time averaging")
 
     def is_numarray(self):
-        return (type(self.x) is numpy.array and type(self.y) is numpy.ma.MaskedArray)
+        return type(self.x) is _ArrayT and type(self.y) is _MArrayT
 
     def as_numarray(self):
         if self.is_numarray():
             return self
         # note to self: float32 has insufficient precision for e.g.
         # <quantity> versus time
-        self.x  = numpy.array(self.x, dtype=numpy.float64)
-        self.y  = numpy.ma.MaskedArray(self.y, mask=self.m, dtype=numpy.float64)
+        self.x  = ARRAY(self.x, dtype=numpy.float64)
+        self.y  = MARRAY(self.y, mask=self.m, dtype=numpy.float64)
         return self
 
     def __str__(self):
@@ -703,7 +704,7 @@ class dataset_chan:
         obj.m          = ARRAY(~obj.m, dtype=numpy.int) 
         # from now on, averaging has to do something
         obj.af         = dataset_chan.average_n
-        # from on extra .add_y() calls will do something slight different
+        # from now on extra .add_y() calls will do something slight different
         obj.sf         = dataset_chan.add_sumy
         # use the new .add_y() to do the "integration" for us
         obj.sf(obj, xs, ys, m)
@@ -719,7 +720,6 @@ class dataset_chan:
         ys[ m ] = 0
         obj.y = obj.y + ys
         obj.m = obj.m + ARRAY(~m, dtype=numpy.int) # transform mask into counts
-        #obj.n = obj.n + 1
 
     # very first call to .add_y() just store the parameters
     # no fancy processing
@@ -728,7 +728,6 @@ class dataset_chan:
         obj.x  = ARRAY(xs)
         obj.y  = ARRAY(ys)
         obj.m  = ARRAY(m) #ARRAY(~m, dtype=numpy.int) # tranform mask into counts
-        #obj.n  = 1
         obj.sf = dataset_chan.add_sumy_first
         obj.af = dataset_chan.average_noop
 
@@ -739,7 +738,6 @@ class dataset_chan:
     @classmethod
     def average_noop(self, obj, method):
         # nothing to average, really
-        #obj.a  = True
         obj.af = None
 
     @classmethod
@@ -767,8 +765,6 @@ class dataset_chan:
         obj.af     = None
 
     def __init__(self):
-        #self.a  = False
-        #self.n  = 0
         self.x  = self.y = self.m = self.n = None
         self.sf = dataset_chan.init_sumy
         self.af = dataset_chan.average_empty
@@ -788,7 +784,7 @@ class dataset_chan:
             raise RuntimeError("Calling .average() > once on dataset_chan object?!")
 
     def is_numarray(self):
-        return (type(self.x) is numpy.array and type(self.y) is numpy.ma.MaskedArray)
+        return type(self.x) is _ArrayT and type(self.y) is _MArrayT
 
     def as_numarray(self):
         if self.is_numarray():
@@ -797,8 +793,8 @@ class dataset_chan:
             raise RuntimeError("Request to convert unaveraged dataset_chan_solint to nd-array?!!")
         # note to self: float32 has insufficient precision for e.g.
         # <quantity> versus time
-        self.x  = numpy.array(self.x, dtype=numpy.float64)
-        self.y  = numpy.ma.MaskedArray(self.y, mask=self.m, dtype=numpy.float64)
+        self.x  = ARRAY(self.x, dtype=numpy.float64)
+        self.y  = MARRAY(self.y, mask=self.m)
         return self
 
     def __str__(self):
@@ -872,7 +868,7 @@ class dataset_solint_array:
             # ---------------------------
 
     def is_numarray(self):
-        return (type(self.x) is numpy.ndarray and type(self.y) is numpy.ma.MaskedArray)
+        return type(self.x) is _ArrayT and type(self.y) is _MArrayT
 
     def as_numarray(self):
         if self.is_numarray():
@@ -882,7 +878,7 @@ class dataset_solint_array:
         if self.a is None:
             raise RuntimeError("solint dataset has not been averaged yet")
         self.x  = numpy.fromiter(self.a.iterkeys(), dtype=numpy.float64, count=len(self.a))
-        self.y  = numpy.ma.array(self.a.values())
+        self.y  = MARRAY(self.a.values())
         return self
 
     def __str__(self):
@@ -941,7 +937,7 @@ class dataset_solint_scalar:
             # ---------------------------
 
     def is_numarray(self):
-        return (type(self.x) is numpy.ndarray and type(self.y) is numpy.ma.MaskedArray)
+        return type(self.x) is _ArrayT and type(self.y) is _MArrayT
 
     def as_numarray(self):
         if self.is_numarray():
@@ -951,7 +947,7 @@ class dataset_solint_scalar:
         if self.a is None:
             raise RuntimeError("solint dataset has not been averaged yet")
         self.x  = numpy.fromiter(self.a.iterkeys(), dtype=numpy.float64, count=len(self.a))
-        self.y  = numpy.ma.array(self.a.values())
+        self.y  = MARRAY(self.a.values())
         return self
 
     def __str__(self):
@@ -1758,6 +1754,7 @@ class data_quantity_time(plotbase):
                         acc[tuple(l)].append(tm[row], qval.data[row, chi, pidx], qval.mask[row, chi, pidx])
         return acc
 
+
 ## This plotter will iterate over "DATA" or "LAG_DATA"
 ## and produce a number of quantities per frequency, possibly averaging over time and/or channels
 class data_quantity_chan(plotbase):
@@ -2175,6 +2172,7 @@ class data_quantity_chan(plotbase):
             for qn,qd in post_quantities(label[0], dataset.y):
                 dl[0] = qn
                 rv[ self.MKLAB(fields, dl) ] = dataset_fixed(dataset.x, qd)
+
         return rv
 
     ## Here we make the plots
@@ -3123,7 +3121,7 @@ class uv(plotbase):
         # uvw = (nrow, 3), flag_row = (nrow) 
         # so to broadcast row_flag across the mask we use uvw.T [shape = (3, nrow)]
         uvw.mask = numpy.logical_or(uvw.mask.T, row_flag).T
-        # now condense the (nrow, [u,v,w]) array to (nrow, [uflag || vflag]) [shape: (nrow,1)]:
+        # now condense the (nrow, [u,v,w], dtype=bool) array to (nrow, [uflag || vflag]) [shape: (nrow,1)]:
         # one flag for the (u,v) data point: if either u or v was nan/inf or the row was
         # flagged, flag that datapoint
         row_flag = numpy.logical_or(uvw.mask[:,0], uvw.mask[:,1])
@@ -3375,22 +3373,22 @@ class data_quantity_uvdist(plotbase):
         return acc
 
 Iterators = {
-    'amptime' : data_quantity_time([(YTypes.amplitude, numpy.abs)]),
-    'phatime' : data_quantity_time([(YTypes.phase, lambda x: numpy.angle(x, True))]),
+    'amptime' : data_quantity_time([(YTypes.amplitude, numpy.ma.abs)]),
+    'phatime' : data_quantity_time([(YTypes.phase, lambda x: numpy.ma.angle(x, True))]),
     'anptime' : data_quantity_time([(YTypes.amplitude, numpy.ma.abs), (YTypes.phase, lambda x: numpy.ma.angle(x, True))]),
     'retime'  : data_quantity_time([(YTypes.real, numpy.real)]),
     'imtime'  : data_quantity_time([(YTypes.imag, numpy.imag)]),
     'rnitime' : data_quantity_time([(YTypes.real, numpy.real), (YTypes.imag, numpy.imag)]),
-    'ampchan' : data_quantity_chan([(YTypes.amplitude, numpy.abs)]),
-    'ampfreq' : data_quantity_chan([(YTypes.amplitude, numpy.abs)], byFrequency=True),
-    'phachan' : data_quantity_chan([(YTypes.phase, lambda x: numpy.angle(x, True))]),
-    'phafreq' : data_quantity_chan([(YTypes.phase, lambda x: numpy.angle(x, True))], byFrequency=True),
-    'anpchan' : data_quantity_chan([(YTypes.amplitude, numpy.abs), (YTypes.phase, lambda x: numpy.angle(x, True))]),
-    'anpfreq' : data_quantity_chan([(YTypes.amplitude, numpy.abs), (YTypes.phase, lambda x: numpy.angle(x, True))], byFrequency=True),
+    'ampchan' : data_quantity_chan([(YTypes.amplitude, numpy.ma.abs)]),
+    'ampfreq' : data_quantity_chan([(YTypes.amplitude, numpy.ma.abs)], byFrequency=True),
+    'phachan' : data_quantity_chan([(YTypes.phase, lambda x: numpy.ma.angle(x, True))]),
+    'phafreq' : data_quantity_chan([(YTypes.phase, lambda x: numpy.ma.angle(x, True))], byFrequency=True),
+    'anpchan' : data_quantity_chan([(YTypes.amplitude, numpy.ma.abs), (YTypes.phase, lambda x: numpy.ma.angle(x, True))]),
+    'anpfreq' : data_quantity_chan([(YTypes.amplitude, numpy.ma.abs), (YTypes.phase, lambda x: numpy.ma.angle(x, True))], byFrequency=True),
     'rechan'  : data_quantity_chan([(YTypes.real, numpy.real)]),
     'imchan'  : data_quantity_chan([(YTypes.imag, numpy.imag)]),
     'rnichan' : data_quantity_chan([(YTypes.real, numpy.real), (YTypes.imag, numpy.imag)]),
     'wt'      : weight_time(),
     'uv'      : uv(),
-    'ampuv'   : data_quantity_uvdist([(YTypes.amplitude, numpy.abs)])
+    'ampuv'   : data_quantity_uvdist([(YTypes.amplitude, numpy.ma.abs)])
         }
