@@ -1558,8 +1558,8 @@ def parse_ckey_expr(expr):
         token_def(r"\]",                                    simple_t('rbracket')),
         token_def(r'=',                                     simple_t('equal')),
         token_def(r',',                                     simple_t('comma')),
-        token_def(r"[^][ '\t]+",                              value_t('text')),
         (mk_escaped_rx("'"),                                xform_t('text',  lambda v: v[1:-1])),
+        token_def(r"[^][ '\t,=]+",                          value_t('text')),
         token_def(r"\s+",                                   ignore_t())
         #token_def(r"[a-zA-Z0-9\+\-]"
     ]
@@ -1619,7 +1619,10 @@ def parse_ckey_expr(expr):
                 if vallist:
                     return (attrnm, valstr)
                 if aval is None:
-                    raise RuntimeError("Your selector {0} seems based on a stripped attribute (==None)".format(attrnm))
+                    # The current attribute is stripped and there was no explicit match for it so
+                    # there's not much we can do; maybe there's a default at the end but we don't know that here
+                    return (None, None)
+                    #raise RuntimeError("Your selector {0} seems based on a stripped attribute (==None)".format(attrnm))
                 return (attrnm, aval)
             return do_it
 
