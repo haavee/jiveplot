@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import sys, os, re, jplotter, command, functools
+from   operator import methodcaller
 
 # program default(s)
 NoWgt   = True    # do not produce weight plots
@@ -12,9 +13,15 @@ PolCMap = "ckey p['RR']=2 p['LL']=3 p['RL']=4 p['LR']=5"
 partition = lambda p, l: reduce(lambda (y,n), x: (y+[x], n) if p(x) else (y, n+[x]), l, ([], []))
 # function composition is really great
 compose   = lambda *fns: lambda x: reduce(lambda a, f: f(a), reversed(fns), x)
+Map       = lambda fn  : functools.partial(map, fn)
 
 # full MS path to plot base name transformation
 mk_basenm = compose(functools.partial(re.sub, r'\.ms', ''), os.path.basename, functools.partial(re.sub, r'/*$', ''))
+# CalSrc must be transformed such that it can be fed into "/{0}/i" regex,
+# even if CalSrc is comma-separated list of sources. 
+# So: split CalSrc by ',', escape the individual source names and transform
+#     to "(<src>|<src>|....)" as regex alternatives for matching
+mk_calsrc = compose("({0})".format, "|".join, Map(re.escape), methodcaller('split', ','))
 
 # returns None if the argument wasn't present, tp(<value>) if it was
 # (such that it will give an exception if e.g. you expect int but
@@ -63,7 +70,8 @@ def Usage(prog, full):
     Refant  which station to use as reference antenna (two-letter station
             code as found in the ANTENNA subtable/vexfile)
     CalSrc  which source to use as calibrator source for calibrator scan
-            selection
+            selection. May be comma-separated list of possible sources.
+            Source names will be matched exactly, mind you.
 
     Produces JIVE standard plots for the MeasurementSet. These plots are:
 
@@ -84,7 +92,7 @@ class Settings(object):
     def __init__(self, ms, refant, calsrc):
         self.measurementset = ms
         self.refant         = refant
-        self.calsrc         = re.escape(calsrc) # builtin is better than bad homegrown :D
+        self.calsrc         = mk_calsrc(calsrc)
         self.myBasename     = mk_basenm( self.measurementset )
         self.tempFileName   = "/tmp/sptf-{0}.ps".format( os.getpid() )
 
