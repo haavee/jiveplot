@@ -6,8 +6,9 @@ from   operator import methodcaller
 NoWgt   = True    # do not produce weight plots
 ScanNo  = None    # automatic scan selection
 Version = "$Id: standardplots,v 1.1 2014-08-08 15:38:41 jive_cc Exp $"
-# Polarization colour scheme as per JIVE standard
-PolCMap = "ckey p['RR']=2 p['LL']=3 p['RL']=4 p['LR']=5"
+# Polarization colour scheme as per JIVE standard.
+# Single pol data gets coloured black.
+PolCMap = "ckey p[rr]=2 p[ll]=3 p[rl]=4 p[lr]=5 p[none]=1"
 
 # One-liner to split a list of things into two lists, one satisfying the predicate, the other not
 partition = lambda p, l: reduce(lambda (y,n), x: (y+[x], n) if p(x) else (y, n+[x]), l, ([], []))
