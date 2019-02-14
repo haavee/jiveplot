@@ -1230,8 +1230,16 @@ def progress(cur, s, e, sz, pfx="Progress"):
 ## to be called on the data [e.g. "numpy.abs", "numpy.real" ... or something of your own]
 def mk_slicer(blc, trc, fn=None):
     # we can already create the slice
-    indarr = [Ellipsis]+map(lambda (st, en): slice(st, en), zip(blc, trc))
-    #print "mk_slicer/blc=",blc," trc=",trc," indarr=",indarr
+    # 14 Feb 2019: got warning:
+    #
+    # /home/verkout/jiveplot/ms2util.py:1238: FutureWarning: Using a non-tuple
+    # sequence for multidimensional indexing is deprecated; use
+    # `arr[tuple(seq)]` instead of `arr[seq]`. In the future this will be
+    # interpreted as an array index, `arr[np.array(seq)]`, which will result
+    # either in an error or a different result.
+    # return lambda tab, col, s, n: tab.getcol(col, startrow=s, nrow=n)[indarr]
+    indarr = tuple([Ellipsis]+map(lambda (st, en): slice(st, en), zip(blc, trc)))
+
     if fn:
         return lambda tab, col, s, n: fn(tab.getcol(col, startrow=s, nrow=n))[indarr]
     else:
