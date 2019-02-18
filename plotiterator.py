@@ -473,18 +473,18 @@ class plotbase(object):
 ##   it inserts degenerate axis from the end, assuming that there 
 ##   won't be data sets with only one row ...
 ##   (single pol does happen! a lot!)
-def m3d(ar):
-    shp = list(ar.shape)
-    while len(shp)<3:
-        shp.insert(-1, 1)
-    return ar.reshape( shp )
-
-def m2d(ar):
-    shp = list(ar.shape)
-    while len(shp)<2:
-        shp.insert(-1, 1)
-    return ar.reshape( shp )
-
+#def m3d(ar):
+#    shp = list(ar.shape)
+#    while len(shp)<3:
+#        shp.insert(-1, 1)
+#    return ar.reshape( shp )
+#
+#def m2d(ar):
+#    shp = list(ar.shape)
+#    while len(shp)<2:
+#        shp.insert(-1, 1)
+#    return ar.reshape( shp )
+#
 #class dataset_org:
 #    __slots__ = ['x', 'y', 'n', 'a', 'sf', 'm']
 #
@@ -618,6 +618,11 @@ class dataset_list:
         self.x.append(xv)
         self.y.append(yv)
         self.m.append(m)
+
+    def extend(self, xseq, yseq, mseq):
+        self.x.extend(xseq)
+        self.y.extend(yseq)
+        self.m.extend(mseq)
 
     def average(self, method):
         if method != AVG.None:
@@ -3456,7 +3461,6 @@ class data_quantity_uvdist(plotbase):
         fields  = [AX.TYPE, AX.BL, AX.FQ, AX.SB, AX.SRC, AX.P]
         columns = ["ANTENNA1", "ANTENNA2", "UVW", "DATA_DESC_ID", "FIELD_ID", "WEIGHTCOL", "FLAG_ROW", "FLAG", self.datacol]
         pts     =  ms2util.reducems2(self, self.table, collections.defaultdict(dataset_list), columns, verbose=True, slicers=self.slicers, chunksize=5000)
-        #pts     =  ms2util.reducems2(self, self.table, collections.defaultdict(dataset_chan), columns, verbose=True, slicers=self.slicers, chunksize=5000)
 
         # after the reduction's done we can put back our quantities if we did remove them before
         if org_quantities is not None:
@@ -3501,7 +3505,7 @@ class data_quantity_uvdist(plotbase):
 
         # Now we can loop over all the rows in the data
         dds  = self.ddSelection
-        ci   = range(len(self.chanidx))
+        #ci   = range(len(self.chanidx))
         cif  = self.chanidx_fn
         # We don't have to test *IF* the current data description id is 
         # selected; the fact that we see it here means that it WAS selected!
@@ -3515,244 +3519,244 @@ class data_quantity_uvdist(plotbase):
                 uvd = uvw[row] * cif(ddid)
                 for (qnm, qval) in qd:
                     l[0] = qnm
+                    acc[tuple(l)].extend(uvd, qval.data[row,:,pidx], qval.mask[row,:,pidx])
                     # loop over the channels; self.chanidx = [ChX, ChY, ChZ]
-                    #for (i, ch) in enumerate(ci):
-                    #   l[-1] = ch
-                    for i in ci:
-                        acc[tuple(l)].append(uvd[i], qval.data[row, i, pidx], qval.mask[row, i, pidx])
-                    #acc[tuple(l)].add_y(cif(ddid), qval.data[row, :, pidx], qval.mask[row, :, pidx])
+                    #for i in ci:
+                    #    acc[tuple(l)].append(uvd[i], qval.data[row, i, pidx], qval.mask[row, i, pidx])
         return acc
 
 
-## This plotter will iterate over "DATA" or "LAG_DATA"
-## and produce a number of quantities per data point
-class data_quantity_uvdist_old(plotbase):
+### This plotter will iterate over "DATA" or "LAG_DATA"
+### and produce a number of quantities per data point
+#class data_quantity_uvdist_old(plotbase):
+#
+#    ## our construct0r
+#    ##   qlist = [ (quantity_name, quantity_fn), ... ]
+#    ##
+#    ##  Note that 'channel averaging' will be implemented on a per-plot
+#    ##  basis, not at the basic type of plot instance
+#    def __init__(self, qlist):
+#        self.quantities = qlist
+#
+#    def makePlots(self, msname, selection, mapping, **kwargs):
+#        datacol = CP(mapping.domain.column)
+#
+#        # Deal with channel averaging
+#        #   Scalar => average the derived quantity
+#        #   Vector => compute average cplx number, then the quantity
+#        avgChannel = CP(selection.averageChannel)
+#
+#        if selection.averageTime!=AVG.None:
+#            print "Warning: {0} time averaging ignored for this plot".format(selection.averageTime)
+#
+#        ## initialize the base class
+#        super(data_quantity_uvdist, self).__init__(msname, selection, mapping, **kwargs)
+#
+#        ## Some variables must be stored in ourselves such 
+#        ## that they can be picked up by the callback function
+#        slicers    = {}
+#
+#        # For data sets with a large number of channels
+#        # (e.g. UniBoard data, 1024 channels spetral resolution)
+#        # it makes a big (speed) difference if there is a channel
+#        # selection to let the casa stuff [the ms column] do
+#        # the (pre)selection so we do not get *all* the channels
+#        # into casa
+#
+#        # 1) the channel selection. it is global; ie applies to
+#        #    every data description id.
+#        #    also allows us to create a slicer
+#        #    default: iterate over all channels
+#        shape           = self.table[0][datacol].shape
+#        self.chunksize  = 5000
+#        self.chanidx    = zip(range(shape[0]), range(shape[0]))
+#        self.maskfn     = lambda x: numpy.ma.MaskedArray(x, mask=numpy.ma.nomask)
+#        self.chansel    = range(shape[0])
+#
+#        # We must translate the selected channels to a frequency (or wavelength) - such that we can 
+#        # compute the uvdist in wavelengths
+#        _spwMap  = mapping.spectralMap
+#        ddids    = _spwMap.datadescriptionIDs()
+#
+#        # preallocate an array of dimension (nDDID, nCHAN) such that we can put 
+#        # the frequencies of DDID #i at row i - makes for easy selectin'
+#        self.factors = numpy.zeros((max(ddids)+1, shape[0]))
+#        for ddid in ddids:
+#            fqobj                = _spwMap.unmap( ddid )
+#            self.factors[ ddid ] = _spwMap.frequenciesOfFREQ_SB(fqobj.FREQID, fqobj.SUBBAND)
+#
+#        # After having read the data, first we apply the masking function
+#        # which disables the unselected channels
+#        if selection.chanSel:
+#            channels         = sorted(CP(selection.chanSel))
+#            indices          = map(lambda x: x-channels[0], channels)
+#            self.chanidx     = zip(indices, channels)
+#            self.chansel     = indices
+#            # select only the selected channels
+#            self.factors     = self.factors[:, channels]
+#            #print "channels=",channels," indices=",indices," self.chanidx=",self.chanidx
+#            self.maskfn      = mk3dmask_fn_mask(self.chunksize, indices, shape[-1])
+#            slicers[datacol] = ms2util.mk_slicer((channels[0],  0), (channels[-1]+1, shape[-1]))
+#
+#        # right - factors now contain *frequency*
+#        # divide by speed of lite to get the multiplication factor
+#        # to go from UV distance in meters to UV dist in lambda
+#        self.factors /= 299792458.0
+#        # older numpy's have a numpy.linalg.norm() that does NOT take an 'axis' argument
+#        # so we have to write the distance computation out ourselves. #GVD
+#        self.uvdist_f = lambda uvw: numpy.sqrt( numpy.square(uvw[...,0]) + numpy.square(uvw[...,1]) )
+#
+#        # If there is vector averaging to be done, this is done in the step after reading the data
+#        # (default: none)
+#        self.vectorAvg  = lambda x: x
+#
+#        if avgChannel==AVG.Vector:
+#            self.vectorAvg = lambda x: numpy.average(x, axis=1).reshape( (x.shape[0], 1, x.shape[2]) )
+#            self.chanidx   = [(0, '*')]
+#
+#        # Scalar averaging is done after the quantities have been computed
+#        self.scalarAvg  = lambda x: x
+#
+#        if avgChannel==AVG.Scalar:
+#            self.scalarAvg = lambda x: numpy.average(x, axis=1).reshape( (x.shape[0], 1, x.shape[2]) )
+#            self.chanidx   = [(0, '*')]
+#
+#        if avgChannel!=AVG.None:
+#            self.factors   = numpy.average(self.factors[:,self.chansel], axis=1)
+#
+#        fields = [AX.TYPE, AX.BL, AX.FQ, AX.SB, AX.SRC, AX.P, AX.CH]
+#
+#        # weight filtering
+#        self.nreject   = 0
+#        self.reject_f  = lambda weight: False
+#        self.threshold = -10000000
+#        if selection.weightThreshold is not None:
+#            self.threshold = CP(selection.weightThreshold)
+#            self.reject_f  = lambda weight: weight<self.threshold
+#
+#        ## Now we can start the reduction of the table
+#        ## INCORPORATE THE WEIGHT COLUMN
+#        if selection.weightThreshold is None:
+#            columns        = ["ANTENNA1", "ANTENNA2", "UVW", "DATA_DESC_ID", "FIELD_ID", datacol]
+#            self.actual_fn = self.withoutWeightThresholding
+#        else:
+#            columns        = ["ANTENNA1", "ANTENNA2", "UVW", "DATA_DESC_ID", "FIELD_ID", "WEIGHT", datacol]
+#            self.actual_fn = self.withWeightThresholding
+#        if self.flags:
+#            columns.append( "FLAGCOL" )
+#        pts =  ms2util.reducems2(self, self.table, {}, columns, verbose=True, slicers=slicers, chunksize=self.chunksize)
+#
+#        if self.nreject:
+#            print "Rejected ",self.nreject," points because of weight criterion"
+#
+#        rv  = {}
+#        for (label, dataset) in pts.iteritems():
+#            rv[ self.MKLAB(fields, label) ] = dataset
+#        #for k in rv.keys():
+#        #    print "Plot:",str(k),"/",map(str, rv[k].keys())
+#        return rv
+#
+#    ## Here we make the plots
+#    def __call__(self, *args):
+#        return self.actual_fn(*args)
+#
+#    #### This is the version WITHOUT WEIGHT THRESHOLDING
+#    def withoutWeightThresholding(self, acc, a1, a2, uvw, dd, fld, data, *flag):
+#        #print "__call__: ",a1,a2,tm,dd,fld,data.shape
+#        # Make really sure we have a 3-D array of data ...
+#        d3d  = m3d(data)
+#        shp  = data.shape
+#        flg  = unflagged() if not flag else flag[0]
+#        # Good. We have a block of data, shape (nrow, nchan, npol)
+#        # Step 1: apply the masking + vector averaging
+#        #         'vamd' = vector averaged masked data
+#        #         Try to use the pre-computed channel mask, if it fits,
+#        #         otherwise create one for this odd-sized block
+#        #         (typically the last block)
+#        mfn  = self.maskfn if shp[0]==self.chunksize else mk3dmask_fn_mask(shp[0], self.chansel, shp[2])
+#        vamd = self.vectorAvg( mfn(d3d) )
+#
+#        # Now create the quantity data - map the quantity functions over the
+#        # (potentially) vector averaged data and (potentially) scalar
+#        # average them
+#        qd   = map(lambda (qnm, qfn): (qnm, self.scalarAvg(qfn(vamd))), self.quantities)
+#
+#        # we can compute the uv distances of all spectral points in units of lambda
+#        # because we have the UVW's now and the nu/speed-of-lite for all spectral points
+#        uvd  = numpy.atleast_2d( self.factors[dd].T * self.uvdist_f(uvw) )
+#
+#        # Now we can loop over all the rows in the data
+#
+#        # We don't have to test *IF* the current data description id is 
+#        # selected; the fact that we see it here means that it WAS selected!
+#        # The only interesting bit is selecting the correct products
+#        for row in range(shp[0]):
+#            (fq, sb, plist) = self.ddSelection[ dd[row] ]
+#            for (chi, chn) in self.chanidx:
+#                for (pidx, pname) in plist:
+#                    l = ["", (a1[row], a2[row]), fq, sb, fld[row], pname, chn]
+#                    for (qnm, qval) in qd:
+#                        l[0] = qnm
+#                        acc.setdefault(tuple(l), dataset()).append(uvd[chi, row], qval[row, chi, pidx], flg[row, chi, pidx])
+#        return acc
+#
+#    #### This is the version WITH WEIGHT THRESHOLDING
+#    def withWeightThresholding(self, acc, a1, a2, uvw, dd, fld, weight, data, *flag):
+#        #print "__call__: ",a1,a2,tm,dd,fld,data.shape
+#        # Make really sure we have a 3-D array of data ...
+#        d3d  = m3d(data)
+#        shp  = data.shape
+#        flg  = unflagged() if not flag else flag[0]
+#        # compute weight mask
+#        w3d  = numpy.zeros(shp, dtype=numpy.float)
+#        for i in xrange(shp[0]):
+#            # we have weights per polzarization but we must
+#            # expand them to per channel ...
+#            cw = numpy.vstack( shp[1]*[weight[i]] )
+#            w3d[i] = cw
+#        w3m =  w3d<self.threshold
+#        wfn = lambda a: numpy.ma.MaskedArray(a.data, numpy.logical_and(a.mask, w3m))
+#        # Good. We have a block of data, shape (nrow, nchan, npol)
+#        # Step 1: apply the masking + vector averaging
+#        #         'vamd' = vector averaged masked data
+#        #         Try to use the pre-computed channel mask, if it fits,
+#        #         otherwise create one for this odd-sized block
+#        #         (typically the last block)
+#        mfn  = self.maskfn if shp[0]==self.chunksize else mk3dmask_fn_mask(shp[0], self.chansel, shp[2])
+#        vamd = self.vectorAvg( wfn(mfn(d3d)) )
+#
+#        # Now create the quantity data - map the quantity functions over the
+#        # (potentially) vector averaged data and (potentially) scalar
+#        # average them
+#        qd   = map(lambda (qnm, qfn): (qnm, self.scalarAvg(qfn(vamd))), self.quantities)
+#
+#        # compute uv distances
+#        uvd  = self.uvdist_f(uvw)
+#        #for (qn, qv) in qd:
+#        #    print qn,": shape=",qv.shape
+#
+#        # Now we can loop over all the rows in the data
+#
+#        # We don't have to test *IF* the current data description id is 
+#        # selected; the fact that we see it here means that it WAS selected!
+#        # The only interesting bit is selecting the correct products
+#        for row in range(shp[0]):
+#            (fq, sb, plist) = self.ddSelection[ dd[row] ]
+#            for (chi, chn) in self.chanidx:
+#                for (pidx, pname) in plist:
+#                    if self.reject_f(w3d[row, chi, pidx]):
+#                        self.nreject = self.nreject + 1
+#                        continue
+#                    l = ["", (a1[row], a2[row]), fq, sb, fld[row], pname, chn]
+#                    for (qnm, qval) in qd:
+#                        l[0] = qnm
+#                        #pi       = self.plot_idx(l)
+#                        #di       = self.ds_idx(l)
+#                        #print "row #",row,"/l=",l," => pi=",pi," di=",di," qval.shape=",qval.shape
+#                        acc.setdefault(tuple(l), dataset()).append(tm[row], qval[row, chi, pidx], flag[row, chi, pidx])
+#        return acc
 
-    ## our construct0r
-    ##   qlist = [ (quantity_name, quantity_fn), ... ]
-    ##
-    ##  Note that 'channel averaging' will be implemented on a per-plot
-    ##  basis, not at the basic type of plot instance
-    def __init__(self, qlist):
-        self.quantities = qlist
 
-    def makePlots(self, msname, selection, mapping, **kwargs):
-        datacol = CP(mapping.domain.column)
-
-        # Deal with channel averaging
-        #   Scalar => average the derived quantity
-        #   Vector => compute average cplx number, then the quantity
-        avgChannel = CP(selection.averageChannel)
-
-        if selection.averageTime!=AVG.None:
-            print "Warning: {0} time averaging ignored for this plot".format(selection.averageTime)
-
-        ## initialize the base class
-        super(data_quantity_uvdist, self).__init__(msname, selection, mapping, **kwargs)
-
-        ## Some variables must be stored in ourselves such 
-        ## that they can be picked up by the callback function
-        slicers    = {}
-
-        # For data sets with a large number of channels
-        # (e.g. UniBoard data, 1024 channels spetral resolution)
-        # it makes a big (speed) difference if there is a channel
-        # selection to let the casa stuff [the ms column] do
-        # the (pre)selection so we do not get *all* the channels
-        # into casa
-
-        # 1) the channel selection. it is global; ie applies to
-        #    every data description id.
-        #    also allows us to create a slicer
-        #    default: iterate over all channels
-        shape           = self.table[0][datacol].shape
-        self.chunksize  = 5000
-        self.chanidx    = zip(range(shape[0]), range(shape[0]))
-        self.maskfn     = lambda x: numpy.ma.MaskedArray(x, mask=numpy.ma.nomask)
-        self.chansel    = range(shape[0])
-
-        # We must translate the selected channels to a frequency (or wavelength) - such that we can 
-        # compute the uvdist in wavelengths
-        _spwMap  = mapping.spectralMap
-        ddids    = _spwMap.datadescriptionIDs()
-
-        # preallocate an array of dimension (nDDID, nCHAN) such that we can put 
-        # the frequencies of DDID #i at row i - makes for easy selectin'
-        self.factors = numpy.zeros((max(ddids)+1, shape[0]))
-        for ddid in ddids:
-            fqobj                = _spwMap.unmap( ddid )
-            self.factors[ ddid ] = _spwMap.frequenciesOfFREQ_SB(fqobj.FREQID, fqobj.SUBBAND)
-
-        # After having read the data, first we apply the masking function
-        # which disables the unselected channels
-        if selection.chanSel:
-            channels         = sorted(CP(selection.chanSel))
-            indices          = map(lambda x: x-channels[0], channels)
-            self.chanidx     = zip(indices, channels)
-            self.chansel     = indices
-            # select only the selected channels
-            self.factors     = self.factors[:, channels]
-            #print "channels=",channels," indices=",indices," self.chanidx=",self.chanidx
-            self.maskfn      = mk3dmask_fn_mask(self.chunksize, indices, shape[-1])
-            slicers[datacol] = ms2util.mk_slicer((channels[0],  0), (channels[-1]+1, shape[-1]))
-
-        # right - factors now contain *frequency*
-        # divide by speed of lite to get the multiplication factor
-        # to go from UV distance in meters to UV dist in lambda
-        self.factors /= 299792458.0
-        # older numpy's have a numpy.linalg.norm() that does NOT take an 'axis' argument
-        # so we have to write the distance computation out ourselves. #GVD
-        self.uvdist_f = lambda uvw: numpy.sqrt( numpy.square(uvw[...,0]) + numpy.square(uvw[...,1]) )
-
-        # If there is vector averaging to be done, this is done in the step after reading the data
-        # (default: none)
-        self.vectorAvg  = lambda x: x
-
-        if avgChannel==AVG.Vector:
-            self.vectorAvg = lambda x: numpy.average(x, axis=1).reshape( (x.shape[0], 1, x.shape[2]) )
-            self.chanidx   = [(0, '*')]
-
-        # Scalar averaging is done after the quantities have been computed
-        self.scalarAvg  = lambda x: x
-
-        if avgChannel==AVG.Scalar:
-            self.scalarAvg = lambda x: numpy.average(x, axis=1).reshape( (x.shape[0], 1, x.shape[2]) )
-            self.chanidx   = [(0, '*')]
-
-        if avgChannel!=AVG.None:
-            self.factors   = numpy.average(self.factors[:,self.chansel], axis=1)
-
-        fields = [AX.TYPE, AX.BL, AX.FQ, AX.SB, AX.SRC, AX.P, AX.CH]
-
-        # weight filtering
-        self.nreject   = 0
-        self.reject_f  = lambda weight: False
-        self.threshold = -10000000
-        if selection.weightThreshold is not None:
-            self.threshold = CP(selection.weightThreshold)
-            self.reject_f  = lambda weight: weight<self.threshold
-
-        ## Now we can start the reduction of the table
-        ## INCORPORATE THE WEIGHT COLUMN
-        if selection.weightThreshold is None:
-            columns        = ["ANTENNA1", "ANTENNA2", "UVW", "DATA_DESC_ID", "FIELD_ID", datacol]
-            self.actual_fn = self.withoutWeightThresholding
-        else:
-            columns        = ["ANTENNA1", "ANTENNA2", "UVW", "DATA_DESC_ID", "FIELD_ID", "WEIGHT", datacol]
-            self.actual_fn = self.withWeightThresholding
-        if self.flags:
-            columns.append( "FLAGCOL" )
-        pts =  ms2util.reducems2(self, self.table, {}, columns, verbose=True, slicers=slicers, chunksize=self.chunksize)
-
-        if self.nreject:
-            print "Rejected ",self.nreject," points because of weight criterion"
-
-        rv  = {}
-        for (label, dataset) in pts.iteritems():
-            rv[ self.MKLAB(fields, label) ] = dataset
-        #for k in rv.keys():
-        #    print "Plot:",str(k),"/",map(str, rv[k].keys())
-        return rv
-
-    ## Here we make the plots
-    def __call__(self, *args):
-        return self.actual_fn(*args)
-
-    #### This is the version WITHOUT WEIGHT THRESHOLDING
-    def withoutWeightThresholding(self, acc, a1, a2, uvw, dd, fld, data, *flag):
-        #print "__call__: ",a1,a2,tm,dd,fld,data.shape
-        # Make really sure we have a 3-D array of data ...
-        d3d  = m3d(data)
-        shp  = data.shape
-        flg  = unflagged() if not flag else flag[0]
-        # Good. We have a block of data, shape (nrow, nchan, npol)
-        # Step 1: apply the masking + vector averaging
-        #         'vamd' = vector averaged masked data
-        #         Try to use the pre-computed channel mask, if it fits,
-        #         otherwise create one for this odd-sized block
-        #         (typically the last block)
-        mfn  = self.maskfn if shp[0]==self.chunksize else mk3dmask_fn_mask(shp[0], self.chansel, shp[2])
-        vamd = self.vectorAvg( mfn(d3d) )
-
-        # Now create the quantity data - map the quantity functions over the
-        # (potentially) vector averaged data and (potentially) scalar
-        # average them
-        qd   = map(lambda (qnm, qfn): (qnm, self.scalarAvg(qfn(vamd))), self.quantities)
-
-        # we can compute the uv distances of all spectral points in units of lambda
-        # because we have the UVW's now and the nu/speed-of-lite for all spectral points
-        uvd  = numpy.atleast_2d( self.factors[dd].T * self.uvdist_f(uvw) )
-
-        # Now we can loop over all the rows in the data
-
-        # We don't have to test *IF* the current data description id is 
-        # selected; the fact that we see it here means that it WAS selected!
-        # The only interesting bit is selecting the correct products
-        for row in range(shp[0]):
-            (fq, sb, plist) = self.ddSelection[ dd[row] ]
-            for (chi, chn) in self.chanidx:
-                for (pidx, pname) in plist:
-                    l = ["", (a1[row], a2[row]), fq, sb, fld[row], pname, chn]
-                    for (qnm, qval) in qd:
-                        l[0] = qnm
-                        acc.setdefault(tuple(l), dataset()).append(uvd[chi, row], qval[row, chi, pidx], flg[row, chi, pidx])
-        return acc
-
-    #### This is the version WITH WEIGHT THRESHOLDING
-    def withWeightThresholding(self, acc, a1, a2, uvw, dd, fld, weight, data, *flag):
-        #print "__call__: ",a1,a2,tm,dd,fld,data.shape
-        # Make really sure we have a 3-D array of data ...
-        d3d  = m3d(data)
-        shp  = data.shape
-        flg  = unflagged() if not flag else flag[0]
-        # compute weight mask
-        w3d  = numpy.zeros(shp, dtype=numpy.float)
-        for i in xrange(shp[0]):
-            # we have weights per polzarization but we must
-            # expand them to per channel ...
-            cw = numpy.vstack( shp[1]*[weight[i]] )
-            w3d[i] = cw
-        w3m =  w3d<self.threshold
-        wfn = lambda a: numpy.ma.MaskedArray(a.data, numpy.logical_and(a.mask, w3m))
-        # Good. We have a block of data, shape (nrow, nchan, npol)
-        # Step 1: apply the masking + vector averaging
-        #         'vamd' = vector averaged masked data
-        #         Try to use the pre-computed channel mask, if it fits,
-        #         otherwise create one for this odd-sized block
-        #         (typically the last block)
-        mfn  = self.maskfn if shp[0]==self.chunksize else mk3dmask_fn_mask(shp[0], self.chansel, shp[2])
-        vamd = self.vectorAvg( wfn(mfn(d3d)) )
-
-        # Now create the quantity data - map the quantity functions over the
-        # (potentially) vector averaged data and (potentially) scalar
-        # average them
-        qd   = map(lambda (qnm, qfn): (qnm, self.scalarAvg(qfn(vamd))), self.quantities)
-
-        # compute uv distances
-        uvd  = self.uvdist_f(uvw)
-        #for (qn, qv) in qd:
-        #    print qn,": shape=",qv.shape
-
-        # Now we can loop over all the rows in the data
-
-        # We don't have to test *IF* the current data description id is 
-        # selected; the fact that we see it here means that it WAS selected!
-        # The only interesting bit is selecting the correct products
-        for row in range(shp[0]):
-            (fq, sb, plist) = self.ddSelection[ dd[row] ]
-            for (chi, chn) in self.chanidx:
-                for (pidx, pname) in plist:
-                    if self.reject_f(w3d[row, chi, pidx]):
-                        self.nreject = self.nreject + 1
-                        continue
-                    l = ["", (a1[row], a2[row]), fq, sb, fld[row], pname, chn]
-                    for (qnm, qval) in qd:
-                        l[0] = qnm
-                        #pi       = self.plot_idx(l)
-                        #di       = self.ds_idx(l)
-                        #print "row #",row,"/l=",l," => pi=",pi," di=",di," qval.shape=",qval.shape
-                        acc.setdefault(tuple(l), dataset()).append(tm[row], qval[row, chi, pidx], flag[row, chi, pidx])
-        return acc
 
 Iterators = {
     'amptime' : data_quantity_time([(YTypes.amplitude, numpy.ma.abs)]),
