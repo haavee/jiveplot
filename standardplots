@@ -19,7 +19,7 @@ Map       = lambda fn  : functools.partial(map, fn)
 # full MS path to plot base name transformation
 mk_basenm = compose(functools.partial(re.sub, r'\.ms', ''), os.path.basename, functools.partial(re.sub, r'/*$', ''))
 # CalSrc must be transformed such that it can be fed into "/{0}/i" regex,
-# even if CalSrc is comma-separated list of sources.
+# even if CalSrc is comma-separated list of sources. 
 # So: split CalSrc by ',', escape the individual source names and transform
 #     to "(<src>|<src>|....)" as regex alternatives for matching
 mk_calsrc = compose("({0})".format, "|".join, Map(re.escape), methodcaller('split', ','))

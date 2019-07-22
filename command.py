@@ -121,6 +121,9 @@ class readkbd(newhistory):
     def __iter__(self):
         return self
 
+    def handle(self, exception):
+        print exception
+
     def next(self):
         try:
             l = raw_input(self.prompt+"> ")
@@ -164,6 +167,9 @@ class readkbd(newhistory):
 class readstring:
     def __init__(self, s):
         self.lines = s.split('\n')
+
+    def handle(self, exception):
+        print exception
 
     def __enter__(self):
         return self
@@ -211,6 +217,9 @@ class readfile:
         except IOError,e:
             raise ValueError, "readfile '{0}' - {1}".format(f, e)
 
+    def handle(self, exception):
+        print exception
+
     def __enter__(self):
         return self
     def __exit__(self, et, ev, tb):
@@ -235,6 +244,11 @@ class scripted:
     ## an iterable, producing commands to be interpreted
     def __init__(self, *scripts):
         self.commands = itertools.chain(*scripts)
+
+    # any exception terminates the scribd
+    def handle(self, exception):
+        print exception
+        sys.exit( -1 )
 
     ## Support the context protocol
     def __enter__(self):
@@ -408,7 +422,8 @@ class CommandLineInterface:
                 except Exception as E:
                     if self.debug:
                         traceback.print_exc()
-                    print E
+                    # delegate actual handling of the exception to the linesrc
+                    linesrc.handle(E)
                 if self.exit:
                     break
 

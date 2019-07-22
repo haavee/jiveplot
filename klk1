@@ -115,7 +115,7 @@ def mk_anp_chan_cross_plot(settings):
     yield "pt ampchan; reset; nxy 3 10; multi t"
     # set colouring based on polarization i.s.o. auto colour
     # assignment
-    yield "ckey p[rr]=2 p[ll]=3 p[rl]=4 p[lr]=5"
+    yield "ckey p[rr,none]=2 p[ll]=3 p[rl]=4 p[lr]=5"
     yield "y local"
     yield "sort bl" 
     yield "refile {0}-af.ps/vcps".format( settings.myBasename )
@@ -126,7 +126,7 @@ def mk_anp_chan_cross_plot(settings):
     yield "reset; nxy 3 12;multi t"
     # set colouring based on polarization i.s.o. auto colour
     # assignment
-    yield "ckey p[rr]=2 p[ll]=3 p[rl]=4 p[lr]=5"
+    yield "ckey p[rr,none]=2 p[ll]=3 p[rl]=4 p[lr]=5"
     yield "refile {0}-pf.ps/vcps".format( settings.myBasename )
     yield "draw points; pl"
 
@@ -152,7 +152,7 @@ def mk_rfa(settings):
     yield "pt ampchan; reset; nxy 1 10; multi t;y local"
     # set colouring based on polarization i.s.o. auto colour
     # assignment
-    yield "ckey p[rr]=2 p[ll]=3 p[rl]=4 p[lr]=5"
+    yield "ckey p[rr,none]=2 p[ll]=3 p[rl]=4 p[lr]=5"
     yield "sort bl" 
     yield "refile {0}-rfa.ps/vcps".format( settings.myBasename )
     yield "draw lines; pl"

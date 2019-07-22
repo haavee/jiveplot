@@ -604,6 +604,8 @@ class jplotter:
         return self.scanlist
 
     ## display or select time-range + source via scan
+    _scanTaQL = "(TIME>={0.start:.7f} AND TIME<={0.end:.7f} AND FIELD_ID={0.field_id} AND ARRAY_ID={0.array_id} AND SCAN_NUMBER={0.scan_number})".format
+
     def scans(self, *args):
         pfx = "scan:"
         errf = hvutil.mkerrf("{0} ".format(pfx, self.msname))
@@ -639,7 +641,11 @@ class jplotter:
                 nScan.end   = nEnd
                 acc.append(nScan)
                 return acc
-            sel_.scanSel = reduce(copy_and_modify, filter_f(self.scanlist), [])
+            # Only override scan selection if any scans were selected
+            scanSel = reduce(copy_and_modify, filter_f(self.scanlist), [])
+            if not scanSel:
+                return errf("Your selection criteria did not match any scans")
+            sel_.scanSel = scanSel
             self.dirty   = self.dirty or (sel_.scanSel!=oldscanSel)
 
             # Construct the TaQL from the scan selection
@@ -648,11 +654,10 @@ class jplotter:
                 sel_.sources       = []
                 sel_.timeRange     = []
                 sel_.sourcesTaql   = None
-                sel_.timeRangeTaql = None
+                # replace time range taql only if there are any scans selected
+                scanTaQL           = " OR ".join(map(jplotter._scanTaQL, sel_.scanSel))
+                sel_.timeRangeTaql = "("+scanTaQL+")" if scanTaQL else None
 
-                sel_.timeRangeTaql = "(" +  \
-                        " OR ".join(map(lambda o: "(TIME>={0:.7f} AND TIME<={1:.7f} AND FIELD_ID={2} AND ARRAY_ID={3} AND SCAN_NUMBER={4})".format(o.start, o.end, o.field_id, o.array_id, o.scan_number), sel_.scanSel)) \
-                   + ")"
                 # and we must construct the timerange list.
                 # also compress the time ranges; if there are overlapping regions, join them
                 def reductor(acc, (s, e)):
@@ -2028,7 +2033,7 @@ def run_plotter(cmdsrc, **kwargs):
             print x
         # compute longest plot type name
         longest = max( map(compose(len, str), plots.Types) )
-        map(lambda x : p("{0:{1}} => {2}".format(x, longest, plots.Plotters[x].description())), plots.Types)
+        map(lambda x : p("{0:{1}} => {2}".format(x, longest, plots.Plotters[x].description())), sorted(plots.Types))
     c.addCommand( \
         mkcmd(rx=re.compile(r"^lp$"), hlp=Help["lp"], \
               cb=list_pt, id="lp") )

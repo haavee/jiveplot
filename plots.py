@@ -573,10 +573,13 @@ class Page(object):
         self.layout = copy.deepcopy(plotter.layout())
         # depending on if it's allowed and how to re-arrange the amount of plots come up with a new layout
         if onePage is AllInOne:
-            # we must grow the layout such that everything fits on one page, note: this is non-negotiable
+            # we must grow or shrink the layout such that everything fits on one page, note: this is non-negotiable
             if plotter.fixedLayout:
                 print "Warning: fixed layout overridden by AllInOne requirement"
-            self._growlayout(nplot, **kwargs)
+            if nplot > self.layout.nplots():
+                self._growLayout(nplot, **kwargs)
+            else:
+                self._shrinkLayout(nplot, **kwargs)
         elif not plotter.fixedLayout:
             nplot = min(nplot, self.layout.nplots()) if onePage else nplot
             # shrinkage is allowed if number of plots < layout 
@@ -843,12 +846,10 @@ class Page(object):
         coldict = dict(filter(functional.compose(operator.truth, operator.itemgetter(0)), self.plotter.coldict().iteritems()))
         if not coldict or not self.plotter.showLegend:
             return
-
         with pgenv(device):
             device.pgsvp( self.xl_, self.xr_, 0, self.yb_ )
             device.pgswin( 0, 1, 0, 1 )
             device.pgsch(0.4)
-            device.pgslw( 4 )
             # Find the longest description and divide the space we have into an equal
             # number of positions. So we need the size of the longest key in device units
             (xsz, ysz)                 = device.pglen(max(coldict.keys(), key=len), 0)
@@ -874,8 +875,10 @@ class Page(object):
                 ycapt = ypos - txt_off*dy
 
                 device.pgsci( col )
+                device.pgslw( 4 )
                 device.pgline( numpy.asarray(xpos), numpy.asarray([ypos, ypos]) )
                 device.pgsci( 1 )
+                device.pgslw( 1 )
                 device.pgptxt( xcapt, ycapt, 0.0, 0.0, label )
 
     def printPageLabel(self, device, curPlot, nPlot):
@@ -1577,8 +1580,9 @@ class Quant2ChanPlotter(Plotter):
         # We may need to have the real frequencies
         try:
             mysm = ms2util.makeSpectralMap( plotar.msname )
-        except RuntimeError:
+        except RuntimeError as E:
             mysm = None
+            print "Failed to make spectral map: ",E
 
         device.pgbbuf()
         try:
@@ -1673,7 +1677,7 @@ class Quant2ChanPlotter(Plotter):
                         with pgenv(device):
                             device.pgsch( 0.5 )
                             frqedge = None
-                            if plotlabel.FQ is not None and plotlabel.SB is not None:
+                            if all(map(functools.partial(operator.ne, None), [plotlabel.FQ, plotlabel.SB, mysm])):
                                 frqedge = "{0:.3f}MHz".format( mysm.frequencyOfFREQ_SB(plotlabel.FQ, plotlabel.SB)/1.0e6 )
                             elif self.multiSubband and len(xoffset)>1:
                                 frqedge = "multi SB"
