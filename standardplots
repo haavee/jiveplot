@@ -215,7 +215,7 @@ def mk_anp_time_cross_plot(settings, timesel, num):
     yield "src none"
     yield "time {0}".format(timesel)
     yield "sort bl"
-    yield "ckey src"
+    yield "ckey src src[none]=1"
     yield "ptsz 2"
     yield "refile {0}-ampphase-{1}.ps/cps".format( settings.myBasename, num )
     yield "pl"
@@ -233,7 +233,7 @@ def mk_weight_plot(settings):
     yield "ch mid"
     yield "pt wt"
     yield "new all f bl t"
-    yield "y local"
+    yield "y global"
     yield "sort bl"
     yield "refile {0}-weight.ps/cps".format( settings.myBasename )
     yield "wt 0.1"
