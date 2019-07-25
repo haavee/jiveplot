@@ -1785,7 +1785,7 @@ def mk_output(pfx, items, maxlen):
         acc[-1] += " {0}".format(item)
         return acc
     for l in reduce(reducer, items, lines):
-        print l
+        print l.strip()
 
 
 
