@@ -2033,11 +2033,11 @@ def run_plotter(cmdsrc, **kwargs):
         print "{0} {1} [{2}]".format(pplt("layout[{0}]:".format(pt)), plotter.layout(), plotter.layoutStyle() )
 
     c.addCommand( \
-        mkcmd(rx=re.compile(r"^nxy(\s+[0-9]+\s+[0-9]+)?(\s+(fixed|flexible))?$", re.I), \
+        mkcmd(rx=re.compile(r"^nxy(\s+[0-9]+\s+[0-9]+)?(\s+(fixed|flexible|rows|columns))*$", re.I), \
               # don't convert to integers just yet - leave that up to the actual layout function
               args=lambda x: re.sub("^nxy\s*", "", x).split(), \
               cb=layout_f, id="nxy", \
-              hlp="nxy [nx ny] [fixed|flexible]\n\tprint or set the current plot layout\n\nThe layout can be marked as fixed or flexible. In the latter case jplotter might re-arrange the layout to fit all plots on one page when this seems feasible. By default plot layouts are 'flexible'") )
+              hlp="nxy [nx ny] [fixed|flexible] [rows|columns]\n\tprint or set the current plot layout\n\nThe layout can be marked as fixed or flexible. In the latter case jplotter might re-arrange the layout to fit all plots on one page when this seems feasible. By default plot layouts are 'flexible' and 'rows' are filled first") )
 
 
     # list known plot-types "lp"

@@ -6,6 +6,8 @@ AX       = jenums.Axes
 FLAG     = jenums.Flagstuff
 YTypes   = enumerations.Enum("amplitude", "phase", "real", "imag", "weight")
 Scaling  = enumerations.Enum("auto_global", "auto_local")
+FixFlex  = enumerations.Enum("fixed", "flexible")
+RowsCols = enumerations.Enum("rows", "columns")
 CKReset  = enumerations.Enum("newplot")
 FU       = functional
 
@@ -38,8 +40,9 @@ class pgenv(object):
 ## Keep track of the layout of a page in number-of-plots in X,Y direction
 class layout(object):
     def __init__(self, nx, ny):
-        self.nx = nx
-        self.ny = ny
+        self.nx   = nx
+        self.ny   = ny
+        self.rows = True
 
     def nplots(self):
         return self.nx * self.ny
@@ -736,8 +739,11 @@ class Page(object):
     def viewport(self, pnum, nplot):
         # figure out the index of the plot on the page
         pidx = self.plotIndex(pnum)
-        # the viewport coords
-        rv          = Viewport(pidx % self.layout.nx, pidx / self.layout.nx, self)
+        # the viewport coords - take care of filling rows or columns first
+        if self.layout.rows:
+            rv          = Viewport(pidx % self.layout.nx, pidx / self.layout.nx, self)
+        else:
+            rv          = Viewport(pidx / self.layout.ny, pidx % self.layout.ny, self)
         rv.lastRow  = (rv.y+1)==self.layout.ny or (nplot - pnum)<=self.layout.nx
         rv.lastCol  = (self.layout.nx>1 and (rv.x+1)==self.layout.nx and not Scaling.auto_local in self.plotter.yScale) or (pnum == nplot)
         xl,yt       = (self.xl + self.rightShift + rv.x*self.dx, self.yt - rv.y * self.dy)
@@ -1133,19 +1139,40 @@ class Plotter(object):
             raise RuntimeError, "This plot type has no panel {0}".format(idx)
 
     # query or set the layout.
-    # args is either nothing or a list of strings which are two numbers and/or one string 'fixed'/'flexible'
+    # args is either nothing or a list of strings which are two numbers optionally followed by a list of options:
+    #  'fixed'/'flexible' , 'rows'/'columns'
     def layout(self, *args):
         if not args:
             return self.layOut
-        flagIdx = -1 if len(args)==1 or len(args)==3 else None # always the last
         nxy     = slice(0,2) if len(args)>=2 else None
+        opts    = slice(2,None) if len(args)>2 else None
         if nxy:
+            old_rows    = self.layOut.rows
             self.layOut = layout(*map(int, args[nxy]))
-        if flagIdx is not None:
-            self.fixedLayout = (args[flagIdx].lower() == 'fixed')
+            # New layout object so copy over the existing setting
+            # If there is an option overwriting it, that will be
+            # handled below
+            self.layOut.rows = old_rows
+        if opts is not None:
+            seen   = set()
+            opts   = args[opts]
+            for opt in set(map(str.lower, opts)):
+                if opt in FixFlex:
+                    if FixFlex in seen:
+                        raise RuntimeError("Cannot pass mutual exclusive fixed/flexible option at the same time")
+                    self.fixedLayout = (opt == 'fixed')
+                    seen.add( FixFlex )
+                    continue
+                if opt in RowsCols:
+                    if RowsCols in seen:
+                        raise RuntimeError("Cannot pass mutual exclusive rows/columns option at the same time")
+                    self.layOut.rows = (opt == 'rows')
+                    seen.add( RowsCols )
+                    continue
+                raise RuntimeError("Unrecognized option '{0}' passed to layout".format(opt))
 
     def layoutStyle(self):
-        return "fixed" if self.fixedLayout else "flexible"
+        return ",".join(["fixed" if self.fixedLayout else "flexible", "rows" if self.layOut.rows else "columns"])
 
     # set line width, point size or marker size
     def setLineWidth(self, *args):
