@@ -2327,9 +2327,13 @@ def run_plotter(cmdsrc, **kwargs):
                 e.post_processing_fn( tmp, j().mappings )
             # rerun this because things may have changed
             j().doMinMax(tmp, verbose=False)
-            sequence.append( tmp )
+            if tmp:
+                sequence.append( tmp )
         e_time = NOW()
         print "Preparing animation took\t{0:.3f}s                ".format( e_time - s_time )
+        if not sequence:
+            print "No plots to animate, unfortunately ..."
+            return None
         # loop indefinitely
         fps = settings.fps if hasattr(settings, 'fps') else 0.7
         try:
