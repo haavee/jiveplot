@@ -1392,7 +1392,7 @@ class Quant2TimePlotter(Plotter):
 
         # Check for sensibility in caller.
         if first>=len(plotar):
-            raise RuntimeError ("first plot ({0}) > #-of-plots ({1})" if len(plotar) else "No plots to plot").format(first, len(plotar))
+            raise RuntimeError(("first plot ({0}) > #-of-plots ({1})" if len(plotar) else "No plots to plot").format(first, len(plotar)))
 
         page     = self.pagestyle(device, onePage, plotar, expandy=True)
 
