@@ -121,6 +121,24 @@ class EnumValueMeta(type):
         ot = type(other)
         return True if id(self)==id(other) else ((ev[0]==other if et[0] is ot else False) or (ev[1]==other if et[1] is ot else False))
 
+    def __do_compare__(self, other, f):
+        (ev, et) = (self._enumvalue, self._enumtypes)
+        ot = type(other)
+        try:
+            t_idx = 1 if ot is type(self) else et.index(ot)
+            return f(ev[t_idx], other)
+        except ValueError:
+            raise TypeError("Comparing invalid types: self={0} other={1}".format(et, ot))
+
+    def __le__(self, other):
+        return self.__do_compare__(other, operator.__le__)
+    def __lt__(self, other):
+        return self.__do_compare__(other, operator.__lt__)
+    def __ge__(self, other):
+        return self.__do_compare__(other, operator.__ge__)
+    def __gt__(self, other):
+        return self.__do_compare__(other, operator.__gt__)
+
     def __hash__(self):
         return hash(self._enumvalue[1])
 

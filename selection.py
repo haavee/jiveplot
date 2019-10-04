@@ -51,6 +51,7 @@ class selection:
         self.scanSel         = []
         self.plotType        = None
         self.solint          = None # AIPS legacy :D
+        self.solchan         = None # AIPS legacy :D
         self.averageTime     = jenums.Averaging.None
         self.averageChannel  = jenums.Averaging.None
         self.taqlString      = None

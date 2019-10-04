@@ -6,6 +6,8 @@ AX       = jenums.Axes
 FLAG     = jenums.Flagstuff
 YTypes   = enumerations.Enum("amplitude", "phase", "real", "imag", "weight")
 Scaling  = enumerations.Enum("auto_global", "auto_local")
+FixFlex  = enumerations.Enum("fixed", "flexible")
+RowsCols = enumerations.Enum("rows", "columns")
 CKReset  = enumerations.Enum("newplot")
 FU       = functional
 
@@ -38,8 +40,9 @@ class pgenv(object):
 ## Keep track of the layout of a page in number-of-plots in X,Y direction
 class layout(object):
     def __init__(self, nx, ny):
-        self.nx = nx
-        self.ny = ny
+        self.nx   = nx
+        self.ny   = ny
+        self.rows = True
 
     def nplots(self):
         return self.nx * self.ny
@@ -190,19 +193,38 @@ class minidataset(object):
         self.ylims  = yl
 
 class plt_dataset(object):
-    __slots__ = ('_xval', '_yval', '_xlims', '_ylims', 'isSorted', 'prevFlag', 'n', 'n_nan', '__xval', '__yval', '_m_flagged','_m_unflagged', '_m_nan')
+    __slots__ = ('_xval', '_yval', '_xlims', '_ylims', 'isSorted', 'prevFlag', 'n', 'n_nan', '__xval', '__yval', '_m_flagged','_m_unflagged', '_m_nan', '_m_useless')
     _xformMap = { list:                      lambda a, m: numpy.ma.MaskedArray(numpy.array(a), mask=m),
                   numpy.ndarray:             lambda a, m: numpy.ma.MaskedArray(a, mask=m),
                   numpy.ma.core.MaskedArray: lambda a, m: numpy.ma.MaskedArray(a, mask=numpy.logical_or(a.mask, False if m is None else m))}
 
+
+    @property
+    def useless(self):
+        if self._m_useless is None:
+            self._m_useless = "all NaN!" if numpy.all(self._m_nan) else ""
+            #rv = []
+            #if numpy.all(self._m_nan):
+            #    rv.append("all NaN")
+            #if numpy.all(self._m_flagged) or not numpy.any(self._m_unflagged):
+            #    rv.append("no unflagged data")
+            #self._m_useless = ",".join(rv)
+        return self._m_useless
+
     def __init__(self, x, y, m=None):
+        #print "Create plt_dataset with: type(x)=",type(x)," type(y)=",type(y)," m=",m
+        #print "Create plt_dataset with: dtype(x)=",x.dtype," dtype(y)=",y.dtype," m=",m
+        #print "  x.shape=", x.shape, " y.shape=", y.shape
         self._yval        = numpy.ma.array( plt_dataset._xformMap[type(y)](y, m) )
         self._xval        = numpy.ma.array( numpy.array(x), mask=CP(self._yval.mask) )
         # cache the masks so that switching between them is easy
         self._m_flagged   = CP(self._yval.mask)
         self._m_unflagged = ~self._m_flagged
         self._m_nan       = ~numpy.isfinite(self._yval.data)
+        self._m_useless   = None
         self.isSorted     = False
+        #print "    all(flagged)? ", numpy.all(self._m_flagged)," all(unflagged)? ",numpy.all(self._m_unflagged)," all(NaN)? ",numpy.all(self._m_nan)
+        #print "    any(flagged)? ", numpy.any(self._m_flagged)," any(unflagged)? ",numpy.any(self._m_unflagged)," any(NaN)? ",numpy.any(self._m_nan)
 
     # sort by x-axis value. do that once
     def sort(self):
@@ -717,8 +739,11 @@ class Page(object):
     def viewport(self, pnum, nplot):
         # figure out the index of the plot on the page
         pidx = self.plotIndex(pnum)
-        # the viewport coords
-        rv          = Viewport(pidx % self.layout.nx, pidx / self.layout.nx, self)
+        # the viewport coords - take care of filling rows or columns first
+        if self.layout.rows:
+            rv          = Viewport(pidx % self.layout.nx, pidx / self.layout.nx, self)
+        else:
+            rv          = Viewport(pidx / self.layout.ny, pidx % self.layout.ny, self)
         rv.lastRow  = (rv.y+1)==self.layout.ny or (nplot - pnum)<=self.layout.nx
         rv.lastCol  = (self.layout.nx>1 and (rv.x+1)==self.layout.nx and not Scaling.auto_local in self.plotter.yScale) or (pnum == nplot)
         xl,yt       = (self.xl + self.rightShift + rv.x*self.dx, self.yt - rv.y * self.dy)
@@ -846,12 +871,10 @@ class Page(object):
         coldict = dict(filter(functional.compose(operator.truth, operator.itemgetter(0)), self.plotter.coldict().iteritems()))
         if not coldict or not self.plotter.showLegend:
             return
-
         with pgenv(device):
             device.pgsvp( self.xl_, self.xr_, 0, self.yb_ )
             device.pgswin( 0, 1, 0, 1 )
             device.pgsch(0.4)
-            device.pgslw( 4 )
             # Find the longest description and divide the space we have into an equal
             # number of positions. So we need the size of the longest key in device units
             (xsz, ysz)                 = device.pglen(max(coldict.keys(), key=len), 0)
@@ -877,8 +900,10 @@ class Page(object):
                 ycapt = ypos - txt_off*dy
 
                 device.pgsci( col )
+                device.pgslw( 4 )
                 device.pgline( numpy.asarray(xpos), numpy.asarray([ypos, ypos]) )
                 device.pgsci( 1 )
+                device.pgslw( 1 )
                 device.pgptxt( xcapt, ycapt, 0.0, 0.0, label )
 
     def printPageLabel(self, device, curPlot, nPlot):
@@ -1114,19 +1139,40 @@ class Plotter(object):
             raise RuntimeError, "This plot type has no panel {0}".format(idx)
 
     # query or set the layout.
-    # args is either nothing or a list of strings which are two numbers and/or one string 'fixed'/'flexible'
+    # args is either nothing or a list of strings which are two numbers optionally followed by a list of options:
+    #  'fixed'/'flexible' , 'rows'/'columns'
     def layout(self, *args):
         if not args:
             return self.layOut
-        flagIdx = -1 if len(args)==1 or len(args)==3 else None # always the last
         nxy     = slice(0,2) if len(args)>=2 else None
+        opts    = slice(2,None) if len(args)>2 else None
         if nxy:
+            old_rows    = self.layOut.rows
             self.layOut = layout(*map(int, args[nxy]))
-        if flagIdx is not None:
-            self.fixedLayout = (args[flagIdx].lower() == 'fixed')
+            # New layout object so copy over the existing setting
+            # If there is an option overwriting it, that will be
+            # handled below
+            self.layOut.rows = old_rows
+        if opts is not None:
+            seen   = set()
+            opts   = args[opts]
+            for opt in set(map(str.lower, opts)):
+                if opt in FixFlex:
+                    if FixFlex in seen:
+                        raise RuntimeError("Cannot pass mutual exclusive fixed/flexible option at the same time")
+                    self.fixedLayout = (opt == 'fixed')
+                    seen.add( FixFlex )
+                    continue
+                if opt in RowsCols:
+                    if RowsCols in seen:
+                        raise RuntimeError("Cannot pass mutual exclusive rows/columns option at the same time")
+                    self.layOut.rows = (opt == 'rows')
+                    seen.add( RowsCols )
+                    continue
+                raise RuntimeError("Unrecognized option '{0}' passed to layout".format(opt))
 
     def layoutStyle(self):
-        return "fixed" if self.fixedLayout else "flexible"
+        return ",".join(["fixed" if self.fixedLayout else "flexible", "rows" if self.layOut.rows else "columns"])
 
     # set line width, point size or marker size
     def setLineWidth(self, *args):
@@ -1346,7 +1392,7 @@ class Quant2TimePlotter(Plotter):
 
         # Check for sensibility in caller.
         if first>=len(plotar):
-            raise RuntimeError ("first plot ({0}) > #-of-plots ({1})" if len(plotar) else "No plots to plot").format(first, len(plotar))
+            raise RuntimeError(("first plot ({0}) > #-of-plots ({1})" if len(plotar) else "No plots to plot").format(first, len(plotar)))
 
         page     = self.pagestyle(device, onePage, plotar, expandy=True)
 
@@ -1580,8 +1626,9 @@ class Quant2ChanPlotter(Plotter):
         # We may need to have the real frequencies
         try:
             mysm = ms2util.makeSpectralMap( plotar.msname )
-        except RuntimeError:
+        except RuntimeError as E:
             mysm = None
+            print "Failed to make spectral map: ",E
 
         device.pgbbuf()
         try:
@@ -1676,7 +1723,7 @@ class Quant2ChanPlotter(Plotter):
                         with pgenv(device):
                             device.pgsch( 0.5 )
                             frqedge = None
-                            if plotlabel.FQ is not None and plotlabel.SB is not None:
+                            if all(map(functools.partial(operator.ne, None), [plotlabel.FQ, plotlabel.SB, mysm])):
                                 frqedge = "{0:.3f}MHz".format( mysm.frequencyOfFREQ_SB(plotlabel.FQ, plotlabel.SB)/1.0e6 )
                             elif self.multiSubband and len(xoffset)>1:
                                 frqedge = "multi SB"
@@ -1732,8 +1779,9 @@ def getXYlims(plotarray, ytype, curplotlabel, xscaling, yscaling):
         dx = xlims[1] - xlims[0]
         # if x-range too small, safeguard against that?
         # make sure dx is positive and non-zero. SEE NOTE ABOVE
-        # Apparently x-axis of ~1E-6 is still OK
-        dx = max(dx, 1e-6)
+        # Apparently x-axis of ~1E-6 is still OK.
+        # Apparently not, go to 100*epsilon in stead
+        dx = max(dx, 100*epsilon) #1e-6)
         if not fixed:
             mid      = (xlims[1] + xlims[0])/2
             xlims[0] = mid - 0.55*dx

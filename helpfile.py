@@ -482,9 +482,10 @@ amount of points to be plotted.
 The averaged data will be time stamped with the midpoint of the 'solint'
 interval.
 
-The 'solint' duration can be specified in d(ays), h(ours), m(inutes) and s(seconds) and
-combinations thereof, honouring the hierarchy - "smaller" units must follow
-"larger" units of time:
+The 'solint' duration can be specified in
+    d(ays), h(ours), m(inutes) and s(seconds)
+and combinations thereof, honouring the hierarchy:
+    "smaller" units must follow "larger" units of time:
 
     > solint 1.2s     (set to 1.2 seconds)
     > solint 1.2m     (set to 1.2 minutes, i.e. 72.0s)
@@ -547,11 +548,61 @@ Of course this parameter's name pays homage to Classic AIPS.
 """,
 
     ##################################################################
+    # nchav
+    ##################################################################
+    "nchav":
+"""nchav [none|<#-of-channels>]
+    set/display channel averaging interval
+
+When channel averaging is requested (see 'avc') this parameter governs how the
+selected channels are processed.
+
+Either all selected channels are averaged down to one or they are binned in
+groups of nchav channels. The table below summarizes what the effects of the
+settings are.
+
+  nchav       result
+  -----       --------------------------------------------------------------
+
+  none        all selected channels [even if they are a disjoint set] are 
+              averaged down to one value. the channel label in the plots 
+              will be '*' in stead of the channel number
+
+  >1          for each selected channel the system computes a destination
+              bin number using integer divide on "<channel #> / nchav".
+              Data will be averaged per destination bin. The channel label
+              will be "<bin number>*"
+
+
+Example:
+    > avc scalar   # turn on channel averaging for nchav to have effect
+    > ch 2:9 21:27 # select some channels
+    > nchav 4      # bin in groups of 4
+
+    Now the output will contain data sets with the following 'channel' labels
+        "0*"    containing data from channel 2,3        (only two channels)
+        "1*"             ,,                  4..7       (full group of 4)
+        "2*"             ,,                  8,9        (two channels again)
+        "5*"             ,,                  21,22,23   (only three channels)
+        "6*"             ,,                  24..27     (guess what)
+
+Of course this parameter's name also pays homage to Classic AIPS.
+""",
+
+    ##################################################################
     # wt
     ##################################################################
 	"wt":
 """wt [double]
-   set/display weight threshold""",
+   set/display weight threshold
+   
+Data with a weigth less than this threshold will be marked as flagged. When
+averaging data in time and/or frequency these points do not count towards the
+average.
+
+See the 'show' command to control the (un)display of flagged data.
+
+""",
 
     ##################################################################
     # new
@@ -1487,25 +1538,13 @@ Subscripting:
     # ckey
     ##################################################################
 "ckey":
-"""ckey [<expression> | none]
+"""ckey [<ckey_expr> | none]
     set or display data set colouring condition(s)
 
 Without arguments it displays the current data set colouring condition, an
-argument <expression> changes the data set colour assignment. This setting is
-kept and changed per plot type. The <expression> "none" will reset the
+argument <ckey_expr> changes the data set colour assignment. This setting is
+kept and changed per plot type. The <ckey_expr> "none" will reset the
 colouring algorithm to the default ("ckey_builtin").
-
-Background: the plot program has plots and data sets: one plot consists of one
-or more data sets displayed in it. Each individual data point has seven
-attributes: P, CH, SB, FQ, BL, SRC, TIME.
-
-Normally each data set gets a unique, automatically assigned, colour, based on
-its label. A data set's label is made up of the values of the subset of
-attributes that are not the x-axis or in the plot label (see the "new" command)
-or whose value is the same for all data sets. (E.g. if all data is for the same
-source, the SRC attribute will have the same value in all data sets and thus
-will be be removed from the data set label on the pretext of being
-un-informative.)
 
 The general idea of the ckey command is that it is possible to express
 intentions like:
@@ -1516,27 +1555,48 @@ intentions like:
     "use the SB and P attribute values as unique key in stead of whatever the
     default behaviour is"
 
-To express these intents an <expression> can be passed as argument(s) to the
-ckey command. The <expression> syntax is as follows:
+To express these intents a <ckey_expr> can be passed as argument(s) to the ckey
+command. The <ckey_expr> syntax and human readable explanation follow below.
 
-    <expression> = <selector> { <selector> }
+Background: the plot program has plots and data sets: one plot consists of one
+or more data sets displayed in it. Each individual data set has seven
+attributes: P, CH, SB, FQ, BL, SRC, TIME with values or the special value 'None'
+in case the attribute has been stripped from the label.
+
+Normally each data set gets a unique, automatically assigned colour, based on
+its label values. A data set's label is made up of the values of the subset of
+attributes that are:
+    - not the x-axis (*-vs-time strips the TIME, *-vs-channel strips CH)
+    - not in the plot label (see the "new" command); all attributes that
+      are listed in the `new` command are stripped
+    - not the same for all data sets. Attributes whose value is the same for all
+      data sets get stripped. E.g. if all data being plotted is for the same
+      source, the SRC attribute will have the same value in all data sets and
+      thus will be be removed from the data set label on the pretext of being
+      informative but non-essential in labelling unique data sets.
+
+
+The formal <ckey_expr> grammar (explained below)
+    <ckey_expr>  = <selector> { <selector> } { <default> }
     <selector>   = <conditions> { '=' <colour number> }
     <conditions> = <attrval> { ',' <conditions> }
     <attrval>    = <attribute> { '[' <value> { ',' <value> } ']' }
     <attribute>  = p | ch | sb | bl | fq | src | time
-    <value>      = <number> | <text> | ' <text> ' | <regex>
+    <value>      = <number> | <text> | 'none' | ' <text> ' | <regex>
     <regex>      = '/' <text> '/' { 'i' }
+    <default>    = 'default' '=' <number>
     
 In this grammer, <number> and <text> are what you think they are: digits and
-characters (excluding white space). When attribute values are compared with
-<text> it is done case-insensitive. The <text> inside a <regex> is, arguably,
-the regular expression text and may contain embedded spaces. It may be suffixed
-by the character 'i' for case-insensitive regex matching. Regular <text> may be
-put inside single quotes to support embedded spaces.
+characters (excluding embedded white space). When attribute values are compared
+with <text> it is done case-insensitive. The <text> inside a <regex> is,
+arguably, the regular expression text and may contain embedded spaces. It may be
+suffixed by the character 'i' for case-insensitive regex matching. Regular
+<text> may be put inside single quotes to support embedded spaces.
 
 In human readable form this grammar reads:
 
-    An <expression> consists of one or more <selectors>.
+    A <ckey_expr> consists of one or more <selectors>, optionally followed by a
+    <default> setting.
     
     Each <selector> selects data sets with a label that matches a set of
     conditions and optionally assigns a specific colour index to those.
@@ -1550,26 +1610,59 @@ In human readable form this grammar reads:
     If no explicit <colour number> is assigned to the <selector>, the system
     automatically assigns the first unused colour number.
 
+    By default, if all selectors have been tried (from left to right) and
+    nothing matched, an error is raised; you've asked the code to do something
+    it cannot do. The code now supports a 'default = <number>' final clause: the
+    colour to assign to data sets in case none of the selectors matched.
+    The default can be easily used to highlight specific data (see exmaples
+    below).
+
+    Also, it is now possible to match on the attribute value 'None' i.e.
+    matching when the attribute has been stripped from the data set label. Find
+    an illustration in the examples below.
+
 Examples:
 
     # assign data set colours just based on the unique combinations of values
     # for P, SB found in the data sets
     ckey p,sb
 
-    # one of the easiest applications: colour the data sets with 'll'
+    # a more specific application: colour the data sets with 'll'
     # polarization with colour 2 and the 'rr' polarization with colour 3. 
     ckey p[ll]=2 p[rr]=3
+
+    # The previous command will result in an error in the following cases:
+    # 1 plotting single polarization data; the P attribute will be stripped (set
+    #   to 'None') and thus not match with either ll or rr
+    # 2 plotting a data set which has any polarization that's not ll or rr
+    #   (because there's no match for those)
+
+    # with the updated <ckey_expr> grammar issue #1 can be handled by
+    # adding an explicit match for when the P attribute is set to 'None':
+    ckey p[ll]=2 p[rr]=3 p[none]=2
+
+    # issue #2 can be handled, if so desired, by adding a default clause:
+    ckey p[ll]=2 p[rr]=3 default=1
+
+    # And both can be done at the same time and by assigning different colours
+    # the cases can be illustrated in a visually distinct manner
+    ckey p[ll]=2 p[rr]=3 p[none]=2 default=1
 
     # suppose the even subbands are LSB and the odd ones USB, let's
     # assign colour based on 'sideband'. The system assigns the colours.
     ckey sb[0,2,4,6]  sb[1,3,5,7]
 
-    # and maybe add the polarization as key
+    # and maybe add the polarization as key, so e.g. LL even subbands get
+    # a different colour from RR even, as well as LL, RR odd subbands
     ckey p,sb[0,2,4,6]  p,sb[1,3,5,7]
 
     # colour baselines to Wb with colour 2, the rest gets automatically
     # assigned a colour based on subband
     ckey bl[/(^wb)|(wb$)/i]=2 sb
+
+    # Use of default to highlight e.g. only subband 2. Data sets where SB = 2
+    # will be assigned the colour red, everything else will be painted in black
+    ckey sb[2] = 2 default = 1
 
 """,
 

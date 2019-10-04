@@ -604,6 +604,8 @@ class jplotter:
         return self.scanlist
 
     ## display or select time-range + source via scan
+    _scanTaQL = "(TIME>={0.start:.7f} AND TIME<={0.end:.7f} AND FIELD_ID={0.field_id} AND ARRAY_ID={0.array_id} AND SCAN_NUMBER={0.scan_number})".format
+
     def scans(self, *args):
         pfx = "scan:"
         errf = hvutil.mkerrf("{0} ".format(pfx, self.msname))
@@ -639,7 +641,11 @@ class jplotter:
                 nScan.end   = nEnd
                 acc.append(nScan)
                 return acc
-            sel_.scanSel = reduce(copy_and_modify, filter_f(self.scanlist), [])
+            # Only override scan selection if any scans were selected
+            scanSel = reduce(copy_and_modify, filter_f(self.scanlist), [])
+            if not scanSel:
+                return errf("Your selection criteria did not match any scans")
+            sel_.scanSel = scanSel
             self.dirty   = self.dirty or (sel_.scanSel!=oldscanSel)
 
             # Construct the TaQL from the scan selection
@@ -648,11 +654,10 @@ class jplotter:
                 sel_.sources       = []
                 sel_.timeRange     = []
                 sel_.sourcesTaql   = None
-                sel_.timeRangeTaql = None
+                # replace time range taql only if there are any scans selected
+                scanTaQL           = " OR ".join(map(jplotter._scanTaQL, sel_.scanSel))
+                sel_.timeRangeTaql = "("+scanTaQL+")" if scanTaQL else None
 
-                sel_.timeRangeTaql = "(" +  \
-                        " OR ".join(map(lambda o: "(TIME>={0:.7f} AND TIME<={1:.7f} AND FIELD_ID={2} AND ARRAY_ID={3} AND SCAN_NUMBER={4})".format(o.start, o.end, o.field_id, o.array_id, o.scan_number), sel_.scanSel)) \
-                   + ")"
                 # and we must construct the timerange list.
                 # also compress the time ranges; if there are overlapping regions, join them
                 def reductor(acc, (s, e)):
@@ -1369,6 +1374,22 @@ class jplotter:
             self.dirty = True
         print "{0} {1}{2}".format(pplt("solint:"), self.selection.solint, "" if self.selection.solint is None else "s")
 
+    def nchav(self, *args):
+        if args:
+            if len(args)>1:
+                raise RuntimeError, "nchav() takes only one or no parameters"
+            if args[0].lower()=="none":
+                self.selection.solchan = None
+            else:
+                try:
+                    tmp = int(args[0])
+                    assert tmp > 1, "Invalid nchav value - cannot bin by less than one channel"
+                    self.selection.solchan  = tmp
+                except Exception as E:
+                    raise RuntimeError, "'{0}' is not a valid channel averaging number ({1})".format( args[0], str(E) )
+            self.dirty = True
+        print "{0} {1}".format(pplt("nchav:"), self.selection.solchan)
+
     def getNewPlot(self):
         return copy.deepcopy(self.selection.newPlot)
 
@@ -1533,8 +1554,8 @@ class jplotter:
             return errf("No plot type selected yet")
 
         ## Cannot do both time AND frequency averaging at the moment :-(
-        if sel_.averageTime!=AVG.None and sel_.averageChannel!=AVG.None:
-            raise RuntimeError, "Unfortunately, we cannot do time *and* channel averaging at the same time at the moment. Please disable one (or both)"
+        #if sel_.averageTime!=AVG.None and sel_.averageChannel!=AVG.None:
+        #    raise RuntimeError, "Unfortunately, we cannot do time *and* channel averaging at the same time at the moment. Please disable one (or both)"
 
         ## Create the plots!
         with plotiterator.Iterators[self.selection.plotType] as p:
@@ -1550,7 +1571,7 @@ class jplotter:
         plotar2.limits   = plots.Dict()
 
         E   = os.environ
-        S   = lambda env, deflt: E[env] if env in E else deflt 
+        S   = E.get #lambda env, deflt: E[env] if env in E else deflt 
 
         plotar2.msname        = CP(self.msname)
         plotar2.column        = CP(self.mappings.domain.column)
@@ -1602,11 +1623,18 @@ class jplotter:
 
         if sel_.averageChannel != AVG.None:
             plotar2.comment = plotar2.comment + "[" + str(sel_.averageChannel) + "averaged channels " + \
-                    hvutil.range_repr(hvutil.find_consecutive_ranges(sel_.chanSel)) if sel_.chanSel else "*" + "]"
+                    (hvutil.range_repr(hvutil.find_consecutive_ranges(sel_.chanSel)) if sel_.chanSel else "*") + ("" if sel_.solchan is None else ":{0}".format(sel_.solchan)) + "]"
 
         # transform into plots.Dict() structure
+        nUseless = 0
         for (label, dataset) in pl.iteritems():
-            plotar2[label] = plots.plt_dataset(dataset.x, dataset.y, dataset.m)
+            tmp  = plots.plt_dataset(dataset.x, dataset.y, dataset.m)
+            if tmp.useless:
+                nUseless += 1
+                continue
+            plotar2[label] = tmp
+        if nUseless>0:
+            print "WARNING: {0} out of {1} data sets contained only NaN values ({2:.2f}%)!".format( nUseless, len(pl), 100.0*(float(nUseless)/len(pl)) )
         return plotar2
 
     def organizeAsPlots(self, plts, np):
@@ -1621,8 +1649,6 @@ class jplotter:
         # 2. Go through all of the plots and reorganize
         def proc_ds(acc, (l, dataset)):
             (plot_l, dataset_l) = splitter(l)
-            #print "Unflatten: {0} => {1}  {2}".format(l, plot_l, dataset_l)
-            #print "           {0} points".format( len(dataset.xval) )
             ds = dataset.prepare_for_display( self._showSetting )
             if ds is None:
                 return acc
@@ -1780,7 +1806,7 @@ def mk_output(pfx, items, maxlen):
         acc[-1] += " {0}".format(item)
         return acc
     for l in reduce(reducer, items, lines):
-        print l
+        print l.strip()
 
 
 
@@ -1850,12 +1876,10 @@ class environment(object):
         if self.device:
             ppgplot.pgslct(self.device)
             ppgplot.pgclos()
-            self.device = None
+        self.device = None
 
     def changeDev(self, newDevName):
-        if self.device:
-            ppgplot.pgclos()
-            self.device = None
+        self.close()
         self.devName = newDevName
         self.select()
 
@@ -2014,11 +2038,11 @@ def run_plotter(cmdsrc, **kwargs):
         print "{0} {1} [{2}]".format(pplt("layout[{0}]:".format(pt)), plotter.layout(), plotter.layoutStyle() )
 
     c.addCommand( \
-        mkcmd(rx=re.compile(r"^nxy(\s+[0-9]+\s+[0-9]+)?(\s+(fixed|flexible))?$", re.I), \
+        mkcmd(rx=re.compile(r"^nxy(\s+[0-9]+\s+[0-9]+)?(\s+(fixed|flexible|rows|columns))*$", re.I), \
               # don't convert to integers just yet - leave that up to the actual layout function
               args=lambda x: re.sub("^nxy\s*", "", x).split(), \
               cb=layout_f, id="nxy", \
-              hlp="nxy [nx ny] [fixed|flexible]\n\tprint or set the current plot layout\n\nThe layout can be marked as fixed or flexible. In the latter case jplotter might re-arrange the layout to fit all plots on one page when this seems feasible. By default plot layouts are 'flexible'") )
+              hlp="nxy [nx ny] [fixed|flexible] [rows|columns]\n\tprint or set the current plot layout\n\nThe layout can be marked as fixed or flexible. In the latter case jplotter might re-arrange the layout to fit all plots on one page when this seems feasible. By default plot layouts are 'flexible' and 'rows' are filled first") )
 
 
     # list known plot-types "lp"
@@ -2028,7 +2052,7 @@ def run_plotter(cmdsrc, **kwargs):
             print x
         # compute longest plot type name
         longest = max( map(compose(len, str), plots.Types) )
-        map(lambda x : p("{0:{1}} => {2}".format(x, longest, plots.Plotters[x].description())), plots.Types)
+        map(lambda x : p("{0:{1}} => {2}".format(x, longest, plots.Plotters[x].description())), sorted(plots.Types))
     c.addCommand( \
         mkcmd(rx=re.compile(r"^lp$"), hlp=Help["lp"], \
               cb=list_pt, id="lp") )
@@ -2408,6 +2432,7 @@ def run_plotter(cmdsrc, **kwargs):
         j().averageTime()
         j().averageChannel()
         j().solint()
+        j().nchav()
         j().weightThreshold()
         j().newPlot()
         j().showSetting()
@@ -2871,6 +2896,10 @@ def run_plotter(cmdsrc, **kwargs):
         mkcmd(rx=re.compile(r"^solint\b.*$"), hlp=Help["solint"], \
               args=lambda x: re.sub("^solint\s*", "", x).split(), \
               cb=lambda *args: j().solint(*args), id="solint") )
+    c.addCommand( \
+        mkcmd(rx=re.compile(r"^nchav\b.*$"), hlp=Help["nchav"], \
+              args=lambda x: re.sub("^nchav\s*", "", x).split(), \
+              cb=lambda *args: j().nchav(*args), id="nchav") )
 
     # Weigth threshold
     c.addCommand( \
