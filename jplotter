@@ -1,19 +1,48 @@
 #!/usr/bin/env python 
-import jplotter, command, sys, os
+import sys, os, re, operator, functools
 
 if '-v' in sys.argv:
     print "$Id: jplotter,v 1.3 2014-08-08 15:38:40 jive_cc Exp $"
     sys.exit( 0 )
 
 if '-h' in sys.argv:
-    print "Usage: {0} [-h] [-d] [-v]".format(os.path.basename(sys.argv[0]))
+    print "Usage: {0} [-h] [-d] [-v] [-c <cmd>]".format(os.path.basename(sys.argv[0]))
     print """
     where:
-        -h  print this message and exit"
-        -v  print version and exit
-        -d  turn on debug output [prints stack trace upon error]
+        -h       print this message and exit"
+        -v       print version and exit
+        -c <cmd> execute <cmd> as if typed at the keyboard. if present
+                 multiple times, commands are executed in command line
+                 order. jplotter exits after the last command is executed.
+        -d       turn on debug output [prints stack trace upon error]
+        ppgplot=/path/to/home/of{/ppgplot/__init__.py}
+            load ppgplot module from '/path/to/home/of' if that path exists
 """
     sys.exit( 0 )
 
+# look for an entries "ppgplot=..." and insert them into the system path
+map(lambda mo: sys.path.insert(0, mo.group(1)) if os.path.isdir(mo.group(1)) else None,
+    filter(operator.truth, map(re.compile(r'^ppgplot=(.+)$').search, sys.argv[1:])))
+
+# gobble all '-c <cmd>' commands together
+def collect_cmds(acc, x):
+    if acc.state is not None:
+        # previous argument was '-c' so append this argument to the list
+        # that is, if it's not an option itself
+        if x[0]=='-' or x.startswith('ppgplot='):
+            raise RuntimeError("-c option expects a command, not option '{0}'".format(x))
+        acc.cmds.append(x)
+        acc.state = None
+    else:
+        # do we see '-c'?
+        if x == '-c':
+            acc.state = x
+    return acc
+acc = reduce(collect_cmds, sys.argv[1:], type('',(),{'state':None, 'cmds':list()})())
+if acc.state is not None:
+    raise RuntimeError("-c option missing argument")
+
+
 # we run interactively from the commandline
-jplotter.run_plotter(command.readkbd("jcli"), debug=('-d' in sys.argv))
+import command, jplotter
+jplotter.run_plotter(command.scripted(acc.cmds) if acc.cmds else command.readkbd("jcli"), debug=('-d' in sys.argv))

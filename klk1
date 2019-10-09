@@ -1,0 +1,199 @@
+#!/usr/bin/env python
+import sys, os, re, jplotter, command
+
+# program default(s)
+NoWgt   = True    # do not produce weight plots
+Version = "$Id: klk1,v 1.3 2015-03-26 20:23:33 jive_cc Exp $"
+
+# One-liner to split a list of things into two lists, one satisfying the predicate, the other not
+partition = lambda p, l: reduce(lambda (y,n), x: (y+[x], n) if p(x) else (y, n+[x]), l, ([], []))
+
+# returns None if the argument wasn't present, tp(<value>) if it was
+# (such that it will give an exception if e.g. you expect int but
+#  the user didn't pass a valid int
+def get_val(arg, tp=str):
+    conversion_error = False
+    try:
+        # is 'arg' given?
+        aidx = sys.argv.index(arg)  # raises ValueError if not found FFS
+        aval = sys.argv[aidx+1]     # raises IndexError
+
+        # Check it doesn't start with a '-'!
+        if aval[0]=='-':
+            raise RuntimeError, "Option %s expects argument, got another option '%s'" % (arg, aval)
+
+        # remove those arguments
+        del sys.argv[aidx]; del sys.argv[aidx]
+        # now set 'conversion_error' to True because the following
+        # statement could (also) raise a ValueError (like the
+        # "sys.argv.index()"). FFS Python! So we must take measures to tell
+        # them apart
+        conversion_error = True
+        return tp(aval)
+    except ValueError:
+        if conversion_error:
+            raise
+        # no 'arg' given, don't complain
+        return None
+    except IndexError:
+        # Mission option value to option
+        raise RuntimeError, "Mission optionvalue to {0}".format(arg)
+
+
+def Usage(prog, full):
+    print "Usage: {0} [-h] [-v] [-d] [-weight] <MS>".format( prog )
+    if full:
+        print """
+    where:
+    -h      print this message and exit
+    -v      print current version and exit
+    -d      enable debug output in case of error
+    -weight also produce weight plots (default: {1})
+    MS      the /path/to/the/measurementset.ms where to take data from
+
+    Produces JIVE standard plots for clock search data
+
+    *  visibility amplitude and phase versus channel for all bands 
+    *  visibility phase versus time for the whole experiment.
+    *  weight versus time for each station, although since disk recording
+       this plot has become mostly useless and it is not produced by
+       default. Use '-weight' option to include it.
+""".format(prog, not NoWgt)
+    sys.exit( 0 if longhelp else 1 )
+
+
+class Settings(object):
+    def __init__(self, ms, refant, calsrc):
+        self.measurementset = ms
+        self.myBasename     = re.sub(r"\.ms$", "", os.path.basename(self.measurementset))
+        self.tempFileName   = "/tmp/sptf-{0}.ps".format( os.getpid() )
+
+    def cleanup(self):
+        os.unlink( self.tempFileName )
+
+#####################################################################
+##
+##                     Inspect command line
+##
+#####################################################################
+
+# Now split in options and arguments
+(opts, args) = partition(lambda opt: opt[0]=='-', sys.argv[1:])
+
+## Not three arguments given or help requested?
+longhelp = ('-h' in opts)
+if len(args)!=1 or longhelp:
+    Usage(os.path.basename(sys.argv[0]), longhelp)
+
+## Maybe print version?
+if '-v' in opts:
+    print Version
+    sys.exit( 0 )
+
+if '-weight' in opts:
+    NoWgt = False
+
+#####################################################################
+##
+##                     The plots themselves
+##
+#####################################################################
+
+def open_ms(settings):
+    # open MS and run indexr
+    yield "ms {0}".format( settings.measurementset )
+    yield "refile {0}".format( settings.tempFileName )
+
+# generate amplitude and phase versus freq 
+def mk_anp_chan_cross_plot(settings):
+    print "generating cross plots [anp/channel]"
+    # all cross baselines 
+    yield "bl cross"
+    yield "fq *;ch none"
+    yield "new all f bl t"
+    yield "avt vector;avc none"
+    yield "pt ampchan; reset; nxy 3 10; multi t"
+    # set colouring based on polarization i.s.o. auto colour
+    # assignment
+    yield "ckey p[rr,none]=2 p[ll]=3 p[rl]=4 p[lr]=5"
+    yield "y local"
+    yield "sort bl" 
+    yield "refile {0}-af.ps/vcps".format( settings.myBasename )
+    yield "draw lines; pl"
+    # ok, now (almost) same data: no cross pols, different plot
+    yield "pt phachan"
+    yield "fq */p"
+    yield "reset; nxy 3 12;multi t"
+    # set colouring based on polarization i.s.o. auto colour
+    # assignment
+    yield "ckey p[rr,none]=2 p[ll]=3 p[rl]=4 p[lr]=5"
+    yield "refile {0}-pf.ps/vcps".format( settings.myBasename )
+    yield "draw points; pl"
+
+# generate phase-time plot
+def mk_phase_time(settings):
+    print "generating cross plots [phase/time]"
+    yield "bl cross"
+    yield "fq */p;ch 0.1*last:0.9*last"
+    yield "new all f bl t;"
+    yield "avt none;avc vector"
+    yield "pt phatime; reset; nxy 3 12"
+    yield "sort bl" 
+    yield "refile {0}-pt.ps/vcps".format( settings.myBasename )
+    yield "draw points; pl"
+
+# generate rfa plot
+def mk_rfa(settings):
+    print "generating rfa plot [amp/freq (auto)]"
+    yield "bl auto"
+    yield "fq */p;ch none"
+    yield "new all f bl t"
+    yield "avt vector;avc none"
+    yield "pt ampchan; reset; nxy 1 10; multi t;y local"
+    # set colouring based on polarization i.s.o. auto colour
+    # assignment
+    yield "ckey p[rr,none]=2 p[ll]=3 p[rl]=4 p[lr]=5"
+    yield "sort bl" 
+    yield "refile {0}-rfa.ps/vcps".format( settings.myBasename )
+    yield "draw lines; pl"
+
+
+def mk_weight_plot(settings):
+    # the weight plot is only auto baselines, max four subbands x 2 pols
+    # for the whole time range of the experiment
+    # no need to set the channel selection, it is ignored
+    print "generating weight plot"
+    yield "ms {0}".format( settings.measurementset )
+    yield "bl auto; fq */p;"
+    yield "src none"
+    yield "time none"
+    yield "pt wt"
+    yield "new all f bl t"
+    yield "y local"
+    yield "sort bl"
+    #yield "save {0}-weight.ps/cps".format( settings.myBasename )
+    yield "refile {0}-wt.ps/cps".format( settings.myBasename )
+    yield "pl"
+
+
+#####################################################################
+##
+##                     And finally run them
+##
+#####################################################################
+s = Settings(args[0], None, None)
+
+todo = [open_ms(s)]
+todo.append( mk_anp_chan_cross_plot(s) )
+todo.append( mk_phase_time(s) )
+todo.append( mk_rfa(s) )
+
+if not NoWgt:
+    todo.append( mk_weight_plot(s) )
+
+try:
+    jplotter.run_plotter(command.scripted(*todo), debug=('-d' in opts))
+except:
+    pass
+finally:
+    s.cleanup()

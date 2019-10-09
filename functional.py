@@ -1,13 +1,13 @@
-from functools import partial
-from itertools import product, repeat
-from operator  import truth, contains, eq, is_not, attrgetter, itemgetter, methodcaller, __add__, is_
+from __future__ import print_function
+from functools  import partial
+from itertools  import product, repeat
+from operator   import truth, contains, eq, is_not, attrgetter, itemgetter, methodcaller, __add__, is_
 
 # everybody SHOULD love function composition :-)
 compose     = lambda *fns   : (lambda x: reduce(lambda acc, f: f(acc), reversed(fns), x))
 choice      = lambda p, t, f: (lambda x: t(x) if p(x) else f(x))  # branch
 choice_kw   = lambda p, t, f: (lambda x, **kwargs: t(x, **kwargs) if p(x, **kwargs) else f(x, **kwargs))  # branch
-#ylppa       = lambda x      : (lambda f: f(x))                    # ylppa is 'apply' in reverse ...
-ylppa       = lambda *args  : (lambda f: f(*args))                    # ylppa is 'apply' in reverse ...
+ylppa       = lambda *args  : (lambda f: f(*args))                # ylppa is 'apply' in reverse ...
 combine     = lambda f, *fns: (lambda x: f(*map(ylppa(x), fns)))  # f( fn[0](x), fn[1](x), ... )
 swap_args   = lambda f      : (lambda a, b, *args, **kwargs: f(b, a, *args, **kwargs))
 logic_or    = lambda x, y   : x or y                              # operator.__or__ / __and__ are /bitwise/ ops!
@@ -34,7 +34,8 @@ identity    = lambda x, *a, **kw   : x
 do_update   = lambda x, y          : x.update(y) or x
 d_filter    = lambda keys          : (lambda d: dict(((k,v) for k,v in d.iteritems() if k in keys)))
 d_filter_n  = lambda keys          : (lambda d: dict(((k,v) for k,v in d.iteritems() if k not in keys)))
-#printf      = lambda x, y : x.printfn(y)
+# expose the print function as, well, a function
+printf      = print
 #collectf    = lambda x, y : x.collectfn(y)
 
 filter_true = partial(filter, truth)

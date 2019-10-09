@@ -394,8 +394,26 @@
 #   HV: * time to commit - added some more basic stuff
 #
 import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, imp, time
-import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors
+import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors, functools
 from   functional import compose
+
+if '-d' in sys.argv:
+    print "PPGPLOT=",repr(ppgplot)
+
+# Monkeypatch ppgplot if it don't seem to have pgqwin()
+if not hasattr(ppgplot, 'pgqwin'):
+    # the associative array from device id to window
+    pg_windows = dict()
+    # need to wrap pgswin to remember which window set for which device
+    old_pgswin = ppgplot.pgswin
+    def pgswin_new(w0, w1, w2, w3):
+        pg_windows[ ppgplot.pgqid() ] = [w0, w1, w2, w3]
+        return old_pgswin(w0, w1, w2, w3)
+    def pgqwin():
+        return pg_windows.get(ppgplot.pgqid(), None)
+    ppgplot.pgswin = pgswin_new
+    ppgplot.pgqwin = pgqwin
+
 
 CP   = copy.deepcopy
 NOW  = time.time
@@ -586,6 +604,8 @@ class jplotter:
         return self.scanlist
 
     ## display or select time-range + source via scan
+    _scanTaQL = "(TIME>={0.start:.7f} AND TIME<={0.end:.7f} AND FIELD_ID={0.field_id} AND ARRAY_ID={0.array_id} AND SCAN_NUMBER={0.scan_number})".format
+
     def scans(self, *args):
         pfx = "scan:"
         errf = hvutil.mkerrf("{0} ".format(pfx, self.msname))
@@ -621,7 +641,11 @@ class jplotter:
                 nScan.end   = nEnd
                 acc.append(nScan)
                 return acc
-            sel_.scanSel = reduce(copy_and_modify, filter_f(self.scanlist), [])
+            # Only override scan selection if any scans were selected
+            scanSel = reduce(copy_and_modify, filter_f(self.scanlist), [])
+            if not scanSel:
+                return errf("Your selection criteria did not match any scans")
+            sel_.scanSel = scanSel
             self.dirty   = self.dirty or (sel_.scanSel!=oldscanSel)
 
             # Construct the TaQL from the scan selection
@@ -630,11 +654,10 @@ class jplotter:
                 sel_.sources       = []
                 sel_.timeRange     = []
                 sel_.sourcesTaql   = None
-                sel_.timeRangeTaql = None
+                # replace time range taql only if there are any scans selected
+                scanTaQL           = " OR ".join(map(jplotter._scanTaQL, sel_.scanSel))
+                sel_.timeRangeTaql = "("+scanTaQL+")" if scanTaQL else None
 
-                sel_.timeRangeTaql = "(" +  \
-                        " OR ".join(map(lambda o: "(TIME>={0:.7f} AND TIME<={1:.7f} AND FIELD_ID={2} AND ARRAY_ID={3} AND SCAN_NUMBER={4})".format(o.start, o.end, o.field_id, o.array_id, o.scan_number), sel_.scanSel)) \
-                   + ")"
                 # and we must construct the timerange list.
                 # also compress the time ranges; if there are overlapping regions, join them
                 def reductor(acc, (s, e)):
@@ -1351,6 +1374,22 @@ class jplotter:
             self.dirty = True
         print "{0} {1}{2}".format(pplt("solint:"), self.selection.solint, "" if self.selection.solint is None else "s")
 
+    def nchav(self, *args):
+        if args:
+            if len(args)>1:
+                raise RuntimeError, "nchav() takes only one or no parameters"
+            if args[0].lower()=="none":
+                self.selection.solchan = None
+            else:
+                try:
+                    tmp = int(args[0])
+                    assert tmp > 1, "Invalid nchav value - cannot bin by less than one channel"
+                    self.selection.solchan  = tmp
+                except Exception as E:
+                    raise RuntimeError, "'{0}' is not a valid channel averaging number ({1})".format( args[0], str(E) )
+            self.dirty = True
+        print "{0} {1}".format(pplt("nchav:"), self.selection.solchan)
+
     def getNewPlot(self):
         return copy.deepcopy(self.selection.newPlot)
 
@@ -1406,19 +1445,73 @@ class jplotter:
         # Display the settings, only for the axes for which the setting is true
         print "{0} {1}".format(pplt("new plots on:"), 
                 hvutil.dictfold(lambda (ax,val), acc: acc+"{0} ".format(ax) if val else acc, "", self.selection.newPlot))
-                
+
+    _isHeaderLegend = re.compile(r'^(?P<not>no)?(?P<what>header|legend|source)$', re.I).match
     def showSetting(self, *args):
-        if args and args[0]:
-            if len(args)>1:
-                raise RuntimeError("show only takes one argument, not {0}".format(len(args)))
-            # expect 'args' to be one of FLAG enums
-            newSetting = args[0].capitalize()
-            if newSetting not in FLAG:
-                raise RuntimeError("Unknown show setting {0}".format(args[0]))
-            if FLAG[newSetting] is not self._showSetting:
-                self._showSetting = FLAG[newSetting]
-                self.npmodify     = self.npmodify + 1
-        print "{0} {1}{2}".format(pplt("show:"), self._showSetting, " ({0:s} + {1:s})".format(FLAG.Flagged, FLAG.Unflagged) if self._showSetting is FLAG.Both else "")
+        curPlotType                      = self.getPlotType()
+        curPlot                          = None if curPlotType is None else plots.Plotters[curPlotType]
+        args                             = filter(operator.truth, args)
+        # default: no arguments given? display everything (if there is a current plot type) otherwise show nothing
+        # note: we cannot return early if curPlot is None because the Flagged/UnFlagged setting is
+        #       not a plot-type dependent setting. If there is a current plot type selected then
+        #       the plot specific settings are displayed/can be changed
+        getFlag   = lambda: "{0} {1}{2}".format(pplt("show:"), self._showSetting, " ({0:s} + {1:s})".format(FLAG.Flagged, FLAG.Unflagged) if self._showSetting is FLAG.Both else "")
+        getAttr   = lambda which, nm: "" if curPlot is None else "{0}{1}".format("" if getattr(curPlot, which) else "No", nm)
+        getHeader = lambda          : getAttr('showHeader', 'Header')
+        getLegend = lambda          : getAttr('showLegend', 'Legend')
+        getSource = lambda          : getAttr('showSource', 'Source')
+        setAttr   = lambda which    : (lambda _: None) if curPlot is None else (lambda f: setattr(curPlot, which, f is None))
+        setFlag   = {'header': (setAttr('showHeader'), getHeader, lambda s, v: setattr(s, 'Header', v)),
+                     'legend': (setAttr('showLegend'), getLegend, lambda s, v: setattr(s, 'Legend', v)),
+                     'source': (setAttr('showSource'), getSource, lambda s, v: setattr(s, 'Source', v))}
+
+        # In order to be let the proc_arg() function below modify values
+        # outside of its scope (i.e. the values at /this/ stack frame) we must
+        # either put them in a list or make them attributes of an object.
+        # I chose the 2nd approach
+        show      = type('',(), {'FLAG':"", 'Header':"", 'Legend':"", 'Source':""} if args else {'FLAG':getFlag(), 'Header':getHeader(), 'Legend':getLegend(), 'Source':getSource()})()
+        def proc_arg(acc, arg):
+            # expect 'arg' to be one of FLAG enums or (no)?(header|legend)
+            newSetting = arg.capitalize()
+            if newSetting in FLAG:
+                if FLAG[newSetting] is not self._showSetting:
+                    acc._showSetting = FLAG[newSetting]
+                    acc.npmodify     = acc.npmodify + 1
+                show.FLAG = getFlag()
+            else:
+                # Match to (no)(header|legend)
+                mo = jplotter._isHeaderLegend(newSetting)
+                if mo is None:
+                    raise RuntimeError("Unknown show setting {0}".format(arg))
+                # check if there is a current plot type whose' show setting we can manipulate
+                if curPlot is None:
+                    raise RuntimeError("No plot type selected to operate on")
+                # kool. update showing header/legend
+                fns = setFlag.get(mo.group('what').lower(), None)
+                if fns is None:
+                    raise RuntimeError("Unhandled show setting case '{0}'".format(mo.group('what')))
+                # entry in dict is tuple of set-in-plot + get-current-from-plot and set-in-show-object functions
+                (setf, curf, showf) = fns
+                # get previous value from plot
+                prev = curf()
+                # set the target flag in the plotter
+                setf( mo.group('not') )
+                # get new value from plot
+                new  = curf()
+                # update the current value in the 'show' object (such that we collect
+                # all the updated flags so we can display them later)
+                showf( show, new )
+                # and indicate that something has changed if the value has, in fact, changed
+                acc.npmodify = acc.npmodify + (0 if new==prev else 1)
+            return acc
+        # process all arguments
+        reduce(proc_arg, args, self)
+        # decide what to print
+        if show.FLAG:
+            print show.FLAG
+        hl = filter(operator.truth, [show.Header, show.Legend, show.Source])
+        if hl:
+            print "{0} {1}".format(pplt("show[{0}]:".format(curPlotType)), " ".join(hl))
 
     ## raw TaQL string manipulation ..
     def taqlStr(self, *args):
@@ -1461,8 +1554,8 @@ class jplotter:
             return errf("No plot type selected yet")
 
         ## Cannot do both time AND frequency averaging at the moment :-(
-        if sel_.averageTime!=AVG.None and sel_.averageChannel!=AVG.None:
-            raise RuntimeError, "Unfortunately, we cannot do time *and* channel averaging at the same time at the moment. Please disable one (or both)"
+        #if sel_.averageTime!=AVG.None and sel_.averageChannel!=AVG.None:
+        #    raise RuntimeError, "Unfortunately, we cannot do time *and* channel averaging at the same time at the moment. Please disable one (or both)"
 
         ## Create the plots!
         with plotiterator.Iterators[self.selection.plotType] as p:
@@ -1478,7 +1571,7 @@ class jplotter:
         plotar2.limits   = plots.Dict()
 
         E   = os.environ
-        S   = lambda env, deflt: E[env] if env in E else deflt 
+        S   = E.get #lambda env, deflt: E[env] if env in E else deflt 
 
         plotar2.msname        = CP(self.msname)
         plotar2.column        = CP(self.mappings.domain.column)
@@ -1530,11 +1623,18 @@ class jplotter:
 
         if sel_.averageChannel != AVG.None:
             plotar2.comment = plotar2.comment + "[" + str(sel_.averageChannel) + "averaged channels " + \
-                    hvutil.range_repr(hvutil.find_consecutive_ranges(sel_.chanSel)) if sel_.chanSel else "*" + "]"
+                    (hvutil.range_repr(hvutil.find_consecutive_ranges(sel_.chanSel)) if sel_.chanSel else "*") + ("" if sel_.solchan is None else ":{0}".format(sel_.solchan)) + "]"
 
         # transform into plots.Dict() structure
+        nUseless = 0
         for (label, dataset) in pl.iteritems():
-            plotar2[label] = plots.plt_dataset(dataset.x, dataset.y, dataset.m)
+            tmp  = plots.plt_dataset(dataset.x, dataset.y, dataset.m)
+            if tmp.useless:
+                nUseless += 1
+                continue
+            plotar2[label] = tmp
+        if nUseless>0:
+            print "WARNING: {0} out of {1} data sets contained only NaN values ({2:.2f}%)!".format( nUseless, len(pl), 100.0*(float(nUseless)/len(pl)) )
         return plotar2
 
     def organizeAsPlots(self, plts, np):
@@ -1549,8 +1649,6 @@ class jplotter:
         # 2. Go through all of the plots and reorganize
         def proc_ds(acc, (l, dataset)):
             (plot_l, dataset_l) = splitter(l)
-            #print "Unflatten: {0} => {1}  {2}".format(l, plot_l, dataset_l)
-            #print "           {0} points".format( len(dataset.xval) )
             ds = dataset.prepare_for_display( self._showSetting )
             if ds is None:
                 return acc
@@ -1708,7 +1806,7 @@ def mk_output(pfx, items, maxlen):
         acc[-1] += " {0}".format(item)
         return acc
     for l in reduce(reducer, items, lines):
-        print l
+        print l.strip()
 
 
 
@@ -1778,12 +1876,10 @@ class environment(object):
         if self.device:
             ppgplot.pgslct(self.device)
             ppgplot.pgclos()
-            self.device = None
+        self.device = None
 
     def changeDev(self, newDevName):
-        if self.device:
-            ppgplot.pgclos()
-            self.device = None
+        self.close()
         self.devName = newDevName
         self.select()
 
@@ -1936,16 +2032,17 @@ def run_plotter(cmdsrc, **kwargs):
         if not pt:
             print "No plot type selected to operate on"
             return
+        plotter = plots.Plotters[pt]
         if args:
-            plots.Plotters[pt].layout( plots.layout(*args) )
-        print "{0} {1}".format(pplt("layout[{0}]:".format(pt)), plots.Plotters[pt].layout() )
+            plotter.layout( *args )
+        print "{0} {1} [{2}]".format(pplt("layout[{0}]:".format(pt)), plotter.layout(), plotter.layoutStyle() )
 
     c.addCommand( \
-        mkcmd(rx=re.compile(r"^nxy(\s+[0-9]+\s+[0-9]+)?$"), \
-              # convert arguments to list-of-integers for the layout_f() function
-              args=lambda x: map(int, re.sub("^nxy\s*", "", x).split()), \
+        mkcmd(rx=re.compile(r"^nxy(\s+[0-9]+\s+[0-9]+)?(\s+(fixed|flexible|rows|columns))*$", re.I), \
+              # don't convert to integers just yet - leave that up to the actual layout function
+              args=lambda x: re.sub("^nxy\s*", "", x).split(), \
               cb=layout_f, id="nxy", \
-              hlp="nxy [nx ny]\n\tprint or set the current plot layout") )
+              hlp="nxy [nx ny] [fixed|flexible] [rows|columns]\n\tprint or set the current plot layout\n\nThe layout can be marked as fixed or flexible. In the latter case jplotter might re-arrange the layout to fit all plots on one page when this seems feasible. By default plot layouts are 'flexible' and 'rows' are filled first") )
 
 
     # list known plot-types "lp"
@@ -1955,7 +2052,7 @@ def run_plotter(cmdsrc, **kwargs):
             print x
         # compute longest plot type name
         longest = max( map(compose(len, str), plots.Types) )
-        map(lambda x : p("{0:{1}} => {2}".format(x, longest, plots.Plotters[x].description())), plots.Types)
+        map(lambda x : p("{0:{1}} => {2}".format(x, longest, plots.Plotters[x].description())), sorted(plots.Types))
     c.addCommand( \
         mkcmd(rx=re.compile(r"^lp$"), hlp=Help["lp"], \
               cb=list_pt, id="lp") )
@@ -2026,6 +2123,21 @@ def run_plotter(cmdsrc, **kwargs):
     c.addCommand( \
         mkcmd(rx=ryScale, id="y", args=lambda x: x,
               cb=scale_fn, hlp=Help["xyscale"]) )
+
+    # Allow labels to be set on axes!
+    rxLabel = re.compile(r'label(\s+\S+.*)?$')
+    def label_fn(*args):
+        pt = j().getPlotType()
+        if not pt:
+            print "No plot type selected to operate on"
+            return
+        labels = plots.Plotters[pt].setLabel(*args)
+        for (which, tp, txt) in labels:
+            print "{0}: {1}[{2}] '{3}'".format(pt, which, tp, txt)
+
+    c.addCommand( \
+            mkcmd(rx=rxLabel, id="label", args=lambda x : re.sub(r"^label\s*", "", x), \
+                  cb=label_fn, hlp=Help["label"])) #"""label [<axis1>:'<label1 text>' [<axisN>:'<labelN text>' ...]]\n\tShow or set axis label(s)""") )
 
     # allow sorting by arbitrary keys
     #  sort [p ch fq etc]
@@ -2186,9 +2298,9 @@ def run_plotter(cmdsrc, **kwargs):
         # check what the parser gave us
         # ( (dataset, filter), (groupby_f, sortfns) )
         # if the dataset is not available, not much to do is there?
-        (ds_filter, grp_sort)  = cruft
-        (dataset_id, filter_f) = ds_filter
-        (groupby_f,  sort_f)   = grp_sort
+        (ds_filter, grp_sort, settings) = cruft
+        (dataset_id, filter_f)          = ds_filter
+        (groupby_f,  sort_f)            = grp_sort
         e = env() 
         if dataset_id is None:
             # no dataset from memory so we'll have to refresh
@@ -2215,11 +2327,15 @@ def run_plotter(cmdsrc, **kwargs):
                 e.post_processing_fn( tmp, j().mappings )
             # rerun this because things may have changed
             j().doMinMax(tmp, verbose=False)
-            sequence.append( tmp )
+            if tmp:
+                sequence.append( tmp )
         e_time = NOW()
         print "Preparing animation took\t{0:.3f}s                ".format( e_time - s_time )
+        if not sequence:
+            print "No plots to animate, unfortunately ..."
+            return None
         # loop indefinitely
-        fps = 0.7#3
+        fps = settings.fps if hasattr(settings, 'fps') else 0.7
         try:
             env().select()
             dT = 1.0/fps
@@ -2230,7 +2346,7 @@ def run_plotter(cmdsrc, **kwargs):
                     # TODO: expand nx/ny to accomodate this?
                     s = NOW()
                     with plots.pgenv(ppgplot) as p:
-                        j().drawFunc(page_plots, ppgplot, 0, plots.AllInOne, ncol=env().devNColor)
+                        j().drawFunc(page_plots, ppgplot, 0, plots.AllInOne, ncol=env().devNColor, verbose=False)
                     while True:
                         nsec = (s + dT) - NOW()
                         if nsec<=0:
@@ -2320,6 +2436,7 @@ def run_plotter(cmdsrc, **kwargs):
         j().averageTime()
         j().averageChannel()
         j().solint()
+        j().nchav()
         j().weightThreshold()
         j().newPlot()
         j().showSetting()
@@ -2416,36 +2533,67 @@ def run_plotter(cmdsrc, **kwargs):
 
     # control what to show: flagged, unflagged, both
     c.addCommand( \
-            mkcmd(rx=re.compile(r"^show(\s\S+)?$"), hlp=Help["show"], \
-            args=lambda x: re.sub("^show\s*", "", x), \
+            mkcmd(rx=re.compile(r"^show(\s\S+)*$"), hlp=Help["show"], \
+            args=lambda x: re.sub("^show\s*", "", x).split(), \
             cb=lambda *args: j().showSetting(*args), id="show") )
 
     # produce a hardcopy postscript file
-    rxExt = re.compile(r"^.+\.ps(?P<ft>/v?cps)?$", re.I)
+    rxExt    = re.compile(r"(\.[^./]+)$")
+    rxType   = re.compile(r'(/[a-z]+)$', re.I)
+    type2ext = functools.partial(re.compile(r'^[/vc]*', re.I).sub, '.')
+    ext2type = {".ps":"/CPS", ".pdf":"/PDF", ".png":"/PNG"}
+   
+    # convert user input device specification into
+    # a PGPLOT compatible device string
+    def user2pgplot(filenm):
+        ext, tp = None, None
+        pgfn    = copy.deepcopy(filenm)
+        # check if trailing type was given
+        mo = rxType.search(pgfn)
+        if mo:
+            # yes, remember it + strip it
+            tp   = mo.group(1)
+            pgfn = rxType.sub("", pgfn)
+        # id. for extension
+        mo = rxExt.search(pgfn)
+        if mo:
+            # yarrrs. remember + strip
+            ext  = mo.group(1)
+            pgfn = rxExt.sub("", pgfn)
+        # if there was a type but not extension, use that for extension
+        # if there was an extension but no type don't change that
+        # if there were none, use defaults
+        tbl = { (True, True)  : lambda e, t: (".ps", "/cps"),
+                (True, False) : lambda e, t: (type2ext(t), t),
+                (False, True) : lambda e, t: (e, ext2type.get(e.lower(),"Unknown")),
+                (False, False): lambda e, t: (e, t)}
+        (pext, ptp) = tbl[(ext is None, tp is None)](ext, tp)
+        return (pgfn+pext, ptp)
 
     def mk_postscript(e, filenm):
+        if not filenm:
+            ppgplot.pgldev()
+            return
         refresh(e)
         if not e.plots:
             print "No plots to save, sorry"
             return
-        mo = rxExt.match(filenm)
-        if not mo:
-            filenm = filenm + ".ps/cps"
-        elif not mo.group('ft'):
-            filenm = filenm + "/cps"
+        # returns device file name and type as separate items
+        # so we can display the file name w/o the (inferred) type
+        fn, ptp = user2pgplot(filenm)
         try:
-            f = open_file( filenm )
+            f = ppgplot.pgopen(fn+ptp)
         except:
-            raise RuntimeError, "Sorry, failed to open file '{0}'".format(e.wd +"/"+filenm if not filenm[0] == "/" else filenm)
+            raise RuntimeError, "Sorry, failed to open file '{0}'".format(e.wd +"/"+fn if not fn[0] == "/" else fn)
         ppgplot.pgslct(f)
         ppgplot.pgask( False )
         j().drawFunc(e.plots, ppgplot, 0, ncol=e.devNColor)
         ppgplot.pgclos()
         e.select()
-        print "Plots saved to [{0}]".format(filenm)
+        print "Plots saved to [{0}]".format(fn)
 
     c.addCommand( \
-        mkcmd(rx=re.compile("^save\s+\S+$"), id="save",
+        mkcmd(rx=re.compile("^save(\s+\S+)?$"), id="save",
               args=lambda x: re.sub("^save\s*", "", x),
               cb=lambda x: mk_postscript(env(), x),
               hlp="save <filename>\n\tsave current plots to file <filename> in PostScript format.\nThe extension .ps and default lands cape '/cps' orientation will be added automatically if not given") )
@@ -2543,14 +2691,8 @@ def run_plotter(cmdsrc, **kwargs):
             rxRefile = re.compile(r"^refile\s+(?P<file>.+)$")
             refile   = rxRefile.match(args[0])
             fn       = refile.group('file') if refile else args[0]
-
-            mo = rxExt.match(fn)
-            # no extension and not file type at all
-            if not mo:
-                fn = fn + ".ps/cps"
-            elif not mo.group('ft'):
-                # yes extension but no file type yet
-                fn = fn + "/cps"
+            fn, ptp  = user2pgplot(fn)
+            fn       = fn+ptp
             if refile:
                 foo[o.curdev].changeDev(fn)
             else:
@@ -2758,6 +2900,10 @@ def run_plotter(cmdsrc, **kwargs):
         mkcmd(rx=re.compile(r"^solint\b.*$"), hlp=Help["solint"], \
               args=lambda x: re.sub("^solint\s*", "", x).split(), \
               cb=lambda *args: j().solint(*args), id="solint") )
+    c.addCommand( \
+        mkcmd(rx=re.compile(r"^nchav\b.*$"), hlp=Help["nchav"], \
+              args=lambda x: re.sub("^nchav\s*", "", x).split(), \
+              cb=lambda *args: j().nchav(*args), id="nchav") )
 
     # Weigth threshold
     c.addCommand( \

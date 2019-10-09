@@ -1509,16 +1509,17 @@ def parse_dataset_expr(txt, datasets, **env):
 #
 # Grammar:
 #
-# expr     = selector {' ' selector} EOF
+# expr     = selector {' ' selector} {default} EOF
 # selector = attribs {'=' colorkey}
+# default  = 'default' '=' colorkey
 # attribs  = attrib {',' attrib}
 # attrib   = attrname {'[' attrvallist ']'}
 # attrname = 'P' | 'CH' | 'SB' | 'FQ' | 'BL' | 'TIME' | 'SRC' |
 #            'p' | 'ch' | 'sb' | 'fq' | 'bl' | 'time' | 'src'
 # attrvallist = attrval {',' attrvallist }
-# attrval     = number | string | regex
+# attrval     = number | string | regex | 'None'
 # number      = [0-9]+
-# string      = 'text'
+# string      = ''' text '''
 # colorkey    = number
 # regex       = '/' text '/'
 # text        = all characters except the termination (http://stackoverflow.com/a/5455705/26083)
@@ -1543,6 +1544,9 @@ def mk_regex(rx):
 def parse_ckey_expr(expr):
     # our tokens
     tokens = [
+        # we have two keywords: 'None' and 'default'
+        (re.compile(r"\bnone\b", re.I),                     simple_t('None')),
+        (re.compile(r"\bdefault\b", re.I),                  simple_t('default')),
         # the attribute names we support
         (re.compile(r"\b(p|ch|sb|fq|bl|time|src)\b", re.I), xform_t('attrname', str.upper)),
         # attribute values
@@ -1554,8 +1558,8 @@ def parse_ckey_expr(expr):
         token_def(r"\]",                                    simple_t('rbracket')),
         token_def(r'=',                                     simple_t('equal')),
         token_def(r',',                                     simple_t('comma')),
-        token_def(r"[^][ '\t]+",                              value_t('text')),
         (mk_escaped_rx("'"),                                xform_t('text',  lambda v: v[1:-1])),
+        token_def(r"[^][ '\t,=]+",                          value_t('text')),
         token_def(r"\s+",                                   ignore_t())
         #token_def(r"[a-zA-Z0-9\+\-]"
     ]
@@ -1585,10 +1589,20 @@ def parse_ckey_expr(expr):
         while True:
             selectors.append( parse_selector(s) )
             # After having succesfully parsed a selector,
-            # we should see EOF or another selector
-            if tok(s).type is None:
+            # we should see EOF or another selector or default
+            if tok(s).type in [None, 'default']:
                 break
-        return mk_ckey_fn(selectors)
+        # parse default if found
+        if tok(s).type == 'default':
+            selectors.append( parse_default(s) )
+        # the only token left should be 'eof' AND, after consuming it,
+        # the stream should be empty. Anything else is a syntax error
+        try:
+            if tok(s).type is None:
+                next(s)
+        except StopIteration:
+            return mk_ckey_fn(selectors)
+        raise SyntaxError("Tokens left after parsing %s" % tok(s))
 
     def parse_selector(s):
         def mk_cond(attrnm, attrlist, vallist):
@@ -1599,12 +1613,17 @@ def parse_ckey_expr(expr):
                 #print "parse_selector:do_it({0}) - attrnm[{1}] => {2}".format(str(label), attrnm, aval)
                 # 'attrlist' is a list of functions that we'll pass the attribute value to see if it 
                 # matches the condition(s). Return true if at least one matches
-                if (aval is None) or (attrlist and [pred(aval) for pred in attrlist].count(True)==0):
+                #if (aval is None) or (attrlist and [pred(aval) for pred in attrlist].count(True)==0):
+                if attrlist and [pred(aval) for pred in attrlist].count(True)==0:
                     return (None, None)
                 if vallist:
                     return (attrnm, valstr)
-                else:
-                    return (attrnm, aval)
+                if aval is None:
+                    # The current attribute is stripped and there was no explicit match for it so
+                    # there's not much we can do; maybe there's a default at the end but we don't know that here
+                    return (None, None)
+                    #raise RuntimeError("Your selector {0} seems based on a stripped attribute (==None)".format(attrnm))
+                return (attrnm, aval)
             return do_it
 
         # we have any number of "attrval {'[' ... ']'}" before the '='
@@ -1628,8 +1647,8 @@ def parse_ckey_expr(expr):
             # selector "p sb" (two selectors) is different from "p,sb" (one selector)
             # note: could also be end-of-input
             t = tok(s)
-            if t.type not in ['equal', 'comma', 'attrname', None]:
-                raise SyntaxError, "Unexpected token '{0}', expected '=', ',' or an attribute name".format( t )
+            if t.type not in ['equal', 'comma', 'attrname', 'default', None]:
+                raise SyntaxError, "Unexpected token '{0}', expected '=', ',', 'default' or an attribute name".format( t )
             # Ok, let's see what to do now
             if t.type=='comma':
                 # consume the comma and continue: we should see another attrname!
@@ -1638,7 +1657,7 @@ def parse_ckey_expr(expr):
             # all other valid tokens cause a break
             break
 
-        # Ok, we may see an '=' sign, another attributename or EOF
+        # Ok, we may see an '=' sign, another attributename, default, or EOF
         equal    = tok(s)
 
         def mk_colidxfn():
@@ -1701,6 +1720,30 @@ def parse_ckey_expr(expr):
             return do_it
         return mk_colselect(condlist, colidxfn)
 
+    # assert that we see 'default' '=' <colorkey>
+    # and return a function that yields that <colorkey>
+    def parse_default(s):
+        # check current token for equivalence to 'default' and consume it
+        cur = tok(s)
+        if cur.type != 'default':
+            raise SyntaxError, "Unexpected token '{0}', expect 'default'".format(cur)
+        next(s)
+        # now we must see '='
+        cur = tok(s)
+        if cur.type != 'equal':
+            raise SyntaxError, "Unexpected token '{0}', expect '='".format(cur)
+        next(s) 
+        # finally, we need to see a number; the default color
+        cur = tok(s)
+        if cur.type != 'number':
+            raise SyntaxError, "Unexpected token '{0}', expect a number!".format(cur)
+        ival = copy.deepcopy( cur.value )
+        # and eat the token
+        next( s )
+        def do_it(l, keycoldict):
+            return ival
+        return do_it
+
     # parse an attribute-value list!
     # return a tuple of list of match functions and a list of values (the strings)
     # for later display purposes
@@ -1730,7 +1773,7 @@ def parse_ckey_expr(expr):
                 def mk_comp(v):
                     def do_it(aval):
                         #print "parse_attrvallist:attribute-value comparator: {0}=={1}?".format(aval, v)
-                        return aval==v
+                        return aval==v if aval is not None else False
                     return do_it
                 valfnlist.append( mk_comp(cur.value) )
             elif cur.type == 'text':
@@ -1738,7 +1781,7 @@ def parse_ckey_expr(expr):
                 def mk_comp_i(v):
                     def do_it(aval):
                         #print "parse_attrvallist:attribute-value case insensitive text compare: {0}=={1}?".format(aval, v)
-                        return aval.lower()==v
+                        return aval.lower()==v if aval is not None else False
                     return do_it
                 valfnlist.append( mk_comp_i(cur.value.lower()) )
             elif cur.type == 'regex':
@@ -1746,9 +1789,12 @@ def parse_ckey_expr(expr):
                 def mk_reg_exec(rg):
                     def do_it(aval):
                         #print "parse_attrvallist:attribute-value regex matcher: {0} matches {1}?".format(aval, rg.pattern)
-                        return rg.search(aval) is not None
+                        return rg.search(aval) is not None if aval is not None else False
                     return do_it
                 valfnlist.append( mk_reg_exec(cur.value) )
+            elif cur.type == 'None':
+                # the attribute value is None
+                valfnlist.append( lambda aval: aval is None )
             else:
                 # unsupported type!
                 raise SyntaxError, "Unsupported list item '{0}', expected number, text or regex".format(cur)
@@ -2099,12 +2145,12 @@ def parse_filter_expr(qry, **kwargs):
 
 ######  Our grammar
 
-#    animate <selection> by <attributes> <eof>
+#    animate <selection> by <attributes> [with <options>] <eof>
 #    (The 'animate' keyword is taken to be matched out in the command parser)
 #
 #    # empty selection means "current"
 #    <selection>  = "" | <dataset>
-#    <attributes> = <attribute> { ',' <attribute> }
+#    <attributes> = <attribute> { ',' <attributes> }
 #
 #    <dataset>    = {<identifier> ':'} <expression>
 #    <identifier> = [a-zA-Z][0-9a-zA-Z]*   # alphanumeric variable name
@@ -2112,6 +2158,9 @@ def parse_filter_expr(qry, **kwargs):
 #    <attribute>  = <attrname> { <sortorder> }
 #    <attrname>   = 'time' | 'src' | 'bl' | 'p' | 'sb' | 'ch' | 'type'
 #    <sortorder>  = 'asc' | 'desc'
+#
+#    <options>    = <option> { ',', <options> }
+#    <option>     = 'fps' '=' <float>
 #
 #    <expression> = <expr> { 'and' <expression> | 'or' <expression> }
 #    <expr>       = <condition> | 'not' <expression> | '(' <expression> ')'
@@ -2127,6 +2176,8 @@ def parse_filter_expr(qry, **kwargs):
 #    <value>      = <number> | <text> 
 #    <text>       = ''' <characters> '''
 #    <regex>      = '/' <text> '/'
+#    <number>     = [0-9]+
+#    <float>      = (see FLOAT above)
 
 
 
@@ -2175,7 +2226,7 @@ def parse_animate_expr(qry, **kwargs):
     # basic lexical elements
     # These are the tokens for the tokenizer
     tokens = [
-        token_def(r"\b(animate|by|asc|desc)\b",    keyword_t()),
+        token_def(r"\b(animate|by|asc|desc|with)\b",    keyword_t()),
         # the attribute names we support
         #(re.compile(r"\b(p|ch|sb|fq|bl|time|src|type)\b", re.I), xform_t('attribute', mk_attribute_getter)),
         (re.compile(r"\b(p|ch|sb|fq|bl|time|src|type)\b", re.I), xform_t('attribute', str.upper)),
@@ -2214,6 +2265,7 @@ def parse_animate_expr(qry, **kwargs):
         token_def(r":",                                     simple_t('colon')),
         token_def(r"-|\+|\*|/",                             operator_t('operator')),
         # values + regex
+        float_token(),
         int_token(),
         token_def(r"/[^/]+/i?\b",                           xform_t('regex', regex2regex)),
         token_def(r"\$(?P<sym>[a-zA-Z][a-zA-Z_]*)",         resolve_t('external', 'sym')),
@@ -2255,13 +2307,15 @@ def parse_animate_expr(qry, **kwargs):
         next(s)
         # now we must parse the <attributes>
         groupby_f = parse_attributes(s)
+        # now we may see 'with' followed by settings
+        options  = parse_options(s)
         # the only token left should be 'eof' AND, after consuming it,
         # the stream should be empty. Anything else is a syntax error
         try:
             if tok(s).type is None:
                 next(s)
         except StopIteration:
-            return (selection_f, groupby_f)
+            return (selection_f, groupby_f, options)
         raise SyntaxError, "(at least one)token left after parsing: {0}".format(tok(s))
     
     #    <selection>  = "" | <dataset>
@@ -2569,6 +2623,45 @@ def parse_animate_expr(qry, **kwargs):
         # (see https://wiki.python.org/moin/HowTo/Sorting ) we must apply the sorting
         # functions in reverse order
         return (operator.attrgetter(*groupby), lambda x: reduce(lambda acc, sortfn: sortfn(acc), reversed(sortfns), x))
+
+    # parse the options, if any
+    def parse_options(s):
+        options = type('',(),{})()
+        # are we looking at the correct keyword, 'with'?
+        if tok(s).type!='with':
+            return options
+        # stay here to parse key=value as long as we find'em
+        next(s)
+        while True:
+            option = parse_option(s)
+            setattr(options, option[0], option[1])
+            # if we don't see ',' we assume there's no more options
+            # so break from the loop and let the next step check validity
+            # of input
+            next(s)
+            if tok(s).type is not 'comma':
+                break
+        return options
+   
+    option_type_map = {'fps': (float, ['int','float'])}
+    def parse_option(s):
+        # need to see an identifier
+        key = tok(s)
+        if key.type != 'identifier':
+            raise SyntaxError("option specifier does not start with an identifier (found {0})".format(key))
+        # next up '='
+        next(s)
+        equal = tok(s)
+        if equal.type != 'compare' or equal.value != operator.eq:
+            raise SyntaxError("Did not find '=' after option key but {0}".format(equal))
+        # depending on recognized option type look for specific following token
+        (convert, expect) = option_type_map.get( key.value.lower(), (lambda x: x, None) )
+        next(s)
+        got = tok(s)
+        if expect is not None and got.type not in expect:
+            raise SyntaxError("Expected value of type {0} for key {1}, got {2} instead".format(expect, key.value, got))
+        # convert the parsed value
+        return (key.value.lower(), convert(got.value))
 
 
     class state_type:
