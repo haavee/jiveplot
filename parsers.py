@@ -2689,6 +2689,9 @@ def parse_animate_expr(qry, **kwargs):
 
 #Need to be able to parse a baseline expression:
 #    bl cross -ef* +ef(mc|ys)
+#     but also: digits for antenna number, numbers-as-strings
+#     (AIPS export + importfitsidi produces antenna *names*
+#      which are string representations of numbers ...)
 #
 #    input      = 'bl' {<selectors>} EOF
 #    selectors  = <selector> { <selectors> }
@@ -2699,11 +2702,10 @@ def parse_animate_expr(qry, **kwargs):
 #    expression = <part> | '(' <part> ['|' <part>] ')'
 #    part       = [a-zA-Z0-9]+
 
+setoperatormap  = {'+': set.union, '-':set.difference}
 def parse_baseline_expr(qry, **kwargs):
     # Helper functions
-
-    operator2set = lambda op: {'+': set.union, '-':set.difference}.get(op, None)
-
+    operator2set = lambda op: setoperatormap.get(op, None)
 
     # basic lexical elements
     # These are the tokens for the tokenizer
@@ -2715,6 +2717,7 @@ def parse_baseline_expr(qry, **kwargs):
         token_def(r"\b(\*|auto|cross)\b",                   operator_t('magic')),
         token_def(r"-|\+",                                  xform_t('add_or_rem')),
         # values + regex
+        int_token,
         token_def(r"\S+",                                   value_t('text')),
         #token_def(r"[:@\#%!\.\*\+\-a-zA-Z0-9_?|]+",         value_t('text')),
         # and whitespace
