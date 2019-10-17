@@ -1,4 +1,5 @@
 # the possible plottypes are defined here,
+from   __future__ import print_function
 import enumerations, jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types, functional, functools
 from label_v6   import label
 
@@ -60,7 +61,7 @@ def join_label(l1, l2):
         # it's ok if _either_ of l1 or l2 has the attribute but not both
         aval = filter(is_not_none, [getattr(l1, a), getattr(l2, a)])
         if len(aval)>1:
-            raise RuntimeError, "Duplicate attribute value {0}: {1} {2}".format(a, aval[0], aval[1])
+            raise RuntimeError("Duplicate attribute value {0}: {1} {2}".format(a, aval[0], aval[1]))
         return None if len(aval)==0 else aval[0] 
     return label(reduce(lambda acc, a: operator.setitem(acc, a, attrval(str(a))) or acc, label._attrs, dict()), label._attrs)
 
@@ -69,9 +70,9 @@ def join_label(l1, l2):
 def split_label(l, inplot):
     # two brand new empty labels
     mk_lab = lambda : label({}, [])
-    def reductor((pl, dsl), attr):
+    def reductor(pl_dsl, attr):
         v = getattr(l, attr)
-        setattr(pl, attr, v) if attr in inplot else setattr(dsl, attr, v)
+        setattr(pl_dsl[0], attr, v) if attr in inplot else setattr(pl_dsl[1], attr, v)
         return (pl, dsl)
     return reduce(reductor, label._attrs, (mk_lab(), mk_lab()))
 
@@ -280,7 +281,7 @@ def check_attribute(attribute):
         @functools.wraps(f)
         def wrapper(self, *args, **kwargs):
             if getattr(self, attribute) is None:
-                raise RuntimeError,"Called method {0} requires {1} to be not None".format(f.__name__, attribute)
+                raise RuntimeError("Called method {0} requires {1} to be not None".format(f.__name__, attribute))
             return f(self, *args, **kwargs)
         return wrapper
     return _check_attribute
@@ -290,7 +291,7 @@ def verify_argument(verifier):
         @functools.wraps(f)
         def wrapper(self, *args, **kwargs):
             if not verifier(*args, **kwargs):
-                raise RuntimeError,"Called method {0} fails to verify called with {1} {2}".format(f.__name__, args, kwargs)
+                raise RuntimeError("Called method {0} fails to verify called with {1} {2}".format(f.__name__, args, kwargs))
             return f(self, *args, **kwargs)
         return wrapper
     return _verify_argument
@@ -447,7 +448,7 @@ class Viewport(object):
     @check_attribute('subPlot')
     def drawBox(self, device, xmi, xma, ymi, yma):
         if self.window is not None:
-            raise RuntimeError,"Can only set window once on viewport ({0.x}, {0.y}, subPlot={0.subPlot})".format(self)
+            raise RuntimeError("Can only set window once on viewport ({0.x}, {0.y}, subPlot={0.subPlot})".format(self))
         self.window = [xmi, xma, ymi, yma]
         with pgenv(device):
             # step one: set the window in world coordinates
@@ -597,7 +598,7 @@ class Page(object):
         if onePage is AllInOne:
             # we must grow or shrink the layout such that everything fits on one page, note: this is non-negotiable
             if plotter.fixedLayout:
-                print "Warning: fixed layout overridden by AllInOne requirement"
+                print("Warning: fixed layout overridden by AllInOne requirement")
             if nplot > self.layout.nplots():
                 self._growLayout(nplot, **kwargs)
             else:
@@ -782,7 +783,7 @@ class Page(object):
     def _growLayout(self, nplots, expandx=None, expandy=None, **kwargs):
 
         if nplots>self.layout.nplots() and not (expandx or expandy):
-            raise RuntimeError, "Request to grow layout from {0} to {1} plots but not allowed to expand!".format(self.layout.nplots(), nplots)
+            raise RuntimeError("Request to grow layout from {0} to {1} plots but not allowed to expand!".format(self.layout.nplots(), nplots))
         # make sure the new layout is such that all plots will be on one page
         while self.layout.nplots()<nplots:
             if expandx and expandy:
@@ -826,7 +827,7 @@ class Page(object):
                 elif comp(1, lo.ny):
                     lo.ny += delta
                 else:
-                    raise RuntimeError,"Failed to shrink (expandx and expandy and neither nx,ny>1)"
+                    raise RuntimeError("Failed to shrink (expandx and expandy and neither nx,ny>1)")
             elif expandx:
                 # prefer lowering x, until we can't anymore
                 if comp(1, lo.nx):
@@ -1093,14 +1094,14 @@ class Plotter(object):
                                         map(re.compile(r"^((?P<yAx>[^:]+):)?(?P<method>lines|points|both)$", re.I).match, args)))
             # Make sure that every entry matched
             if (len(qualifieds)+len(unqualifieds))!=len(args):
-                raise RuntimeError, "Invalid draw method(s) specified; use Lines, Points or Both"
+                raise RuntimeError("Invalid draw method(s) specified; use Lines, Points or Both")
             # Depending in which one is the empty list we do things
             # and we complain loudly + bitterly if they're both non-empty ...
             if qualifieds and not unqualifieds:
                 for qual in qualifieds:
                     ax                    = qual.group('yAx')
                     if ax not in self.yAxis:
-                        raise RuntimeError, "The current plot type has no panel for {0}".format( ax )
+                        raise RuntimeError("The current plot type has no panel for {0}".format( ax ))
                     yIdx                  = self.yAxis.index( ax  )
                     dm                    = qual.group('method').capitalize()
                     self.drawers[yIdx]    = self.drawDict[ dm ]
@@ -1108,7 +1109,7 @@ class Plotter(object):
             elif unqualifieds and not qualifieds:
                 # all unqualified. Only acceptable: 1 unqualified or nYAxis unqualifieds
                 if len(unqualifieds)!=len(self.yAxis) and len(unqualifieds)!=1:
-                    raise RuntimeError, "Incorrect number of drawing methods supplied for plot type (either 1 or {0})".format(len(self.yAxis))
+                    raise RuntimeError("Incorrect number of drawing methods supplied for plot type (either 1 or {0})".format(len(self.yAxis)))
                 # if there's just one, replicate to len yAxis
                 methods = unqualifieds if len(unqualifieds)==len(self.yAxis) else [unqualifieds[0]] * len(self.yAxis)
                 for (idx, method) in enumerate(methods):
@@ -1116,7 +1117,7 @@ class Plotter(object):
                     self.drawers[idx]    = self.drawDict[ dm  ]
                     self.drawMethod[idx] = dm
             else:
-                raise RuntimeError, "You cannot mix qualified axis drawing methods with unqualified ones" 
+                raise RuntimeError("You cannot mix qualified axis drawing methods with unqualified ones")
         return " ".join(map(":".join, zip(map(str,self.yAxis), self.drawMethod)))
 
     # want to fix the scale of the axes?
@@ -1136,7 +1137,7 @@ class Plotter(object):
                 return self.yScale[idx]
             self.yScale[idx] = args[0]
         except IndexError:
-            raise RuntimeError, "This plot type has no panel {0}".format(idx)
+            raise RuntimeError("This plot type has no panel {0}".format(idx))
 
     # query or set the layout.
     # args is either nothing or a list of strings which are two numbers optionally followed by a list of options:
@@ -1249,7 +1250,7 @@ class Plotter(object):
                              #M2("Src" , plots.sources),
                              ""  if plots.weightThres is None else "[threshold weight<{0}]".format(plots.weightThres),
                              M2("Ch",plots.chansel) if self.xAxis!=AX.CH else "",
-                             " ".join(map(lambda (i, m): "" if m is None else "[{0}: {1}]".format(self.yAxis[i], self.markerStr[i]), enumerate(self.marker)))])
+                             " ".join(map(lambda i_m: "" if i_m[1] is None else "[{0}: {1}]".format(self.yAxis[i_m[0]], self.markerStr[i_m[0]]), enumerate(self.marker)))])
         ]
         rv.right = [
                     "data: "+plots.msname + " [" + plots.column+"]",
@@ -1628,7 +1629,7 @@ class Quant2ChanPlotter(Plotter):
             mysm = ms2util.makeSpectralMap( plotar.msname )
         except RuntimeError as E:
             mysm = None
-            print "Failed to make spectral map: ",E
+            print("Failed to make spectral map: ",E)
 
         device.pgbbuf()
         try:
