@@ -82,12 +82,16 @@
 # Revision 1.2  2013-01-29 12:23:44  jive_cc
 # HV: * time to commit - added some more basic stuff
 #
+from   __future__ import print_function
 import itertools, operator, re, string, copy, math, datetime
 
 ## Partition a list into two lists - one with the elements satisfying the predicate
 ## and one with the elements who don't
 def partition(pred, lst):
-    return reduce(lambda (y,n), x: (y+[x], n) if pred(x) else (y, n+[x]), lst, ([], []))
+    y, n = (list(), list())
+    for elem in lst:
+        y.append(elem) if pred(elem) else n.append(elem)
+    return (y, n)
 
 # map a function over all the values in the dict
 # {k:v} => {k:f(v)}
@@ -105,14 +109,19 @@ def dictfold(f, a, d):
 
 def mkerrf(pfx):
     def actualerrf(msg):
-        print "{0} {1}".format(pfx, msg)
+        print("{0} {1}".format(pfx, msg))
         return None
     return actualerrf
 
 ## Return the minimum + maximum of a sequence in one go.
 ## Note: the sequence must have at least 1 element
 def minmax(seq):
-    return reduce(lambda (mi,ma) ,y : (min(mi,y), max(ma,y)), seq[1:], (seq[0], seq[0])) if len(seq) else (None, None)
+    mi,ma = (None, None)
+    for item in seq:
+        mi = min(mi, item)
+        ma = max(ma, item)
+    return (mi, ma)
+    #return reduce(lambda (mi,ma) ,y : (min(mi,y), max(ma,y)), seq[1:], (seq[0], seq[0])) if len(seq) else (None, None)
 
 ## Round floating point number to n decimal places
 def round(n):
@@ -126,7 +135,7 @@ def contains(a, b):
 ## enumerate the items in iterable and
 ## yield the slice of [first, last]
 def enumerateslice(iterable, first, last):
-    return itertools.takewhile(lambda (i,v): i<last, itertools.dropwhile(lambda (i,v): i<first, enumerate(iterable)))
+    return itertools.takewhile(lambda i_v: i_v[0]<last, itertools.dropwhile(lambda i_v: i_v[1]<first, enumerate(iterable)))
 
 ## Convert fractional day into datetime.time
 def fractionalDayToTime(frac):
@@ -161,7 +170,7 @@ def quote_split(s, splitchar=';', quotes="'"):
     if len(q)==1:
         q.append( q[0] )
     if len(q)!=2:
-        raise RuntimeError, "Quotes must be an array of two length"
+        raise RuntimeError("Quotes must be an array of two length")
     rv = [""]
 
     # switch quotiness if we see quotes[switch]
@@ -215,21 +224,21 @@ def find_consecutive_ranges(seq):
     # Apparently there can be instances where the groupby returns
     # an empty list so we need to take care of that and
     # filter those non-results out
-    def maker( (key, seq) ):
+    def maker( key_seq ):
         # undo the enumeration we added to allow
         # identification of consecutive elements
-        l = map(operator.itemgetter(1), seq)
+        l = map(operator.itemgetter(1), key_seq[1])
         if l:
             return (l[0], l[-1])
         return None
-    return filter(lambda x: x!=None, map(maker, itertools.groupby(enumerate(sorted(seq)), lambda (i,x):i-x)))
+    return filter(lambda x: x!=None, map(maker, itertools.groupby(enumerate(sorted(key_seq[1])), lambda i_x:i_x[0]-i_x[1])))
 
 ## After having found consecutive ranges, you might want a string representation
 ##  [(start, end), ...] =>
 ##     "<start>"  (if start==end)
 ##     "<start>-<end>" otherwise
 def range_repr(l, rchar=":"):
-    return ",".join(map(lambda (s,e): "{0}".format(s) if s==e else "{0}{2}{1}".format(s,e,rchar) if abs(s-e)>1 else "{0},{1}".format(s,e), l))
+    return ",".join(map(lambda s_e: "{0}".format(s_e[0]) if s_e[0]==s_e[1] else "{0}{2}{1}".format(s_e[0],s_e[1],rchar) if abs(s_e[0]-s_e[1])>1 else "{0},{1}".format(s_e[0],s_e[1]), l))
 
 
 ## Does the inverse of the previous one:
@@ -267,12 +276,12 @@ def expand_string_range(s, rchar=":"):
             # Also assure ourselves that the step direction and counting
             # direction are identical
             if (not step and (s-e)) or (((e-s) * step )<0):
-                raise RuntimeError,"cannot count from {0} to {1} with step {2}".format(s, e, step)
+                raise RuntimeError("cannot count from {0} to {1} with step {2}".format(s, e, step))
             return count_from_to(s, e, step)
         else:
             mo = rxNum.match(str(eval(item)))
             if not mo:
-                raise ValueError, "{0} is not a number! (It's a free man!)".format(item)
+                raise ValueError("{0} is not a number! (It's a free man!)".format(item))
             # 'item' may be an expression!
             item = int(eval(item))
             # Note: seems superfluous to return a counter for 1 number but now
@@ -288,7 +297,7 @@ def expand_string_range(s, rchar=":"):
 
 ## take a list of (pattern, replacement) tuples and run them 
 ## over the string to produce the final edited string
-subber   = lambda acc, (pat, repl): re.sub(pat, repl, acc)
+subber   = lambda acc, pat_repl: re.sub(pat_repl[0], pat_repl[1], acc)
 sub      = lambda txt, lst: reduce(subber, lst, txt)
 
 # Return a predicate function which will keep returning True
@@ -343,9 +352,9 @@ def escape_split(s):
 
     # (2) detect syntax errors like "n'oot" "aap 'noot''mies'"
     if any(map(lambda x: rxUnescapedQuote.search(x), words)):
-        raise SyntaxError, "quoted string error - either no whitespace between " \
-                           "quoted elements or an unescaped quote in the middle " \
-                           "of a word"
+        raise SyntaxError("quoted string error - either no whitespace between " \
+                          "quoted elements or an unescaped quote in the middle " \
+                          "of a word")
 
     # (3) strip the escape character(s)
     return map(lambda x:re.sub("\\\\","", x), words)
