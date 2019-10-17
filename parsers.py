@@ -1,4 +1,5 @@
 # HV: Contains parsers for querying list of scans 
+from   __future__ import print_function
 import re, hvutil, operator, math, itertools, inspect, plots, plotiterator, copy, numpy
 
 haveQuanta = False
@@ -27,11 +28,11 @@ def mk_tokenizer(tokens, **env):
         pos = 0
         while pos<len(string):
             # Run all known regexps against the current string and filter out which one matched
-            moList = map(lambda (mo, tp): (mo, tp(mo, position=pos, **env)),
+            moList = map(lambda mo_tp: (mo_tp[0], tp(mo_tp[0], position=pos, **env)),
                          filter(lambda tup: None if tup[0] is None else tup,
-                                map(lambda (rx, tp): (rx.match(string, pos), tp), tokens)))
+                                map(lambda rx_tp: (rx_tp[0].match(string, pos), rx_tp[1]), tokens)))
             if len(moList)==0:
-                raise RuntimeError, "\n{0}\n{1:>{2}s}^\n{3} tokens matched here".format(string, "", pos, len(moList))
+                raise RuntimeError("\n{0}\n{1:>{2}s}^\n{3} tokens matched here".format(string, "", pos, len(moList)))
             # extract match-object and the token from the result list
             (mo, tok) = moList[0]
             pos      += (mo.end() - mo.start())
@@ -52,7 +53,7 @@ def mk_number(val):
 # transform a matched date/time object into MJD seconds
 def mk_mjdsecs(mo, **kwargs):
     if not haveQuanta:
-        raise RuntimeError,"pyrap.quanta module not available for date/time to seconds functionality"
+        raise RuntimeError("pyrap.quanta module not available for date/time to seconds functionality")
     # we must have 'year', 'month' and 'day'
     # 'h', 'm' and 's' are optional and default to 0
     # We know that CASA's quantity parses
@@ -158,14 +159,14 @@ def parse_scan(qry, **kwargs):
     # (basically shell regex => normal regex)
     def pattern2regex(s):
         s = reduce(lambda acc, x: re.sub(x, x, acc), ["\+", "\-", "\."], s)
-        s = reduce(lambda acc, (t, r): re.sub(t, r, acc), [("\*+", ".*"), ("\?", ".")], s)
+        s = reduce(lambda acc, t_r: re.sub(t_r[0], t_r[1], acc), [("\*+", ".*"), ("\?", ".")], s)
         return re.compile("^"+s+"$")
 
     def regex2regex(s):
         flagmap = {"i": re.I, None:0}
         mo = re.match(r"(.)(?P<pattern>.+)\1(?P<flag>.)?", s)
         if not mo:
-            raise RuntimeError,"'{0}' does not match the regex pattern /.../i?".format(s)
+            raise RuntimeError("'{0}' does not match the regex pattern /.../i?".format(s))
         return re.compile(mo.group('pattern'), flagmap[mo.group('flag')])
 
     # basic lexical elements
@@ -260,7 +261,7 @@ def parse_scan(qry, **kwargs):
     # query    = expr 'to' expr [ 'where' condition ] eof
     def parse_query(s):
         if tok(s).type is None:
-            raise SyntaxError, "empty query"
+            raise SyntaxError("empty query")
         # parse the scan start/end time modification function first
         perscan_f = parse_modifier(s)
         # if the parse left off at the 'where' keyword, we know what to do
@@ -277,7 +278,7 @@ def parse_scan(qry, **kwargs):
             # in they were given
             sortlist = parse_sort_list(next(s))
             if not sortlist:
-                raise SyntaxError, "No list of sort keys found (%s)" % tok(s)
+                raise SyntaxError("No list of sort keys found (%s)" % tok(s))
             # good, 'sortlist' is a list of sort functions that need to be applied
             # on the list of filtered items
             orderby.value = lambda x: reduce(lambda acc, sortfn: sortfn(acc), sortlist, x)
@@ -291,7 +292,7 @@ def parse_scan(qry, **kwargs):
             next(s)
             ival = tok(s)
             if ival.type!='int':
-                raise SyntaxError, "Only an integer is allowed after limit, not %s" % ival
+                raise SyntaxError("Only an integer is allowed after limit, not %s" % ival)
             # consume the integer
             next(s)
             count = itertools.count()
@@ -306,7 +307,7 @@ def parse_scan(qry, **kwargs):
                 next(s)
         except StopIteration:
             return (perscan_f, lambda scans: limit.value(orderby.value(filter(filter_f, scans))))
-        raise SyntaxError, "Tokens left after parsing %s" % tok(s)
+        raise SyntaxError("Tokens left after parsing %s" % tok(s))
 
     # modifier = expr 'to' expr 
     def parse_modifier(s):
@@ -316,21 +317,21 @@ def parse_scan(qry, **kwargs):
         start_time_fn = parse_expr(s)
         #start_time_fn = parse_expr(s, None)
         if s.depth!=depth:
-            raise SyntaxError, "Unbalanced parenthesis %s" % tok(s)
+            raise SyntaxError("Unbalanced parenthesis %s" % tok(s))
         # we now MUST see the 'to' keyword
         to = tok(s)
         if to is None or to.type!='to':
-            raise SyntaxError, "Unexpected token %s (expected 'to' keyword)" % tok(s)
+            raise SyntaxError("Unexpected token %s (expected 'to' keyword)" % tok(s))
         # do not forget to consume the 'to' keyword ...
         depth         = s.depth
         end_time_fn   = parse_expr(next(s))
         if s.depth!=depth:
-            raise SyntaxError, "Unbalanced parentheses %s (expect depth %d, found %d)" % (tok(s), depth, s.depth)
+            raise SyntaxError("Unbalanced parentheses %s (expect depth %d, found %d)" % (tok(s), depth, s.depth))
         def this_fn(scan):
             s_time = start_time_fn(scan)
             e_time = end_time_fn(scan)
             if e_time<s_time:
-                raise RuntimeError, "Scan time selection error: end time is before start time in scan\n   {0}".format(scan)
+                raise RuntimeError("Scan time selection error: end time is before start time in scan\n   {0}".format(scan))
             return (s_time, e_time)
         return this_fn
         #return lambda scan: (start_time_fn(scan), end_time_fn(scan))
@@ -359,10 +360,10 @@ def parse_scan(qry, **kwargs):
             if unary:
                 return lterm
             if lterm is None:
-                raise SyntaxError, "No left-hand-side to operator %s" % oper
+                raise SyntaxError("No left-hand-side to operator %s" % oper)
             rterm = parse_expr(next(s))
             if rterm is None:
-                raise SyntaxError, "No right-hand-side to operator %s" % oper
+                raise SyntaxError("No right-hand-side to operator %s" % oper)
             return lambda scan: oper.value(lterm(scan), rterm(scan))
         elif oper.type in ['int', 'float', 'duration', 'datetime']:
             # negative numbers as right hand side are not negative numbers
@@ -378,7 +379,7 @@ def parse_scan(qry, **kwargs):
     def parse_paren(s):
         lparen = tok(s)
         if lparen.type!='lparen':
-            raise RuntimeError, "Entered parse_paren w/o left paren but %s" % lparen
+            raise RuntimeError("Entered parse_paren w/o left paren but %s" % lparen)
         depth   = s.depth
         s.depth = s.depth + 1
         # recurse into parsing the expression - and do NOT forget to consume the lparen!
@@ -429,7 +430,7 @@ def parse_scan(qry, **kwargs):
             # we MUST have a next one
             condition = parse_condition(next(s))
             if condition is None:
-                raise SyntaxError, "Missing expression after 'not' %s" % condition
+                raise SyntaxError("Missing expression after 'not' %s" % condition)
             lterm = lambda scan: operator.not_( condition(scan) )
         else:
             # it must be a condexpr
@@ -444,9 +445,9 @@ def parse_scan(qry, **kwargs):
         rterm = parse_condition(next(s))
 
         if lterm is None:
-            raise SyntaxError, "Missing left-hand-condition to relational operator (%s)", relop
+            raise SyntaxError("Missing left-hand-condition to relational operator (%s)", relop)
         if rterm is None:
-            raise SyntaxError, "Missing right-hand-condition to relational operator (%s)", relop
+            raise SyntaxError("Missing right-hand-condition to relational operator (%s)", relop)
 
         # and return the combined operation
         return lambda scan: relop.value(lterm(scan), rterm(scan))
@@ -460,11 +461,11 @@ def parse_scan(qry, **kwargs):
         # separated by an operator
         lterm   = parse_expr(s)
         if lterm is None:
-            raise SyntaxError, "Failed to parse left-hand-term of cond_expr (%s)" % tok(s)
+            raise SyntaxError("Failed to parse left-hand-term of cond_expr (%s)" % tok(s))
         # Now we must see a comparator
         compare = tok(s)
         if not compare.type in ['compare', 'regexmatch', 'in']:
-            raise SyntaxError, "Expected a comparison operator, regex match or 'in' keyword, got %s" % compare
+            raise SyntaxError("Expected a comparison operator, regex match or 'in' keyword, got %s" % compare)
         # consume the comparison
         next(s)
         # do some processing based on the type of operator
@@ -477,13 +478,13 @@ def parse_scan(qry, **kwargs):
             rterm = parse_rx(s)
         # it better exist
         if rterm is None:
-            raise SyntaxError, "Failed to parse right-hand-term of cond_expr (%s)" % tok(s)
+            raise SyntaxError("Failed to parse right-hand-term of cond_expr (%s)" % tok(s))
         return lambda scan: compare.value(lterm(scan), rterm(scan))
 
     def parse_paren_condition(s):
         lparen = tok(s)
         if lparen.type!='lparen':
-            raise RuntimeError, "Entered parse_paren_condition w/o left paren but %s" % lparen
+            raise RuntimeError("Entered parse_paren_condition w/o left paren but %s" % lparen)
         depth   = s.depth
         s.depth = s.depth + 1
         # recurse into parsing the expression - and do NOT forget to consume the lparen!
@@ -499,7 +500,7 @@ def parse_scan(qry, **kwargs):
         # we accept string, literal and regex and return an rx object
         rx = tok(s)
         if not rx.type in ['regex', 'text', 'literal']:
-            raise SyntaxError, "Failed to parse string matching regex (not regex, text or literal but %s)" % rx
+            raise SyntaxError("Failed to parse string matching regex (not regex, text or literal but %s)" % rx)
         # consume the token
         next(s)
         if rx.type=='literal':
@@ -512,7 +513,7 @@ def parse_scan(qry, **kwargs):
     def parse_list(s):
         bracket = tok(s)
         if bracket.type != 'lbracket':
-            raise SyntaxError, "Expected list-open bracket ('[') but found %s" % bracket
+            raise SyntaxError("Expected list-open bracket ('[') but found %s" % bracket)
         rv = []
         # keep eating text + ',' until we read 'rbracket'
         next(s)
@@ -526,7 +527,7 @@ def parse_scan(qry, **kwargs):
                 if tok(s).type=='rbracket':
                     continue
                 if tok(s).type!='comma':
-                    raise SyntaxError, "Badly formed list at {0}".format(tok(s))
+                    raise SyntaxError("Badly formed list at {0}".format(tok(s)))
                 # and eat the comma
                 next(s)
             # now we need a value. 'identifier' is also an acceptable blob of text
@@ -541,7 +542,7 @@ def parse_scan(qry, **kwargs):
         t = tok(s)
         # current token must be 'text' or 'irange'
         if not t.type in ['text', 'irange', 'int', 'float', 'literal']:
-            raise SyntaxError, "Failure to parse list-item {0}".format(t)
+            raise SyntaxError("Failure to parse list-item {0}".format(t))
         next(s)
         # for a literal, strip the leading and closing single quote
         if t.type == 'literal':
@@ -555,9 +556,9 @@ def parse_scan(qry, **kwargs):
         while True:
             item = tok(s)
             if item.type!='text':
-                raise SyntaxError, "attribute list may only contain strings, found %s" % item
+                raise SyntaxError("attribute list may only contain strings, found %s" % item)
             if not rxAttribute.match(item.value):
-                raise SyntaxError, "%s is not a valid attribute name" % item
+                raise SyntaxError("%s is not a valid attribute name" % item)
             # Peek at the next token. If it's asc/desc take that into account
             next(s)
             order = tok(s)
@@ -694,7 +695,7 @@ def parse_time_expr(txt, **env):
                 next(s)
         except StopIteration:
             return rv
-        raise SyntaxError, "Tokens left after parsing %s" % tok(s)
+        raise SyntaxError("Tokens left after parsing %s" % tok(s))
 
     # timerange = expr ['to' expr ]
     def parse_time_range(s):
@@ -703,9 +704,9 @@ def parse_time_expr(txt, **env):
         depth      = s.depth
         start_time = parse_expr(s)
         if s.depth!=depth:
-            raise SyntaxError, "Unbalanced parenthesis %s" % tok(s)
+            raise SyntaxError("Unbalanced parenthesis %s" % tok(s))
         if start_time is None:
-            raise SyntaxError, "Missing start-time expression %s" % tok(s)
+            raise SyntaxError("Missing start-time expression %s" % tok(s))
         # If we don't see the 'to' keyword, it's a single time stamp
         to = tok(s)
         if to.type!='to':
@@ -720,12 +721,12 @@ def parse_time_expr(txt, **env):
         # remove the value from the environment again
         del env['$#parsed:start^time#$']
         if s.depth!=depth:
-            raise SyntaxError, "Unbalanced parentheses %s (expect depth %d, found %d)" % (tok(s), depth, s.depth)
+            raise SyntaxError("Unbalanced parentheses %s (expect depth %d, found %d)" % (tok(s), depth, s.depth))
         if end_time is None:
-            raise SyntaxError, "Missing end-time expression %s" % tok(s)
+            raise SyntaxError("Missing end-time expression %s" % tok(s))
         if end_time<start_time:
             t = tok(s)
-            raise RuntimeError, "{0}\n{1:>{2}s}^\nend time is before start time here".format(txt, "", len(txt) if t.position<0 else t.position)
+            raise RuntimeError("{0}\n{1:>{2}s}^\nend time is before start time here".format(txt, "", len(txt) if t.position<0 else t.position))
         return (start_time, end_time)
 
     # expr     = term | expr '+' expr | expr '-' expr | expr '*' expr | expr '/' expr | '(' expr ')' | '-' expr
@@ -758,10 +759,10 @@ def parse_time_expr(txt, **env):
             if unary:
                 return lterm
             if lterm is None:
-                raise SyntaxError, "No left-hand-side to operator %s" % oper
+                raise SyntaxError("No left-hand-side to operator %s" % oper)
             rterm = parse_expr(next(s))
             if rterm is None:
-                raise SyntaxError, "No right-hand-side to operator %s" % oper
+                raise SyntaxError("No right-hand-side to operator %s" % oper)
             return oper.value(lterm, rterm)
         elif oper.type in ['int', 'float', 'duration', 'datetime']:
             # negative numbers as right hand side are not negative numbers
@@ -777,7 +778,7 @@ def parse_time_expr(txt, **env):
     def parse_paren(s):
         lparen = tok(s)
         if lparen.type!='lparen':
-            raise RuntimeError, "Entered parse_paren w/o left paren but %s" % lparen
+            raise RuntimeError("Entered parse_paren w/o left paren but %s" % lparen)
         depth   = s.depth
         s.depth = s.depth + 1
         # recurse into parsing the expression - and do NOT forget to consume the lparen!
@@ -847,14 +848,14 @@ def parse_duration(txt, **env):
     def parse_time_duration(s):
         dur = tok(s)
         if dur.type!='duration':
-            raise SyntaxError, "This is not a duration - %s" % dur
+            raise SyntaxError("This is not a duration - %s" % dur)
         next(s)
         try:
             if tok(s).type is None:
                 next(s)
         except StopIteration:
             return dur.value
-        raise SyntaxError, "Tokens left after parsing %s" % tok(s)
+        raise SyntaxError("Tokens left after parsing %s" % tok(s))
 
     class state_type:
         def __init__(self, tokstream):
@@ -916,9 +917,9 @@ def isAttr(o):
     return not (inspect.isbuiltin(o) or o is methodwrappert)
 
 def copy_attributes(outp, inp):
-    map(lambda (a,v): setattr(outp, a, v), \
-            map(lambda (a, tp): (a, getattr(inp, a)), \
-                filter(lambda (nm, tp): not nm.startswith('__'), inspect.getmembers(inp, isAttr))))
+    map(lambda a_v: setattr(outp, a_v[0], a_v[1]), \
+            map(lambda a_tp: (a_tp[0], getattr(inp, a_tp[0])), \
+                filter(lambda nm_tp: not nm_tp[0].startswith('__'), inspect.getmembers(inp, isAttr))))
     return outp
 
 def ds_flat_filter(value, tp=None, subscript=None):
@@ -973,7 +974,7 @@ def do_isect(d0, f, d1):
         # compare lengths (...) and decide what to do
         (msg, res) = isect_table[(l0==l1, l0==1 or l1==1)](ds0, f, ds1)
         if msg is not None:
-            print "{0}: {1}".format(key, msg)
+            print("{0}: {1}".format(key, msg))
         # the new dataset has the combined flagged between the two participating datasets
         nOutput    = len(res[0])
         acc[ key ] = plots.plt_dataset(res[0], res[1], numpy.logical_or(ds0._m_flagged[:nOutput], ds1._m_flagged[:nOutput]))
@@ -1010,7 +1011,7 @@ def applicator(d0, f, d1):
     # for both arguments we want a set of keys such that we can get the intersection
     # of identical keys. But that's only if both of 'm are datasets
     # otherwise it's either just numbers that are combined or one of them is a data set
-    print "Applicator/d0=",isDataset(d0)," d1=",isDataset(d1)
+    print("Applicator/d0=",isDataset(d0)," d1=",isDataset(d1))
     return applicator_table[(isDataset(d0), isDataset(d1))](d0, f, d1)
 
 
@@ -1079,7 +1080,7 @@ def parse_dataset_expr(txt, datasets, **env):
 #                    break
 #                next(s)
 #            next(s)
-#            raise SyntaxError, "Tokens left after 'None' [tp={0}]".format(tok(s).type)
+#            raise SyntaxError("Tokens left after 'None' [tp={0}]".format(tok(s).type))
 #        except StopIteration:
 #            pass
 #        #raise RuntimeError,"Not implemented yet"
@@ -1091,7 +1092,7 @@ def parse_dataset_expr(txt, datasets, **env):
                       'store': parse_store_dataset }
         cur = tok(s)
         if cur.type not in supported:
-            raise SyntaxError, "Unexpected token {0} in stead of {1}".format(cur.type, supported.keys())
+            raise SyntaxError("Unexpected token {0} in stead of {1}".format(cur.type, supported.keys()))
         else:
             # eat up the token and dive in
             rv = supported[cur.type]( next(s) )
@@ -1101,7 +1102,7 @@ def parse_dataset_expr(txt, datasets, **env):
                 if tok(s).type is None:
                     next(s)
                 else:
-                    raise SyntaxError, "Trailing token(s) {0}".format( tok(s).value )
+                    raise SyntaxError("Trailing token(s) {0}".format( tok(s).value ))
             except StopIteration:
                 # fine
                 pass
@@ -1119,7 +1120,7 @@ def parse_dataset_expr(txt, datasets, **env):
             # we expect an expression here
             expr = parse_expr( s )
             if s.depth!=0:
-                raise SyntaxError, "Unbalanced parenthesis"
+                raise SyntaxError("Unbalanced parenthesis")
         cur  = tok( s )
         name = None
         if cur.type == 'as':
@@ -1127,19 +1128,19 @@ def parse_dataset_expr(txt, datasets, **env):
             next(s)
             cur = parse_id( s )
             if cur.type != 'id':
-                raise SyntaxError, "Unexpected token {0} [expected variable name]".format( cur.value )
+                raise SyntaxError("Unexpected token {0} [expected variable name]".format( cur.value ))
             # verify that dsid does not address a subset $id.id but just $id
             if cur.value['type'] is not None:
-                raise SyntaxError, "Cannot store an expression as subset {0}".format( cur.value['type'] )
+                raise SyntaxError("Cannot store an expression as subset {0}".format( cur.value['type'] ))
             if 'filter' in cur.value:
-                raise SyntaxError, "Cannot store an expression as filtered subset of {0}".format( cur.value['name'] )
+                raise SyntaxError("Cannot store an expression as filtered subset of {0}".format( cur.value['name'] ))
             name = cur.value['name']
         elif cur.type is not None:
-            raise SyntaxError, "Unexpected token {0} [expected 'as' or nothing]".format( cur.value )
+            raise SyntaxError("Unexpected token {0} [expected 'as' or nothing]".format( cur.value ))
 
         # If both name and expr as None, that is a syntax error
         if expr is None and name is None:
-            raise SyntaxError, "Empty store command?!"
+            raise SyntaxError("Empty store command?!")
         # if either is None, we can provide defaults for that
         def mk_f(expression, nm):
             def do_it(ds):
@@ -1173,18 +1174,17 @@ def parse_dataset_expr(txt, datasets, **env):
             return do_it
         expr = parse_expr( s )
         if s.depth!=0:
-            raise SyntaxError, "Unbalanced parenthesis"
+            raise SyntaxError("Unbalanced parenthesis")
         return mk_f( expr )
 
 
     #@argprint
     #   <name>{.<type>}{'[' <filter> ']'}
     def parse_id(s):
-        print "parse_id"
         # we should *at least* be looking at an 'id' token
         cur = tok( s )
         if cur.type != 'id':
-            raise SyntaxError, "Expected an identifier here"
+            raise SyntaxError("Expected an identifier here")
         # look ahead to see if we find '[' which would indicate subscripting/filtering
         next(s)
         if tok(s).type == 'lbracket':
@@ -1196,7 +1196,7 @@ def parse_dataset_expr(txt, datasets, **env):
     def parse_filter(s):
         # check if we indeed are looking at start of filter/subscripting and if so eat up that token
         if tok(s).type != 'lbracket':
-            raise RuntimeError, "Entered parse_filter() but not looking at '['?"
+            raise RuntimeError("Entered parse_filter() but not looking at '['?")
         next(s)
         # now we must see a comma separated list of <attr> = <value>
         rv = []
@@ -1209,7 +1209,7 @@ def parse_dataset_expr(txt, datasets, **env):
                 if tok(s).type=='rbracket':
                     continue
                 if tok(s).type!='comma':
-                    raise SyntaxError, "Badly formed list at {0}".format(tok(s))
+                    raise SyntaxError("Badly formed list at {0}".format(tok(s)))
                 # and eat the comma
                 next(s)
             # now we need a list item "<attr> = <value>"
@@ -1243,15 +1243,15 @@ def parse_dataset_expr(txt, datasets, **env):
         attrmatch_dict = { 'P':operator.eq, 'CH':operator.eq, 'SB':operator.eq, 'BL':re.match,   'SRC':re.match }
         attrname = tok(s)
         if attrname.type!='attrname':
-            raise SyntaxError, "Expected attribute name but found {0}".format( attrname.type )
+            raise SyntaxError("Expected attribute name but found {0}".format( attrname.type ))
         attrname = attrname.value.upper()
         # must see '='
         if tok(next(s)).type!='equal':
-            raise SyntaxError, "Expected '=' but found {0}".format( tok(s).type )
+            raise SyntaxError("Expected '=' but found {0}".format( tok(s).type ))
         # next we should see <int> or <alnum>
         attrval = tok( next(s) )
         if attrval.type not in ['id', 'number', 'text']:
-            raise SyntaxError, "Expected a number or text but found {0}".format( attrval.type )
+            raise SyntaxError("Expected a number or text but found {0}".format( attrval.type ))
         # ok, eat that one up
         next(s)
         def mk_amatch_f(aname, aval):
@@ -1277,7 +1277,7 @@ def parse_dataset_expr(txt, datasets, **env):
             next( s )
             rhs = parse_expr( s )
             if rhs is None:
-                raise SyntaxError, "Expected a term, got {0}".format( tok(s).value )
+                raise SyntaxError("Expected a term, got {0}".format( tok(s).value ))
             def mk_f(l, o, r):
                 def do_it(ds):
                     return applicator(l(ds), o, r(ds))
@@ -1302,7 +1302,7 @@ def parse_dataset_expr(txt, datasets, **env):
 
             # oh noes!
             if rhs is None:
-                raise SyntaxError, "Expected a factor, got {0}".format( tok(s).value )
+                raise SyntaxError("Expected a factor, got {0}".format( tok(s).value ))
 
             def mk_f(l, o, r):
                 def do_it(ds):
@@ -1326,7 +1326,7 @@ def parse_dataset_expr(txt, datasets, **env):
             next( s )
             factor = parse_factor(s)
             if factor is None:
-                raise SyntaxError, "Expected an exponent, got {0}".format( tok(s).value )
+                raise SyntaxError("Expected an exponent, got {0}".format( tok(s).value ))
 
             def mk_f(e, o, f):
                 def do_it(ds):
@@ -1379,14 +1379,14 @@ def parse_dataset_expr(txt, datasets, **env):
                 #   aap.phase[p=ll] (...)   should not parse
                 #   mod.fn (...)            might be ok: python "module.function" in stead of "variable.type"
                 if 'filter' in final.value:
-                    raise SyntaxError,"A subscripted variable cannot be used as function call?!"
+                    raise SyntaxError("A subscripted variable cannot be used as function call?!")
                 # eat the paren, then parse the argument list
                 next( s )
                 arglist = parse_arglist(s, [])
 
                 # after parsing the arglist we MUST see 'rparen' orelse the user's a fool
                 if tok(s).type!='rparen':
-                    raise SyntaxError, "Expected ')' after functioncall, got {0}".format( tok(s).value )
+                    raise SyntaxError("Expected ')' after functioncall, got {0}".format( tok(s).value ))
 
                 # eat the rparen
                 next( s )
@@ -1396,7 +1396,7 @@ def parse_dataset_expr(txt, datasets, **env):
                     def do_it(ds):
                         # lookup fn
                         #callable_obj = do_resolve(fn)
-                        print "{0}({1})".format(fn, ",".join(map(lambda x: repr(x(ds)), al)))
+                        print("{0}({1})".format(fn, ",".join(map(lambda x: repr(x(ds)), al))))
                         #return apply_fn(callable_obj, ds, al)
                         return 42
                     return do_it
@@ -1408,7 +1408,7 @@ def parse_dataset_expr(txt, datasets, **env):
                         nam  = nm['name']
                         typ  = nm['type']
                         if nam not in ds:
-                            raise RuntimeError, "Variable '{0}' does not exist".format(nam)
+                            raise RuntimeError("Variable '{0}' does not exist".format(nam))
                         if isDataset(ds[nam]):
                             return ds_flat_filter(ds[nam], typ, nm.get('filter', None))
                         else:
@@ -1424,7 +1424,7 @@ def parse_dataset_expr(txt, datasets, **env):
             # now we should see ')'
             cur = tok( s )
             if cur.type!='rparen':
-                raise SyntaxError, "Expected ')' but got {0}".format( cur.value )
+                raise SyntaxError("Expected ')' but got {0}".format( cur.value ))
             s.depth = s.depth - 1
             next( s )
             return expr
@@ -1451,7 +1451,7 @@ def parse_dataset_expr(txt, datasets, **env):
         arg = parse_expr(s)
 
         if arg is None:
-            raise SyntaxError, "Empty argument is not allowed (current token={0})".format( tok(s).value )
+            raise SyntaxError("Empty argument is not allowed (current token={0})".format( tok(s).value ))
         
         # append it to the argument list
         al.append( arg )
@@ -1580,7 +1580,7 @@ def parse_ckey_expr(expr):
                 cks = filter(lambda x: x is not None, [ck(label, keycoldict) for ck in lst])
                 # if no color for the label ... that's a bad thing isn't it?!
                 if not cks:
-                    raise RuntimeError, "None of the colour filters matched label {0}".format( label )
+                    raise RuntimeError("None of the colour filters matched label {0}".format( label ))
                 #print "parse_ckey_expr:ckey_fn => found a match: colour = {0} [{1}]".format( cks[0], cks )
                 return cks[0]
             return do_it
@@ -1632,7 +1632,7 @@ def parse_ckey_expr(expr):
             # a selector starts with an attrname
             attrname = tok(s)
             if attrname.type!='attrname':
-                raise SyntaxError, "Unexpected token '{0}', expected attribute name".format(attrname)
+                raise SyntaxError("Unexpected token '{0}', expected attribute name".format(attrname))
             # safe to consume
             next(s)
             # if we see a '[' we must parse an attrivallist
@@ -1648,7 +1648,7 @@ def parse_ckey_expr(expr):
             # note: could also be end-of-input
             t = tok(s)
             if t.type not in ['equal', 'comma', 'attrname', 'default', None]:
-                raise SyntaxError, "Unexpected token '{0}', expected '=', ',', 'default' or an attribute name".format( t )
+                raise SyntaxError("Unexpected token '{0}', expected '=', ',', 'default' or an attribute name".format( t ))
             # Ok, let's see what to do now
             if t.type=='comma':
                 # consume the comma and continue: we should see another attrname!
@@ -1686,12 +1686,12 @@ def parse_ckey_expr(expr):
             next(s)
             cval = tok(s)
             if cval.type!='number':
-                raise SyntaxError, "Unexpected token '{0}', expected a colour index (integer)"
+                raise SyntaxError("Unexpected token '{0}', expected a colour index (integer)")
             def mk_colidxfn(cv):
                 def do_it(keycoldict, key):
                     #print "parse_selector:colidxfn[constval]=",cv
                     if keycoldict.setdefault(key, cv)!=cv:
-                        raise RuntimeError, "Key {0} was already present with other colour index {1} [request to set to {2}]".format(key, keycoldict.get(key), cv)
+                        raise RuntimeError("Key {0} was already present with other colour index {1} [request to set to {2}]".format(key, keycoldict.get(key), cv))
                     return cv
                 return do_it
                 #return lambda keycoldict, key: cv
@@ -1726,17 +1726,17 @@ def parse_ckey_expr(expr):
         # check current token for equivalence to 'default' and consume it
         cur = tok(s)
         if cur.type != 'default':
-            raise SyntaxError, "Unexpected token '{0}', expect 'default'".format(cur)
+            raise SyntaxError("Unexpected token '{0}', expect 'default'".format(cur))
         next(s)
         # now we must see '='
         cur = tok(s)
         if cur.type != 'equal':
-            raise SyntaxError, "Unexpected token '{0}', expect '='".format(cur)
+            raise SyntaxError("Unexpected token '{0}', expect '='".format(cur))
         next(s) 
         # finally, we need to see a number; the default color
         cur = tok(s)
         if cur.type != 'number':
-            raise SyntaxError, "Unexpected token '{0}', expect a number!".format(cur)
+            raise SyntaxError("Unexpected token '{0}', expect a number!".format(cur))
         ival = copy.deepcopy( cur.value )
         # and eat the token
         next( s )
@@ -1751,7 +1751,7 @@ def parse_ckey_expr(expr):
         # we should see '['
         lbrack = tok(s)
         if lbrack.type!='lbracket':
-            raise SyntaxError, "Unexpected token '{0}', expect '['".format(lbrack)
+            raise SyntaxError("Unexpected token '{0}', expect '['".format(lbrack))
         # eat the '['
         next(s)
         valfnlist  = []
@@ -1763,7 +1763,7 @@ def parse_ckey_expr(expr):
             # only accept the closing ']' if we do not expect another item
             if cur.type=='rbracket':
                 if musthaveitem:
-                    raise SyntaxError, "Missing item after ',' in list at {0}".format(cur.pos-1)
+                    raise SyntaxError("Missing item after ',' in list at {0}".format(cur.pos-1))
                 # consume the ']'
                 next(s)
                 break
@@ -1797,7 +1797,7 @@ def parse_ckey_expr(expr):
                 valfnlist.append( lambda aval: aval is None )
             else:
                 # unsupported type!
-                raise SyntaxError, "Unsupported list item '{0}', expected number, text or regex".format(cur)
+                raise SyntaxError("Unsupported list item '{0}', expected number, text or regex".format(cur))
             # append the actual value to the list
             valvallist.append( cur.value )
             # eat the item
@@ -1815,7 +1815,7 @@ def parse_ckey_expr(expr):
     def parse_ckey_expr_impl_tokens(s):
         while True:
             t = tok(s)
-            print t
+            print(t)
             if t.type is None:
                 break
             next(s)
@@ -1885,14 +1885,14 @@ def parse_filter_expr(qry, **kwargs):
     # (basically shell regex => normal regex)
     def pattern2regex(s):
         s = reduce(lambda acc, x: re.sub(x, x, acc), ["\+", "\-", "\."], s)
-        s = reduce(lambda acc, (t, r): re.sub(t, r, acc), [("\*+", ".*"), ("\?", ".")], s)
+        s = reduce(lambda acc, t_r: re.sub(t_r[0], t_r[1], acc), [("\*+", ".*"), ("\?", ".")], s)
         return re.compile("^"+s+"$")
 
     def regex2regex(s):
         flagmap = {"i": re.I, None:0}
         mo = re.match(r"(.)(?P<pattern>.+)\1(?P<flag>.)?", s)
         if not mo:
-            raise RuntimeError,"'{0}' does not match the regex pattern /.../i?".format(s)
+            raise RuntimeError("'{0}' does not match the regex pattern /.../i?".format(s))
         return re.compile(mo.group('pattern'), flagmap[mo.group('flag')])
 
     # basic lexical elements
@@ -1936,7 +1936,7 @@ def parse_filter_expr(qry, **kwargs):
     # filter      = condition eof
     def parse_filter(s):
         if tok(s).type is None:
-            raise SyntaxError, "empty filter"
+            raise SyntaxError("empty filter")
 
         filter_f  = parse_condition(s) 
         # "LIMIT"
@@ -1946,7 +1946,7 @@ def parse_filter_expr(qry, **kwargs):
         #    next(s)
         #    ival = tok(s)
         #    if ival.type!='int':
-        ##        raise SyntaxError, "Only an integer is allowed after limit, not %s" % ival
+        ##        raise SyntaxError("Only an integer is allowed after limit, not %s" % ival)
         #    # consume the integer
         #    next(s)
         #    count = itertools.count()
@@ -1961,12 +1961,12 @@ def parse_filter_expr(qry, **kwargs):
                 next(s)
         except StopIteration:
             return filter_f
-        raise SyntaxError, "Tokens left after parsing %s" % tok(s)
+        raise SyntaxError("Tokens left after parsing %s" % tok(s))
 
     def parse_paren(s):
         lparen = tok(s)
         if lparen.type!='lparen':
-            raise RuntimeError, "Entered parse_paren w/o left paren but %s" % lparen
+            raise RuntimeError("Entered parse_paren w/o left paren but %s" % lparen)
         depth   = s.depth
         s.depth = s.depth + 1
         # recurse into parsing the expression - and do NOT forget to consume the lparen!
@@ -1992,7 +1992,7 @@ def parse_filter_expr(qry, **kwargs):
             # we MUST have a next one
             condition = parse_condition(next(s))
             if condition is None:
-                raise SyntaxError, "Missing expression after 'not' %s" % condition
+                raise SyntaxError("Missing expression after 'not' %s" % condition)
             lterm = lambda scan: operator.not_( condition(scan) )
         else:
             # it must be a condexpr
@@ -2007,9 +2007,9 @@ def parse_filter_expr(qry, **kwargs):
         rterm = parse_condition(next(s))
 
         if lterm is None:
-            raise SyntaxError, "Missing left-hand-condition to relational operator (%s)", relop
+            raise SyntaxError("Missing left-hand-condition to relational operator (%s)", relop)
         if rterm is None:
-            raise SyntaxError, "Missing right-hand-condition to relational operator (%s)", relop
+            raise SyntaxError("Missing right-hand-condition to relational operator (%s)", relop)
 
         # and return the combined operation
         return lambda scan: relop.value(lterm(scan), rterm(scan))
@@ -2022,13 +2022,13 @@ def parse_filter_expr(qry, **kwargs):
         # No matter what, we have a left and a right hand side
         # separated by an operator
         if not (attribute.type == 'attribute'):
-            raise SyntaxError, "Unexpected token {0}, expected attribute name".format( attribute.type )
+            raise SyntaxError("Unexpected token {0}, expected attribute name".format( attribute.type ))
         # consume the attribute value
         next(s)
         # Now we must see a comparator
         compare = tok(s)
         if not compare.type in ['compare', 'regexmatch', 'in']:
-            raise SyntaxError, "Expected a comparison operator, regex match or 'in' keyword, got {0}".format( compare )
+            raise SyntaxError("Expected a comparison operator, regex match or 'in' keyword, got {0}".format( compare ))
         # consume the comparison
         next(s)
         # do some processing based on the type of operator
@@ -2039,7 +2039,7 @@ def parse_filter_expr(qry, **kwargs):
             # we only support numbers here
             rterm = tok(s)
             if not (rterm.type=='int'):
-                raise SyntaxError, "Unexpected token {0}, expected a number here".format( rterm )
+                raise SyntaxError("Unexpected token {0}, expected a number here".format( rterm ))
             # and consume the number
             rterm = rterm.value
             next(s)
@@ -2048,14 +2048,14 @@ def parse_filter_expr(qry, **kwargs):
             rterm = parse_rx(s)
         # it better exist
         if rterm is None:
-            raise SyntaxError, "Failed to parse right-hand-term of cond_expr (%s)" % tok(s)
-        print "HAVE rterm=",rterm
+            raise SyntaxError("Failed to parse right-hand-term of cond_expr (%s)" % tok(s))
+        print("HAVE rterm=",rterm)
         return lambda ds: compare.value(attribute.value(ds), rterm)
 
     def parse_paren_condition(s):
         lparen = tok(s)
         if lparen.type!='lparen':
-            raise RuntimeError, "Entered parse_paren_condition w/o left paren but %s" % lparen
+            raise RuntimeError("Entered parse_paren_condition w/o left paren but %s" % lparen)
         depth   = s.depth
         s.depth = s.depth + 1
         # recurse into parsing the expression - and do NOT forget to consume the lparen!
@@ -2071,7 +2071,7 @@ def parse_filter_expr(qry, **kwargs):
         # we accept string, literal and regex and return an rx object
         rx = tok(s)
         if not rx.type in ['regex', 'text', 'literal']:
-            raise SyntaxError, "Failed to parse string matching regex (not regex, text or literal but %s)" % rx
+            raise SyntaxError("Failed to parse string matching regex (not regex, text or literal but %s)" % rx)
         # consume the token
         next(s)
         if rx.type=='literal':
@@ -2084,7 +2084,7 @@ def parse_filter_expr(qry, **kwargs):
     def parse_list(s):
         bracket = tok(s)
         if bracket.type != 'lbracket':
-            raise SyntaxError, "Expected list-open bracket ('[') but found %s" % bracket
+            raise SyntaxError("Expected list-open bracket ('[') but found %s" % bracket)
         rv = []
         # keep eating text + ',' until we read 'rbracket'
         next(s)
@@ -2098,7 +2098,7 @@ def parse_filter_expr(qry, **kwargs):
                 if tok(s).type=='rbracket':
                     continue
                 if tok(s).type!='comma':
-                    raise SyntaxError, "Badly formed list at {0}".format(tok(s))
+                    raise SyntaxError("Badly formed list at {0}".format(tok(s)))
                 # and eat the comma
                 next(s)
             # now we need a value. 'identifier' is also an acceptable blob of text
@@ -2113,7 +2113,7 @@ def parse_filter_expr(qry, **kwargs):
         t = tok(s)
         # current token must be 'text' or 'irange'
         if not t.type in ['text', 'irange', 'int', 'float', 'literal']:
-            raise SyntaxError, "Failure to parse list-item {0}".format(t)
+            raise SyntaxError("Failure to parse list-item {0}".format(t))
         next(s)
         # for a literal, strip the leading and closing single quote
         if t.type == 'literal':
@@ -2213,14 +2213,14 @@ def parse_animate_expr(qry, **kwargs):
     # (basically shell regex => normal regex)
     def pattern2regex(s):
         s = reduce(lambda acc, x: re.sub(x, x, acc), ["\+", "\-", "\."], s)
-        s = reduce(lambda acc, (t, r): re.sub(t, r, acc), [("\*+", ".*"), ("\?", ".")], s)
+        s = reduce(lambda acc, t_r: re.sub(t_r[0], t_r[1], acc), [("\*+", ".*"), ("\?", ".")], s)
         return re.compile("^"+s+"$")
 
     def regex2regex(s):
         flagmap = {"i": re.I, None:0}
         mo = re.match(r"(.)(?P<pattern>.+)\1(?P<flag>.)?", s)
         if not mo:
-            raise RuntimeError,"'{0}' does not match the regex pattern /.../i?".format(s)
+            raise RuntimeError("'{0}' does not match the regex pattern /.../i?".format(s))
         return re.compile(mo.group('pattern'), flagmap[mo.group('flag')])
 
     # basic lexical elements
@@ -2292,17 +2292,17 @@ def parse_animate_expr(qry, **kwargs):
     # animate      = 'animate' [<selection>] 'by' <attributes> <eof>
     def parse_animate(s):
         if tok(s).type != 'animate':
-            raise SyntaxError,"The animate expression does not start with the keyword 'animate' but with {0}".format(tok(s))
+            raise SyntaxError("The animate expression does not start with the keyword 'animate' but with {0}".format(tok(s)))
         # skip that one
         next(s)
         # now we may see a selection
         selection_f = parse_selection(s)
         # check mismatched parentheses in the expression(s)
         if s.depth!=0:
-            raise SyntaxError, "Mismatched parentheses"
+            raise SyntaxError("Mismatched parentheses")
         # now we MUST see the 'by' keyword
         if tok(s).type!='by':
-            raise SyntaxError,"Unexpected token {0}, expected the 'by' keyword".format(tok(s))
+            raise SyntaxError("Unexpected token {0}, expected the 'by' keyword".format(tok(s)))
         # and skip that one
         next(s)
         # now we must parse the <attributes>
@@ -2316,7 +2316,7 @@ def parse_animate_expr(qry, **kwargs):
                 next(s)
         except StopIteration:
             return (selection_f, groupby_f, options)
-        raise SyntaxError, "(at least one)token left after parsing: {0}".format(tok(s))
+        raise SyntaxError("(at least one)token left after parsing: {0}".format(tok(s)))
     
     #    <selection>  = "" | <dataset>
     def parse_selection(s):
@@ -2347,7 +2347,7 @@ def parse_animate_expr(qry, **kwargs):
         # eat it up and then we MUST see ':'
         next(s)
         if tok(s).type != 'colon':
-            raise SyntaxError, "Expected ':' following data set identifier"
+            raise SyntaxError("Expected ':' following data set identifier")
         # consume and return the actual identifier
         next(s)
         return dataset_id
@@ -2368,7 +2368,7 @@ def parse_animate_expr(qry, **kwargs):
         # now we MUST see a right hand side
         right = parse_expression( next(s) )
         if right is None:
-            raise SyntaxError, "Missing right hand side to logical operator and or or"
+            raise SyntaxError("Missing right hand side to logical operator and or or")
         def mk_f(l, op, r):
             def do_it(ds):
                 return op(l(ds), r(ds))
@@ -2392,11 +2392,11 @@ def parse_animate_expr(qry, **kwargs):
             expr = parse_expression( next(s) )
             # now we MUST see ')' [and if we do skip it]
             if tok(s).type != 'rparen':
-                raise SyntaxError, "Mismatched parenthesis"
+                raise SyntaxError("Mismatched parenthesis")
             s.depth = s.depth - 1
             next(s)
             if expr is None:
-                raise SyntaxError, "An empty expression is not an expression"
+                raise SyntaxError("An empty expression is not an expression")
             return expr
         return None
 
@@ -2415,26 +2415,26 @@ def parse_animate_expr(qry, **kwargs):
         t = tok(s)
         depth = s.depth
 
-        print "parse_time_cond/tok=", t, " depth=", depth
+        print("parse_time_cond/tok=", t, " depth=", depth)
         if t.type == 'lparen':
             s.depth = s.depth + 1
             lterm   = parse_time_cond( next(s) )
             # now we MUST see ')' [and if we do skip it]
             if tok(s).type != 'rparen':
-                raise SyntaxError, "Mismatched parenthesis"
+                raise SyntaxError("Mismatched parenthesis")
             s.depth = s.depth - 1
             next(s)
             if lterm is None:
-                raise SyntaxError, "An empty expression is not an expression"
+                raise SyntaxError("An empty expression is not an expression")
             return lterm
         elif t.type=='operator' and t.value is mk_operator('-'):
             # unary '-'
             tmpexpr = parse_time_cond(next(s), unary=True)
             lterm   = operator.neg( tmpexpr )
         else:
-            print "parsing time term?"
+            print("parsing time term?")
             lterm = parse_time_term(s)
-            print "  yields: ",lterm
+            print("  yields: ",lterm)
 
         # If we see an operator, we must parse the right-hand-side
         # (our argument is the left-hand-side
@@ -2446,10 +2446,10 @@ def parse_animate_expr(qry, **kwargs):
             if unary:
                 return lterm
             if lterm is None:
-                raise SyntaxError, "No left-hand-side to operator {0}".format(oper)
+                raise SyntaxError("No left-hand-side to operator {0}".format(oper))
             rterm = parse_time_cond(next(s))
             if rterm is None:
-                raise SyntaxError, "No right-hand-side to operator {0}".format(oper)
+                raise SyntaxError("No right-hand-side to operator {0}".format(oper))
             return oper.value(lterm, rterm)
         elif oper.type in ['int', 'float', 'duration', 'datetime']:
             # negative numbers as right hand side are not negative numbers
@@ -2469,14 +2469,14 @@ def parse_animate_expr(qry, **kwargs):
         # No matter what, we have a left and a right hand side
         # separated by an operator
         if not (attribute.type == 'attribute'):
-            raise SyntaxError, "Unexpected token {0}, expected attribute name".format( attribute.type )
+            raise SyntaxError("Unexpected token {0}, expected attribute name".format( attribute.type ))
         # consume the attribute value
         next(s)
         # Now we must see a comparator
         # for the time attribute 'regexmatch' and 'in' don't make sense
         compare = tok(s)
         if not compare.type in (['compare'] if attribute.value == 'TIME' else ['compare', 'regexmatch', 'in']):
-            raise SyntaxError, "Invalid comparison operator {0} for attribute {1}".format( compare, attribute.value )
+            raise SyntaxError("Invalid comparison operator {0} for attribute {1}".format( compare, attribute.value ))
         # consume the comparison
         next(s)
         # do some processing based on the type of operator
@@ -2494,14 +2494,14 @@ def parse_animate_expr(qry, **kwargs):
             rterm = parse_rx(s)
         # it better exist
         if rterm is None:
-            raise SyntaxError, "Failed to parse right-hand-term of cond_expr (%s)" % tok(s)
+            raise SyntaxError("Failed to parse right-hand-term of cond_expr (%s)" % tok(s))
         return lambda ds: compare.value(mk_attribute_getter(attribute.value)(ds), rterm)
 
     #    <value>      = <number> | <text> 
     def parse_value(s):
         value = tok(s)
         if value.type not in ['int', 'text', 'identifier']:
-            raise SyntaxError, "Unsupported value type - only int or text allowed here, not {0}".format( value )
+            raise SyntaxError("Unsupported value type - only int or text allowed here, not {0}".format( value ))
         # consume the value and return it
         next(s)
         return value.value
@@ -2510,7 +2510,7 @@ def parse_animate_expr(qry, **kwargs):
         # we accept string, literal, identifier and regex and return an rx object
         rx = tok(s)
         if not rx.type in ['regex', 'text', 'literal']:
-            raise SyntaxError, "Failed to parse string matching regex (not regex, text or literal but %s)" % rx
+            raise SyntaxError("Failed to parse string matching regex (not regex, text or literal but %s)" % rx)
         # consume the token
         next(s)
         if rx.type in ['text', 'literal']:
@@ -2525,22 +2525,22 @@ def parse_animate_expr(qry, **kwargs):
         elif tok(s).type == 'int':
             return parse_int_range(s)
         # unexpected token
-        raise SyntaxError, "Unexpected token {0} - not a list or int range".format(tok(s))
+        raise SyntaxError("Unexpected token {0} - not a list or int range".format(tok(s)))
 
     def parse_int_range(s):
         # we *must* be looking at 'int'
         start = tok(s)
         if start.type != 'int':
-            raise SyntaxError, "Expected an integer here, not a {0}".format(start)
+            raise SyntaxError("Expected an integer here, not a {0}".format(start))
         next(s)
         # now we must see colon
         if tok(s).type != 'colon':
-            raise SyntaxError, "Expected ':' to form integer range"
+            raise SyntaxError("Expected ':' to form integer range")
         # eat up
         next(s)
         end = tok(s)
         if start.type != 'int':
-            raise SyntaxError, "Expected an integer here, not a {0}".format(end)
+            raise SyntaxError("Expected an integer here, not a {0}".format(end))
         # don't forget to consume the number
         next(s)
         return range(start.value, end.value+1)
@@ -2548,7 +2548,7 @@ def parse_animate_expr(qry, **kwargs):
     def parse_list_list(s):
         bracket = tok(s)
         if bracket.type != 'lbracket':
-            raise SyntaxError, "Expected list-open bracket ('[') but found %s" % bracket
+            raise SyntaxError("Expected list-open bracket ('[') but found %s" % bracket)
         rv = []
         # keep eating text + ',' until we read 'rbracket'
         next(s)
@@ -2562,7 +2562,7 @@ def parse_animate_expr(qry, **kwargs):
                 if tok(s).type=='rbracket':
                     continue
                 if tok(s).type!='comma':
-                    raise SyntaxError, "Badly formed list at {0}".format(tok(s))
+                    raise SyntaxError("Badly formed list at {0}".format(tok(s)))
                 # and eat the comma
                 next(s)
             # now we need a value. 'identifier' is also an acceptable blob of text
@@ -2577,7 +2577,7 @@ def parse_animate_expr(qry, **kwargs):
         t = tok(s)
         # current token must be 'text' or 'irange'
         if not t.type in ['text', 'irange', 'int', 'float', 'literal']:
-            raise SyntaxError, "Failure to parse list-item {0}".format(t)
+            raise SyntaxError("Failure to parse list-item {0}".format(t))
         next(s)
         return t.value if t.type == 'irange' else [t.value]
 
@@ -2592,10 +2592,10 @@ def parse_animate_expr(qry, **kwargs):
         while True:
             item = tok(s)
             if item.type!='attribute':
-                raise SyntaxError, "Unexpected token {0}, expected an attribute".format(item)
+                raise SyntaxError("Unexpected token {0}, expected an attribute".format(item))
             # check that the same attribute does not get mentioned twice
             if item.value in groupby:
-                raise RuntimeError, "The attribute type {0} is mentioned more than once".format(item.value)
+                raise RuntimeError("The attribute type {0} is mentioned more than once".format(item.value))
             groupby.add( item.value )
             # Peek at the next token. If it's asc/desc take that into account
             next(s)
@@ -2739,17 +2739,17 @@ def parse_baseline_expr(qry, **kwargs):
     # animate      = 'animate' [<selection>] 'by' <attributes> <eof>
     def parse_animate(s):
         if tok(s).type != 'animate':
-            raise SyntaxError,"The animate expression does not start with the keyword 'animate' but with {0}".format(tok(s))
+            raise SyntaxError("The animate expression does not start with the keyword 'animate' but with {0}".format(tok(s)))
         # skip that one
         next(s)
         # now we may see a selection
         selection_f = parse_selection(s)
         # check mismatched parentheses in the expression(s)
         if s.depth!=0:
-            raise SyntaxError, "Mismatched parentheses"
+            raise SyntaxError("Mismatched parentheses")
         # now we MUST see the 'by' keyword
         if tok(s).type!='by':
-            raise SyntaxError,"Unexpected token {0}, expected the 'by' keyword".format(tok(s))
+            raise SyntaxError("Unexpected token {0}, expected the 'by' keyword".format(tok(s)))
         # and skip that one
         next(s)
         # now we must parse the <attributes>
@@ -2761,7 +2761,7 @@ def parse_baseline_expr(qry, **kwargs):
                 next(s)
         except StopIteration:
             return (selection_f, groupby_f)
-        raise SyntaxError, "(at least one)token left after parsing: {0}".format(tok(s))
+        raise SyntaxError("(at least one)token left after parsing: {0}".format(tok(s)))
     
     #    <selection>  = "" | <dataset>
     def parse_selection(s):
@@ -2792,7 +2792,7 @@ def parse_baseline_expr(qry, **kwargs):
         # eat it up and then we MUST see ':'
         next(s)
         if tok(s).type != 'colon':
-            raise SyntaxError, "Expected ':' following data set identifier"
+            raise SyntaxError("Expected ':' following data set identifier")
         # consume and return the actual identifier
         next(s)
         return dataset_id
@@ -2813,7 +2813,7 @@ def parse_baseline_expr(qry, **kwargs):
         # now we MUST see a right hand side
         right = parse_expression( next(s) )
         if right is None:
-            raise SyntaxError, "Missing right hand side to logical operator and or or"
+            raise SyntaxError("Missing right hand side to logical operator and or or")
         def mk_f(l, op, r):
             def do_it(ds):
                 return op(l(ds), r(ds))
@@ -2837,11 +2837,11 @@ def parse_baseline_expr(qry, **kwargs):
             expr = parse_expression( next(s) )
             # now we MUST see ')' [and if we do skip it]
             if tok(s).type != 'rparen':
-                raise SyntaxError, "Mismatched parenthesis"
+                raise SyntaxError("Mismatched parenthesis")
             s.depth = s.depth - 1
             next(s)
             if expr is None:
-                raise SyntaxError, "An empty expression is not an expression"
+                raise SyntaxError("An empty expression is not an expression")
             return expr
         return None
 
@@ -2860,26 +2860,26 @@ def parse_baseline_expr(qry, **kwargs):
         t = tok(s)
         depth = s.depth
 
-        print "parse_time_cond/tok=", t, " depth=", depth
+        print("parse_time_cond/tok=", t, " depth=", depth)
         if t.type == 'lparen':
             s.depth = s.depth + 1
             lterm   = parse_time_cond( next(s) )
             # now we MUST see ')' [and if we do skip it]
             if tok(s).type != 'rparen':
-                raise SyntaxError, "Mismatched parenthesis"
+                raise SyntaxError("Mismatched parenthesis")
             s.depth = s.depth - 1
             next(s)
             if lterm is None:
-                raise SyntaxError, "An empty expression is not an expression"
+                raise SyntaxError("An empty expression is not an expression")
             return lterm
         elif t.type=='operator' and t.value is mk_operator('-'):
             # unary '-'
             tmpexpr = parse_time_cond(next(s), unary=True)
             lterm   = operator.neg( tmpexpr )
         else:
-            print "parsing time term?"
+            print("parsing time term?")
             lterm = parse_time_term(s)
-            print "  yields: ",lterm
+            print("  yields: ",lterm)
 
         # If we see an operator, we must parse the right-hand-side
         # (our argument is the left-hand-side
@@ -2891,10 +2891,10 @@ def parse_baseline_expr(qry, **kwargs):
             if unary:
                 return lterm
             if lterm is None:
-                raise SyntaxError, "No left-hand-side to operator {0}".format(oper)
+                raise SyntaxError("No left-hand-side to operator {0}".format(oper))
             rterm = parse_time_cond(next(s))
             if rterm is None:
-                raise SyntaxError, "No right-hand-side to operator {0}".format(oper)
+                raise SyntaxError("No right-hand-side to operator {0}".format(oper))
             return oper.value(lterm, rterm)
         elif oper.type in ['int', 'float', 'duration', 'datetime']:
             # negative numbers as right hand side are not negative numbers
@@ -2914,14 +2914,14 @@ def parse_baseline_expr(qry, **kwargs):
         # No matter what, we have a left and a right hand side
         # separated by an operator
         if not (attribute.type == 'attribute'):
-            raise SyntaxError, "Unexpected token {0}, expected attribute name".format( attribute.type )
+            raise SyntaxError("Unexpected token {0}, expected attribute name".format( attribute.type ))
         # consume the attribute value
         next(s)
         # Now we must see a comparator
         # for the time attribute 'regexmatch' and 'in' don't make sense
         compare = tok(s)
         if not compare.type in (['compare'] if attribute.value == 'TIME' else ['compare', 'regexmatch', 'in']):
-            raise SyntaxError, "Invalid comparison operator {0} for attribute {1}".format( compare, attribute.value )
+            raise SyntaxError("Invalid comparison operator {0} for attribute {1}".format( compare, attribute.value ))
         # consume the comparison
         next(s)
         # do some processing based on the type of operator
@@ -2939,14 +2939,14 @@ def parse_baseline_expr(qry, **kwargs):
             rterm = parse_rx(s)
         # it better exist
         if rterm is None:
-            raise SyntaxError, "Failed to parse right-hand-term of cond_expr (%s)" % tok(s)
+            raise SyntaxError("Failed to parse right-hand-term of cond_expr (%s)" % tok(s))
         return lambda ds: compare.value(mk_attribute_getter(attribute.value)(ds), rterm)
 
     #    <value>      = <number> | <text> 
     def parse_value(s):
         value = tok(s)
         if value.type not in ['int', 'text', 'identifier']:
-            raise SyntaxError, "Unsupported value type - only int or text allowed here, not {0}".format( value )
+            raise SyntaxError("Unsupported value type - only int or text allowed here, not {0}".format( value ))
         # consume the value and return it
         next(s)
         return value.value
@@ -2955,7 +2955,7 @@ def parse_baseline_expr(qry, **kwargs):
         # we accept string, literal, identifier and regex and return an rx object
         rx = tok(s)
         if not rx.type in ['regex', 'text', 'literal']:
-            raise SyntaxError, "Failed to parse string matching regex (not regex, text or literal but %s)" % rx
+            raise SyntaxError("Failed to parse string matching regex (not regex, text or literal but %s)" % rx)
         # consume the token
         next(s)
         if rx.type in ['text', 'literal']:
@@ -2970,22 +2970,22 @@ def parse_baseline_expr(qry, **kwargs):
         elif tok(s).type == 'int':
             return parse_int_range(s)
         # unexpected token
-        raise SyntaxError, "Unexpected token {0} - not a list or int range".format(tok(s))
+        raise SyntaxError("Unexpected token {0} - not a list or int range".format(tok(s)))
 
     def parse_int_range(s):
         # we *must* be looking at 'int'
         start = tok(s)
         if start.type != 'int':
-            raise SyntaxError, "Expected an integer here, not a {0}".format(start)
+            raise SyntaxError("Expected an integer here, not a {0}".format(start))
         next(s)
         # now we must see colon
         if tok(s).type != 'colon':
-            raise SyntaxError, "Expected ':' to form integer range"
+            raise SyntaxError("Expected ':' to form integer range")
         # eat up
         next(s)
         end = tok(s)
         if start.type != 'int':
-            raise SyntaxError, "Expected an integer here, not a {0}".format(end)
+            raise SyntaxError("Expected an integer here, not a {0}".format(end))
         # don't forget to consume the number
         next(s)
         return range(start.value, end.value+1)
@@ -2993,7 +2993,7 @@ def parse_baseline_expr(qry, **kwargs):
     def parse_list_list(s):
         bracket = tok(s)
         if bracket.type != 'lbracket':
-            raise SyntaxError, "Expected list-open bracket ('[') but found %s" % bracket
+            raise SyntaxError("Expected list-open bracket ('[') but found %s" % bracket)
         rv = []
         # keep eating text + ',' until we read 'rbracket'
         next(s)
@@ -3007,7 +3007,7 @@ def parse_baseline_expr(qry, **kwargs):
                 if tok(s).type=='rbracket':
                     continue
                 if tok(s).type!='comma':
-                    raise SyntaxError, "Badly formed list at {0}".format(tok(s))
+                    raise SyntaxError("Badly formed list at {0}".format(tok(s)))
                 # and eat the comma
                 next(s)
             # now we need a value. 'identifier' is also an acceptable blob of text
@@ -3022,7 +3022,7 @@ def parse_baseline_expr(qry, **kwargs):
         t = tok(s)
         # current token must be 'text' or 'irange'
         if not t.type in ['text', 'irange', 'int', 'float', 'literal']:
-            raise SyntaxError, "Failure to parse list-item {0}".format(t)
+            raise SyntaxError("Failure to parse list-item {0}".format(t))
         next(s)
         return t.value if t.type == 'irange' else [t.value]
 
@@ -3037,10 +3037,10 @@ def parse_baseline_expr(qry, **kwargs):
         while True:
             item = tok(s)
             if item.type!='attribute':
-                raise SyntaxError, "Unexpected token {0}, expected an attribute".format(item)
+                raise SyntaxError("Unexpected token {0}, expected an attribute".format(item))
             # check that the same attribute does not get mentioned twice
             if item.value in groupby:
-                raise RuntimeError, "The attribute type {0} is mentioned more than once".format(item.value)
+                raise RuntimeError("The attribute type {0} is mentioned more than once".format(item.value))
             groupby.add( item.value )
             # Peek at the next token. If it's asc/desc take that into account
             next(s)

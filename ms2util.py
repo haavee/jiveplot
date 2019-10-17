@@ -117,6 +117,7 @@
 #
 #  Revision 1.1.1.1  2001/04/06 13:34:34  verkout
 #  Files, new + from jivegui/MS1
+from   __future__ import print_function
 import itertools, operator, math, re, jenums, hvutil, numpy, pyrap.tables, pyrap.quanta, sys
 import datetime, copy, collections
 
@@ -370,7 +371,7 @@ class spectralmap:
     #
     #  Update: assume FQGROUP == (FREQ_GROUP :: int, FREQ_GROUP_NAME :: string)
     def __init__(self, spm):
-        self.spectralMap  = hvutil.dictmap(lambda (k,v) : zip(itertools.count(), v), spm)
+        self.spectralMap  = hvutil.dictmap(lambda k_v: zip(itertools.count(), k_v[1]), spm)
 
     # Simple API functions
     def nFreqId(self):
@@ -381,7 +382,7 @@ class spectralmap:
 
     def freqGroupName(self, fq):
         try:
-            [key] = filter(lambda (num, name): (fq==num) or (fq==name), self.spectralMap.keys())
+            [key] = filter(lambda num_name: fq==num_name[0] or fq==num_name[1], self.spectralMap.keys())
             return key[1]
         except ValueError:
             raise InvalidFreqGroup(fq)
@@ -390,7 +391,7 @@ class spectralmap:
     # may raise KeyError if not found
     def _findFQ(self, fqkey):
         try:
-            [key] = filter(lambda (num, name): (fqkey==num) or (fqkey==name), self.spectralMap.keys())
+            [key] = filter(lambda num_name: fqkey==num_name[0] or fqkey==num_name[1], self.spectralMap.keys())
             return self.spectralMap[key]
         except ValueError:
             raise KeyError
@@ -582,7 +583,7 @@ class spectralmap:
     #  Unmap a DATA_DESC_ID into FREQID/SUBBAND/POLID
     def unmapDDId(self, ddid):
         # look in all FREQGROUPS, in all SUBBANDS for the given DATA_DESC_ID
-        for (k,v) in hvutil.dictmap(lambda (k,v): [sb for sb in v if sb[1].unmapDDId(ddid)], self.spectralMap).iteritems():
+        for (k,v) in hvutil.dictmap(lambda k_v: [sb for sb in k_v[1] if sb[1].unmapDDId(ddid)], self.spectralMap).iteritems():
             if len(v)==1:
                 class sbres:
                     def __init__(self,fid,sb,pid):
@@ -596,7 +597,7 @@ class spectralmap:
             elif len(v)==0:
                 raise InvalidDataDescId(ddid)
             else:
-                raise RuntimeError, "Non-unique search result for DATA_DESC_ID={0}".format(ddid)
+                raise RuntimeError("Non-unique search result for DATA_DESC_ID={0}".format(ddid))
         return None
 
     # Print ourselves in readable format
@@ -711,10 +712,10 @@ def makeSpectralMap(nm, **kwargs):
                                                 #### FIXME TODO
                                                 ####    if we update the subband() object to support >1 DATA_DESC_ID
                                                 ####    mapping to the same (SPECTRAL_WINDOW, POLID) tuple this can go
-                                                raise RuntimeError, "Inconsistent DATA_DESCRIPTION/SPECTRAL_WINDOW table. \
+                                                raise RuntimeError("Inconsistent DATA_DESCRIPTION/SPECTRAL_WINDOW table. \
                                                                      Spectral window {0} appears with POLID={1} -> DATA_DESC_ID={2} \
                                                                      but also as POLID{3} -> DATA_DESC_ID{4}".format( \
-                                                                        sb.spWinId, p, d, p, k.datadescMap[p] )
+                                                                        sb.spWinId, p, d, p, k.datadescMap[p] ))
                                         else:
                                             # ok, no entry for this polarization yet
                                             k.datadescMap[p] = d
@@ -747,7 +748,7 @@ def makeSpectralMap(nm, **kwargs):
                 elif sort_order=='by_id':
                     sortfn = lambda x,y: cmp(x.spWinId, y.spWinId)
                 else:
-                    raise RuntimeError, "The spectral window ordering function {0} is unknown".format( kwargs.get('spw_order') )
+                    raise RuntimeError("The spectral window ordering function {0} is unknown".format( kwargs.get('spw_order') ))
                 return spectralmap( hvutil.dictmap( lambda kvpair : sorted(kvpair[1], sortfn), spmap) )
 
 
@@ -772,7 +773,7 @@ class baselinemap:
             # the entries in 'antennaList' are ('<name>', AntennaId) tuples!
             bls = [(x[1],y[1]) for (idx, x) in enumerate(self.antennaList) for y in self.antennaList[idx:]]
         # Now transform the list of indices into a list of names + codes
-        self.baselineList = map(lambda (x,y): ((x,y), "{0}{1}".format(self.antennaName(x), self.antennaName(y))), bls)
+        self.baselineList = map(lambda x_y: (x_y, "{0}{1}".format(self.antennaName(x_y[0]), self.antennaName(x_y[1]))), bls)
 
     def baselineNames(self):
         return map(operator.itemgetter(1), self.baselineList)
@@ -782,14 +783,14 @@ class baselinemap:
 
     def baselineName(self, blidx):
         try:
-            [(x,y)] = filter(lambda (idx,nm): idx==blidx, self.baselineList)
+            [(x,y)] = filter(lambda idx_nm: idx_nm[0]==blidx, self.baselineList)
             return y
         except ValueError:
             raise InvalidBaselineId(blidx)
 
     def baselineIndex(self, blname):
         try:
-            [(x,y)] = filter(lambda (idx,nm): nm==blname, self.baselineList)
+            [(x,y)] = filter(lambda idx_nm: idx_nm[1]==blname, self.baselineList)
             return x
         except ValueError:
             raise InvalidBaselineId(blname)
@@ -803,7 +804,7 @@ class baselinemap:
 
     def antennaName(self, id):
         try:
-            [(nm, i)] = filter(lambda (ant, antid): antid==id, self.antennaList)
+            [(nm, i)] = filter(lambda ant_antid: ant_antid[1]==id, self.antennaList)
             return nm
         except ValueError:
             raise InvalidAntenna(id)
@@ -811,7 +812,7 @@ class baselinemap:
     def antennaId(self, name):
         try:
             namelower = name.lower()
-            [(nm, id)] = filter(lambda (ant, antid): ant.lower()==namelower, self.antennaList)
+            [(nm, id)] = filter(lambda ant_antid: ant_antid[0].lower()==namelower, self.antennaList)
             return id
         except ValueError:
             raise InvalidAntenna(name)
@@ -880,7 +881,7 @@ def makeBaselineMap(nm, **kwargs):
             else:
                 ids = itertools.count()
 
-            return baselinemap(filter(lambda (n,i): filter_f(i), zip(names, ids)), baselines=baselines)
+            return baselinemap(filter(lambda n_i: filter_f(n_i[1]), zip(names, ids)), baselines=baselines)
 
 
 
@@ -1063,7 +1064,7 @@ def makeFieldMap(nm, **kwargs):
                 # fast method (not really, we make it even faster ... see other functions with timings)
                 #field_ids = set(tbl.getcol("FIELD_ID"))
                 field_ids = numpy.unique(tbl.getcol('FIELD_ID'))
-                filter_f  = lambda (fld, nm): fld in field_ids
+                filter_f  = lambda fld_nm: fld_nm[0] in field_ids
 
             get_name = lambda x: x['NAME']
             return fieldmap(filter(filter_f, zip(itertools.count(), map(get_name, fldtab))))
@@ -1192,9 +1193,9 @@ def getDataDomain(ms, **kwargs):
 
         if thecolumn is None:
             if len(candidates)>1:
-                raise RuntimeError, "None of the columns {0} available in the MS".format( candidates )
+                raise RuntimeError("None of the columns {0} available in the MS".format( candidates ))
             else:
-                raise RuntimeError, "The column {0} is not available in the MS".format( candidates[0] )
+                raise RuntimeError("The column {0} is not available in the MS".format( candidates[0] ))
 
         # return an object with attributes .domain and .column
         return type('',(),{'domain': knownColumns.get(thecolumn, jenums.Type.Unknown), 'column':thecolumn})()
@@ -1238,7 +1239,7 @@ def mk_slicer(blc, trc, fn=None):
     # interpreted as an array index, `arr[np.array(seq)]`, which will result
     # either in an error or a different result.
     # return lambda tab, col, s, n: tab.getcol(col, startrow=s, nrow=n)[indarr]
-    indarr = tuple([Ellipsis]+map(lambda (st, en): slice(st, en), zip(blc, trc)))
+    indarr = tuple([Ellipsis]+list(map(lambda st_en: slice(st_en[0], st_en[1]), zip(blc, trc))))
 
     if fn:
         return lambda tab, col, s, n: fn(tab.getcol(col, startrow=s, nrow=n))[indarr]
@@ -1289,12 +1290,12 @@ def reducems(function, ms, init, columns, **kwargs):
     while i<mslen:
         cs   = min(chunksize, mslen-i)  # chunksize
         logfn(progress(i, 0, mslen, 50))
-        init = reduce(function, itertools.izip( *map(lambda (c, f): f(ms, c, i, cs), fns)), init)
+        init = reduce(function, itertools.izip( *map(lambda c_f: f(ms, c_f[0], i, cs), fns)), init)
         i    = i + cs
     e = now()
     logfn(" "*60)
     if defaults['verbose']:
-        print "reducems took ", (e-s)
+        print("reducems took ", (e-s))
     return init
 
 def chunkert(f, l, cs, verbose=True):
@@ -1317,8 +1318,8 @@ def reducems_raw(function, ms, init, columns, **kwargs):
     slicers = kwargs.get('slicers', {})
     chunksz = kwargs.get('chunksize', 5000)
     fns     = map(lambda col: (col, slicers.get(col, lambda tab, c, s, n: tab.getcol(c, startrow=s, nrow=n))), columns)
-    return reduce(lambda acc, (i, cs):\
-                    reduce(function, itertools.izip( *map(lambda (c, f): f(ms, c, i, cs), fns)), acc),
+    return reduce(lambda acc, i_cs:\
+                    reduce(function, itertools.izip( *map(lambda c_f: f(ms, c_f[0], i_cs[0], i_cs[1]), fns)), acc),
                   chunkert(0, len(ms), chunksz), init)
 
 ## reducems calls function as:
@@ -1330,5 +1331,5 @@ def reducems2(function, ms, init, columns, **kwargs):
     slicers = kwargs.get('slicers', {})
     chunksz = kwargs.get('chunksize', 5000)
     fns     = map(lambda col: (col, slicers.get(col, lambda tab, c, s, n: tab.getcol(c, startrow=s, nrow=n))), columns)
-    return reduce(lambda acc, (i, cs): function(acc, *map(lambda (c, f): f(ms, c, i, cs), fns)),
+    return reduce(lambda acc, i_cs: function(acc, *map(lambda c_f: f(ms, c_f[0], i_cs[0], i_cs[1]), fns)),
                   chunkert(0, len(ms), chunksz, verbose=kwargs.get('verbose', False)), init)
