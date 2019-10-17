@@ -65,6 +65,7 @@ Elements from the enumeration can be used as ordinary variables:
     axes['bar']    => ValueError: Enum(x,y,z) does not contain the value bar
     axes[foo.bar]  => ValueError: Enum(x,y,z) does not contain the value bar
 """
+from   six import with_metaclass
 import operator, collections
 
 # Python 2.6 don't have OrderedDict in the collections module. Sigh.
@@ -142,8 +143,8 @@ class EnumValueMeta(type):
     def __hash__(self):
         return hash(self._enumvalue[1])
 
-    def __ne__(self,other):
-        return not self.__eq__(other)
+    def __ne__(self, other):
+        return not self == other 
 
     def __del__(self):
         raise TypeError("Cannot delete an enumeration value")
@@ -183,9 +184,8 @@ class EnumMeta(type):
         # use list to preserve the order
         enumvals = list()
         for ev in enums:
-            class EnumValueImpl:
+            class EnumValueImpl(with_metaclass(EnumValueMeta)):
                 _enumvalue    = ev
-                __metaclass__ = EnumValueMeta
             enumvals.append( EnumValueImpl )
             dct[ ev[0] ] = EnumValueImpl
 
@@ -218,7 +218,8 @@ class EnumMeta(type):
         return len(self._enums)
 
     def index(self, x, *args):
-        lst = map(str, self._enums) if isinstance(x, str) else self._enums
+        # thanks Python3 for having to explicitly make a list FFS!
+        lst = list(map(str, self._enums) if isinstance(x, str) else self._enums)
         return lst.index(x, *args)
 
     def __getitem__(self, a):
@@ -257,9 +258,8 @@ def Enum(*names, **namedvalues):
     enums.update( **namedvalues )
     if len(enums)!=(len(names)+len(namedvalues)):
         raise TypeError("Duplicate names detected between names and named values")
-    class EnumImpl(object):
+    class EnumImpl(with_metaclass(EnumMeta, object)):
         _enums        = tuple((enums.iteritems if hasattr(enums, 'iteritems') else enums.items)())
-        __metaclass__ = EnumMeta
     return EnumImpl
 
 
@@ -270,13 +270,13 @@ if __name__ == '__main__':
 
     class TestConstruction(unittest.TestCase):
         def test_noduplicate_names(self):
-            self.assertRaises(TypeError(Enum, 'aap', 'noot', 'aap'))
+            self.assertRaises(TypeError, Enum, 'aap', 'noot', 'aap')
 
         def test_noduplicates_at_all(self):
-            self.assertRaises(TypeError(Enum, 'aap', 'noot', aap=42))
+            self.assertRaises(TypeError, Enum, 'aap', 'noot', aap=42)
 
         def test_no_overwrite_of_special_names(self):
-            self.assertRaises(TypeError(Enum, '__new__', '__init__', '__len__', 'index'))
+            self.assertRaises(TypeError, Enum, '__new__', '__init__', '__len__', 'index')
 
 
     class TestBasics(unittest.TestCase):
@@ -306,7 +306,10 @@ if __name__ == '__main__':
 
         # can convert to list/iterate
         def test_as_list(self):
-            self.assertItemsEqual(list(self.a), [self.a.noot, self.a.aap])
+            # FFS! Py2.7 has assertItemsEqual but Py3 doesn't;
+            #      there it's called assertCountEqual ARGH!
+            #      So we gonna use the compatible recipe
+            self.assertEqual(list(sorted(self.a)), list(sorted([self.a.noot, self.a.aap])))
 
         # a and c a constructed with same elements in same order
         # should yield identical enums
