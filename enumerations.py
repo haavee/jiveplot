@@ -148,7 +148,6 @@ class EnumValueMeta(type):
 
     def __del__(self):
         pass
-        #raise TypeError("Cannot delete an enumeration value")
 
     def __delattr__(self, a):
         raise TypeError("Cannot delete an enumeration value")
@@ -271,13 +270,13 @@ if __name__ == '__main__':
 
     class TestConstruction(unittest.TestCase):
         def test_noduplicate_names(self):
-            self.assertRaises(TypeError, Enum, 'aap', 'noot', 'aap')
+            self.assertRaises(TypeError(Enum, 'aap', 'noot', 'aap'))
 
         def test_noduplicates_at_all(self):
-            self.assertRaises(TypeError, Enum, 'aap', 'noot', aap=42)
+            self.assertRaises(TypeError(Enum, 'aap', 'noot', aap=42))
 
         def test_no_overwrite_of_special_names(self):
-            self.assertRaises(TypeError, Enum, '__new__', '__init__', '__len__', 'index')
+            self.assertRaises(TypeError(Enum, '__new__', '__init__', '__len__', 'index'))
 
 
     class TestBasics(unittest.TestCase):
