@@ -26,5 +26,5 @@ import enumerations
 
 Type      = enumerations.Enum('Unknown', 'Lag', 'Spectral')
 Axes      = enumerations.Enum('P', 'CH', 'SB', 'FQ', 'BL', 'SRC', 'TIME', 'TYPE')
-Averaging = enumerations.Enum('None', 'Scalar', 'Vector', 'Vectornorm', 'Sum', 'Vectorsum')
+Averaging = enumerations.Enum('None', 'Scalar', 'Vector', 'Vectornorm', 'Sum', 'Vectorsum', 'none')
 Flagstuff = enumerations.Enum('Unflagged', 'Flagged', 'Both')
