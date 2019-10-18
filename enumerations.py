@@ -147,7 +147,8 @@ class EnumValueMeta(type):
         return not self == other 
 
     def __del__(self):
-        raise TypeError("Cannot delete an enumeration value")
+        pass
+        #raise TypeError("Cannot delete an enumeration value")
 
     def __delattr__(self, a):
         raise TypeError("Cannot delete an enumeration value")
