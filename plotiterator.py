@@ -148,7 +148,7 @@
 ##
 ##
 from   __future__ import print_function
-import ms2util, hvutil, plots, jenums, itertools, copy, operator, numpy, math, imp, time, collections, functional
+import ms2util, hvutil, jenums, itertools, copy, operator, numpy, math, imp, time, collections, functional, plotutil
 import pyrap.quanta
 
 # Auto-detect of pycasa
@@ -164,7 +164,7 @@ NOW        = time.time
 CP         = copy.deepcopy
 AX         = jenums.Axes
 AVG        = jenums.Averaging
-YTypes     = plots.YTypes
+YTypes     = plotutil.YTypes
 Quantity   = collections.namedtuple('Quantity', ['quantity_name', 'quantity_fn'])
 # do not drag in all numpy.* names but by "resolving" them at this level
 # we shave off a lot of python name lookups. this has an effect on code which
@@ -429,7 +429,7 @@ class plotbase(object):
         def unmap( fld_val ):
             return (fld_val[0], unmap_f.get(fld_val[0], identity)(fld_val[1]))
         # flds is the list of field names that the values in the tuple mean
-        self.MKLAB = lambda flds, tup: plots.label( dict(map(unmap, zip(flds, tup))), flds )
+        self.MKLAB = lambda flds, tup: plotutil.label( dict(map(unmap, zip(flds, tup))), flds )
 
     ##
     ##   Should return the generated plots according to the following
@@ -626,7 +626,7 @@ class dataset_list:
         self.m.extend(mseq)
 
     def average(self, method):
-        if method != AVG.None:
+        if method != AVG.NoAveraging:
             raise RuntimeError("dataset_list was not made for time averaging")
 
     def is_numarray(self):
@@ -677,7 +677,7 @@ class dataset_list:
 #        self.sf(self, xv, yv, m)
 #
 #    def average(self, method):
-#        if method != AVG.None:
+#        if method != AVG.NoAveraging:
 #            raise RuntimeError("dataset_chan was not meant for averaging!")
 #
 #    def is_numarray(self):
@@ -756,7 +756,7 @@ class dataset_chan:
         if method==AVG.Vectornorm:
             # for vector norm we divide by the largest (complex) amplitude
             fn = lambda x, _: x/numpy.max(numpy.abs(x))
-        elif method in [AVG.None, AVG.Sum, AVG.Vectorsum]:
+        elif method in [AVG.NoAveraging, AVG.Sum, AVG.Vectorsum]:
             fn = lambda x, _: x
         # from counts form mask [note: do not clobber obj.m just yet, we need the counts!]
         m          = ARRAY(obj.m==0, dtype=numpy.bool)
@@ -856,7 +856,7 @@ class dataset_solint_array:
         if method==AVG.Vectornorm:
             # for vector norm we divide by the largest complex amplitude
             fn = lambda x, _: x/numpy.max(numpy.abs(x))
-        elif method in [AVG.None, AVG.Sum, AVG.Vectorsum]:
+        elif method in [AVG.NoAveraging, AVG.Sum, AVG.Vectorsum]:
             # because we already integrate (==sum) then no averaging equals summing and v.v. :-)
             fn = lambda x, _: x
         # construct a new dict with the averaged data values and set mask wether
@@ -931,7 +931,7 @@ class dataset_solint_scalar:
         if method==AVG.Vectornorm:
             # for vector norm we divide by the largest complex amplitude
             fn = lambda x, _: x/max(map(abs,x))
-        elif method in [AVG.None, AVG.Sum, AVG.Vectorsum]:
+        elif method in [AVG.NoAveraging, AVG.Sum, AVG.Vectorsum]:
             # because our data is already summed then no averaging == summing
             fn = lambda x, _: x
         # construct a new dict with the averaged data values and set mask based on
@@ -996,7 +996,7 @@ class partitioner:
                 "f   = lambda x, y: "+expr,
                 'dyn-mark-string', 'exec')
         self.mod  = imp.new_module("dyn_marker_mod")
-        exec self.code in self.mod.__dict__
+        exec(self.code, self.mod.__dict__)
 
     def __call__(self, x, y):
         ds_true       = []
@@ -1092,11 +1092,11 @@ class fakems:
         rows = self.chunk[startrow]
 
         coldict = {
-                "ANTENNA1"    : (lambda x: map(lambda (tm, (a1, a2), dd, fl): a1, x), numpy.int32),
-                "ANTENNA2"    : (lambda x: map(lambda (tm, (a1, a2), dd, fl): a2, x), numpy.int32),
-                "TIME"        : (lambda x: map(lambda (tm, (a1, a2), dd, fl): tm, x), numpy.float64),
-                "DATA_DESC_ID": (lambda x: map(lambda (tm, (a1, a2), dd, fl): dd, x), numpy.int32),
-                "FIELD_ID"    : (lambda x: map(lambda (tm, (a1, a2), dd, fl): fl, x), numpy.int32)
+                "ANTENNA1"    : (lambda x: map(lambda tm, a1_a2, dd, fl: a1_a2[0], x), numpy.int32),
+                "ANTENNA2"    : (lambda x: map(lambda tm, a1_a2, dd, fl: a1_a2[1], x), numpy.int32),
+                "TIME"        : (lambda x: map(lambda tm, a1_a2, dd, fl: tm, x), numpy.float64),
+                "DATA_DESC_ID": (lambda x: map(lambda tm, a1_a2, dd, fl: dd, x), numpy.int32),
+                "FIELD_ID"    : (lambda x: map(lambda tm, a1_a2, dd, fl: fl, x), numpy.int32)
                 }
         (valfn, tp) = coldict.get(col, (None, None))
         #print("getcol[{0}]/var={1}".format(col, var))
@@ -1113,7 +1113,7 @@ class fakems:
             rv = numpy.zeros( reduce(operator.mul, shp), dtype=numpy.complex64 )
             rv.shape = shp
             return rv
-        raise RuntimeError,"Unhandled column {0}".format(col)
+        raise RuntimeError("Unhandled column {0}".format(col))
 
 
 ##### Different solint functions
@@ -1323,24 +1323,24 @@ class data_quantity_time(plotbase):
     # Also return wether the quantities must be postponed
     _averaging = {
         # no averaging at all, no need to postpone computing the quantity(ies)
-        (AVG.None, AVG.None):             (avg_none, avg_none, False),
+        (AVG.NoAveraging, AVG.NoAveraging):             (avg_none, avg_none, False),
         # only time averaging requested
         # scalar in time means we can collect the quantities themselves
-        (AVG.None, AVG.Scalar):           (avg_none, avg_arithmetic, False),
-        (AVG.None, AVG.Sum):              (avg_none, avg_sum,        False),
-        (AVG.None, AVG.Vectorsum):        (avg_none, avg_sum,        True),
+        (AVG.NoAveraging, AVG.Scalar):           (avg_none, avg_arithmetic, False),
+        (AVG.NoAveraging, AVG.Sum):              (avg_none, avg_sum,        False),
+        (AVG.NoAveraging, AVG.Vectorsum):        (avg_none, avg_sum,        True),
         # when vector(norm) averaging we must first collect all time data
         # before we can compute the quantities, i.e. their computation  must be postponed
-        (AVG.None, AVG.Vector):           (avg_none, avg_arithmetic, True),
-        (AVG.None, AVG.Vectornorm):       (avg_none, avg_vectornorm, True),
+        (AVG.NoAveraging, AVG.Vector):           (avg_none, avg_arithmetic, True),
+        (AVG.NoAveraging, AVG.Vectornorm):       (avg_none, avg_vectornorm, True),
         # When scalar averaging the channels no vector averaging in time possible
         # Also no need to postpone computing the quantities
-        (AVG.Scalar, AVG.None):           (avg_arithmetic, avg_none, False),
+        (AVG.Scalar, AVG.NoAveraging):           (avg_arithmetic, avg_none, False),
         (AVG.Scalar, AVG.Sum):            (avg_arithmetic, avg_sum,  False),
         (AVG.Scalar, AVG.Scalar):         (avg_arithmetic, avg_arithmetic, False),
         # When vector averaging the channels, the time averaging governs 
         # the choice of when to compute the quantity(ies)
-        (AVG.Vector, AVG.None):           (avg_arithmetic, avg_none, False),
+        (AVG.Vector, AVG.NoAveraging):           (avg_arithmetic, avg_none, False),
         (AVG.Vector, AVG.Sum):            (avg_arithmetic, avg_sum,  False),
         (AVG.Vector, AVG.Vectorsum):      (avg_arithmetic, avg_sum,  True),
         (AVG.Vector, AVG.Scalar):         (avg_arithmetic, avg_arithmetic, False),
@@ -1349,18 +1349,18 @@ class data_quantity_time(plotbase):
         (AVG.Vector, AVG.Vector):         (avg_arithmetic, avg_arithmetic, True),
         (AVG.Vector, AVG.Vectornorm):     (avg_arithmetic, avg_vectornorm, True),
         # vectornorm averaging over the channels, see what's requested in time
-        (AVG.Vectornorm, AVG.None):       (avg_vectornorm, avg_none, False),
+        (AVG.Vectornorm, AVG.NoAveraging):       (avg_vectornorm, avg_none, False),
         (AVG.Vectornorm, AVG.Scalar):     (avg_vectornorm, avg_arithmetic, False),
         (AVG.Vectornorm, AVG.Vector):     (avg_vectornorm, avg_arithmetic, True),
         (AVG.Vectornorm, AVG.Vectornorm): (avg_vectornorm, avg_vectornorm, True),
         (AVG.Vectornorm, AVG.Sum):        (avg_vectornorm, avg_sum,        False),
         (AVG.Vectornorm, AVG.Vectorsum):  (avg_vectornorm, avg_sum,        True),
 
-        (AVG.Sum, AVG.None):              (avg_sum, avg_none,        False),
+        (AVG.Sum, AVG.NoAveraging):              (avg_sum, avg_none,        False),
         (AVG.Sum, AVG.Sum):               (avg_sum, avg_sum,         False),
         (AVG.Sum, AVG.Scalar):            (avg_sum, avg_arithmetic,  False),
 
-        (AVG.Vectorsum, AVG.None):        (avg_sum, avg_none,        False),
+        (AVG.Vectorsum, AVG.NoAveraging):        (avg_sum, avg_none,        False),
         (AVG.Vectorsum, AVG.Scalar):      (avg_sum, avg_arithmetic,  False),
         (AVG.Vectorsum, AVG.Sum):         (avg_sum, avg_sum,         False),
         (AVG.Vectorsum, AVG.Vectorsum):   (avg_sum, avg_sum,         True),
@@ -1385,9 +1385,9 @@ class data_quantity_time(plotbase):
         timerng    = CP(selection.timeRange)
 
         # some sanity checks
-        if solchan is not None and avgChannel==AVG.None:
+        if solchan is not None and avgChannel==AVG.NoAveraging:
             raise RuntimeError("nchav value was set without specifiying a channel averaging method; please tell me how you want them averaged")
-        if solint is not None and avgTime==AVG.None:
+        if solint is not None and avgTime==AVG.NoAveraging:
             raise RuntimeError("solint value was set without specifiying a time averaging method; please tell me how you want your time range(s) averaged")
 
         ## initialize the base class
@@ -1411,9 +1411,9 @@ class data_quantity_time(plotbase):
             if channels!=range(n_chan):
                 chansel = channels
             # ignore channel averaging if only one channel specified
-            if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.None:
+            if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.NoAveraging:
                 print("WARNING: channel averaging method {0} ignored because only one channel selected or available".format( avgChannel ))
-                avgChannel = AVG.None
+                avgChannel = AVG.NoAveraging
 
         # Test if the selected combination of averaging settings makes sense
         setup = data_quantity_time._averaging.get((avgChannel, avgTime), None)
@@ -1427,7 +1427,7 @@ class data_quantity_time(plotbase):
         # all data points with the same TIME stamp be integrated into the same
         # data set
         self.timebin_fn = functional.identity
-        if avgTime!=AVG.None:
+        if avgTime!=AVG.NoAveraging:
             if solint is None:
                 # Ah. Hmm. Have to integrate different time ranges
                 # Let's transform our timerng list of (start, end) intervals into
@@ -1437,7 +1437,7 @@ class data_quantity_time(plotbase):
 
                 # It is important to KNOW that "selection.timeRange" (and thus our
                 # local copy 'timerng') is a list or sorted, non-overlapping time ranges
-                timerng = map(lambda (s, e): (s, e, (s+e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
+                timerng = map(lambda s_e: (s_e[0], s_e[1], sum(s_e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
                 if len(timerng)==1:
                     print("WARNING: averaging all data into one point in time!")
                     print("         This is because no solint was set or no time")
@@ -1450,7 +1450,7 @@ class data_quantity_time(plotbase):
                 def do_it(x):
                     mi,ma  = numpy.min(x), numpy.max(x)
                     ranges = filter(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-                    return reduce(lambda acc, (s, e, m): numpy.put(acc, numpy.where((acc>=s) & (acc<=e)), m) or acc, ranges, x) 
+                    return reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
                 self.timebin_fn = do_it
             else:
                 # Check if solint isn't too small
@@ -1467,7 +1467,7 @@ class data_quantity_time(plotbase):
         self.tmVectAvg = functional.identity
         self.tmScalAvg = functional.identity
 
-        if avgChannel==AVG.None:
+        if avgChannel==AVG.NoAveraging:
             # No channel averaging - each selected channel goes into self.chanidx
             self.chanidx = list(enumerate(range(n_chan) if chansel is Ellipsis else chansel))
             # The vector average step will be misused to just apply the channel selection such that all selected channels
@@ -1687,8 +1687,8 @@ class data_quantity_time(plotbase):
 
         # Let's keep the channels together as long as possible. If only one channel remains then we can do it
         # in our inner loop
-        #dataset_proto = dataset_list if avgTime == AVG.None else dataset_solint_array
-        if avgTime == AVG.None:
+        #dataset_proto = dataset_list if avgTime == AVG.NoAveraging else dataset_solint_array
+        if avgTime == AVG.NoAveraging:
             dataset_proto = dataset_list
         else:
             # depending on wether we need to solint one or more channels in one go
@@ -1773,24 +1773,24 @@ class data_quantity_chan(plotbase):
     # Also return wether the quantities must be postponed
     _averaging = {
         # no averaging at all, no need to postpone computing the quantity(ies)
-        (AVG.None, AVG.None):             (avg_none, avg_none, False),
-        (AVG.None, AVG.Sum):              (avg_none, avg_sum,  False),
-        (AVG.None, AVG.Vectorsum):        (avg_none, avg_sum,  True),
+        (AVG.NoAveraging, AVG.NoAveraging):             (avg_none, avg_none, False),
+        (AVG.NoAveraging, AVG.Sum):              (avg_none, avg_sum,  False),
+        (AVG.NoAveraging, AVG.Vectorsum):        (avg_none, avg_sum,  True),
         # only time averaging requested
         # scalar in time means we can collect the quantities themselves
-        (AVG.None, AVG.Scalar):           (avg_none, avg_arithmetic, False),
+        (AVG.NoAveraging, AVG.Scalar):           (avg_none, avg_arithmetic, False),
         # when vector(norm) averaging we must first collect all time data
         # before we can compute the quantities, i.e. their computation  must be postponed
-        (AVG.None, AVG.Vector):           (avg_none, avg_arithmetic, True),
-        (AVG.None, AVG.Vectornorm):       (avg_none, avg_vectornorm, True),
+        (AVG.NoAveraging, AVG.Vector):           (avg_none, avg_arithmetic, True),
+        (AVG.NoAveraging, AVG.Vectornorm):       (avg_none, avg_vectornorm, True),
         # When scalar averaging the channels no vector averaging in time possible
         # Also no need to postpone computing the quantities
-        (AVG.Scalar, AVG.None):           (avg_arithmetic, avg_none, False),
+        (AVG.Scalar, AVG.NoAveraging):           (avg_arithmetic, avg_none, False),
         (AVG.Scalar, AVG.Sum):            (avg_arithmetic, avg_sum,  False),
         (AVG.Scalar, AVG.Scalar):         (avg_arithmetic, avg_arithmetic, False),
         # When vector averaging the channels, the time averaging governs 
         # the choice of when to compute the quantity(ies)
-        (AVG.Vector, AVG.None):           (avg_arithmetic, avg_none, False),
+        (AVG.Vector, AVG.NoAveraging):           (avg_arithmetic, avg_none, False),
         (AVG.Vector, AVG.Sum):            (avg_arithmetic, avg_sum,  False),
         (AVG.Vector, AVG.Vectorsum):      (avg_arithmetic, avg_sum,  True),
         (AVG.Vector, AVG.Scalar):         (avg_arithmetic, avg_arithmetic, False),
@@ -1799,18 +1799,18 @@ class data_quantity_chan(plotbase):
         (AVG.Vector, AVG.Vector):         (avg_arithmetic, avg_arithmetic, True),
         (AVG.Vector, AVG.Vectornorm):     (avg_arithmetic, avg_vectornorm, True),
         # vectornorm averaging over the channels, see what's requested in time
-        (AVG.Vectornorm, AVG.None):       (avg_vectornorm, avg_none, False),
+        (AVG.Vectornorm, AVG.NoAveraging):       (avg_vectornorm, avg_none, False),
         (AVG.Vectornorm, AVG.Scalar):     (avg_vectornorm, avg_arithmetic, False),
         (AVG.Vectornorm, AVG.Vector):     (avg_vectornorm, avg_arithmetic, True),
         (AVG.Vectornorm, AVG.Vectornorm): (avg_vectornorm, avg_vectornorm, True),
         (AVG.Vectornorm, AVG.Sum):        (avg_vectornorm, avg_sum,        False),
         (AVG.Vectornorm, AVG.Vectorsum):  (avg_vectornorm, avg_sum,        True),
 
-        (AVG.Sum, AVG.None):              (avg_sum, avg_none,        False),
+        (AVG.Sum, AVG.NoAveraging):              (avg_sum, avg_none,        False),
         (AVG.Sum, AVG.Sum):               (avg_sum, avg_sum,         False),
         (AVG.Sum, AVG.Scalar):            (avg_sum, avg_arithmetic,  False),
 
-        (AVG.Vectorsum, AVG.None):        (avg_sum, avg_none,        False),
+        (AVG.Vectorsum, AVG.NoAveraging):        (avg_sum, avg_none,        False),
         (AVG.Vectorsum, AVG.Scalar):      (avg_sum, avg_arithmetic,  False),
         (AVG.Vectorsum, AVG.Sum):         (avg_sum, avg_sum,         False),
         (AVG.Vectorsum, AVG.Vectorsum):   (avg_sum, avg_sum,         True),
@@ -1836,9 +1836,9 @@ class data_quantity_chan(plotbase):
         timerng    = CP(selection.timeRange)
 
         # some sanity checks
-        if solchan is not None and avgChannel==AVG.None:
+        if solchan is not None and avgChannel==AVG.NoAveraging:
             raise RuntimeError("nchav value was set without specifiying a channel averaging method; please tell me how you want them averaged")
-        if solint is not None and avgTime==AVG.None:
+        if solint is not None and avgTime==AVG.NoAveraging:
             raise RuntimeError("solint value was set without specifiying a time averaging method; please tell me how you want your time range(s) averaged")
 
         ## initialize the base class
@@ -1862,9 +1862,9 @@ class data_quantity_chan(plotbase):
             if channels!=range(n_chan):
                 chansel = channels
             # ignore channel averaging if only one channel specified
-            if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.None:
+            if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.NoAveraging:
                 print("WARNING: channel averaging method {0} ignored because only one channel selected".format( avgChannel ))
-                avgChannel = AVG.None
+                avgChannel = AVG.NoAveraging
 
         # Test if the selected combination of averaging settings makes sense
         setup = data_quantity_time._averaging.get((avgChannel, avgTime), None)
@@ -1878,7 +1878,7 @@ class data_quantity_chan(plotbase):
         # all data points with the same TIME stamp be integrated into the same
         # data set
         self.timebin_fn = functional.identity
-        if avgTime!=AVG.None:
+        if avgTime!=AVG.NoAveraging:
             if solint is None:
                 # Ah. Hmm. Have to integrate different time ranges
                 # Let's transform our timerng list of (start, end) intervals into
@@ -1888,7 +1888,7 @@ class data_quantity_chan(plotbase):
 
                 # It is important to KNOW that "selection.timeRange" (and thus our
                 # local copy 'timerng') is a list or sorted, non-overlapping time ranges
-                timerng = map(lambda (s, e): (s, e, (s+e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
+                timerng = map(lambda s_e: (s_e[0], s_e[1], sum(s+e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
 
                 # try to be a bit optimized in time stamp replacement - filter the 
                 # list of time ranges to those applying to the time stamps we're 
@@ -1896,7 +1896,7 @@ class data_quantity_chan(plotbase):
                 def do_it(x):
                     mi,ma  = numpy.min(x), numpy.max(x)
                     ranges = filter(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-                    return reduce(lambda acc, (s, e, m): numpy.put(acc, numpy.where((acc>=s) & (acc<=e)), m) or acc, ranges, x) 
+                    return reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
                 self.timebin_fn = do_it
             else:
                 # Check if solint isn't too small
@@ -1916,7 +1916,7 @@ class data_quantity_chan(plotbase):
         # if the x-axis is frequency ... *gulp*
         self.freq_of_dd=CP(self.ddFreqs)
 
-        if avgChannel==AVG.None:
+        if avgChannel==AVG.NoAveraging:
             # No channel averaging - the new x-axis will be the indices of the selected channels
             self.chanidx = range(n_chan) if chansel is Ellipsis else chansel #list(enumerate(range(n_chan) if chansel is Ellipsis else chansel))
             # The vector average step will be misused to just apply the channel selection such that all selected channels
@@ -2152,8 +2152,8 @@ class data_quantity_chan(plotbase):
 
         # Let's keep the channels together as long as possible. If only one channel remains then we can do it
         # in our inner loop
-        #dataset_proto = dataset_list if avgTime == AVG.None else dataset_solint_array
-        #if avgTime == AVG.None:
+        #dataset_proto = dataset_list if avgTime == AVG.NoAveraging else dataset_solint_array
+        #if avgTime == AVG.NoAveraging:
         #    # if no time averaging is to be done the (possibly channel averaged) data set IS the data set
         #    dataset_proto = dataset_list
         #else:
@@ -2263,19 +2263,19 @@ class data_quantity_chan(plotbase):
 #        # solint must be >0.1 OR must be equal to None 
 #        # solint==None implies "aggregate all data into the selected time ranges in
 #        #   their separate bins"
-#        if avgTime!=AVG.None and not (selection.solint is None or selection.solint>0.1):
+#        if avgTime!=AVG.NoAveraging and not (selection.solint is None or selection.solint>0.1):
 #            raise RuntimeError("time averaging requested but solint is not none or >0.1: {0}".format(selection.solint))
 #        # If solint is a number and averaging is not set, default to Scalar averaging
-#        if selection.solint and avgTime==AVG.None:
+#        if selection.solint and avgTime==AVG.NoAveraging:
 #            avgTime = AVG.Scalar
 #            print "WARN: solint is set but no averaging method was specified. Defaulting to ",avgTime
 #
-#        if selection.averageChannel!=AVG.None:
+#        if selection.averageChannel!=AVG.NoAveraging:
 #            print "WARN: {0} channel averaging ignored for this plot".format(selection.averageChannel)
 #
 #        # If time averaging requested but solint==None and timerange==None, this means we
 #        # have to set up a time range to integrate. timerange==None => whole data set
-#        if avgTime!=AVG.None and solint is None and timerng is None:
+#        if avgTime!=AVG.NoAveraging and solint is None and timerng is None:
 #            timerng = [(mapping.timeRange.start, mapping.timeRange.end)]
 #
 #        ## initialize the base class
@@ -2338,7 +2338,7 @@ class data_quantity_chan(plotbase):
 #        # all data points with the same TIME stamp be integrated into the same
 #        # data set
 #        self.timebin_fn = lambda x: x
-#        if avgTime!=AVG.None:
+#        if avgTime!=AVG.NoAveraging:
 #            if solint is None:
 #                # Ah. Hmm. Have to integrate different time ranges
 #                # Let's transform our timerng list of (start, end) intervals into
@@ -2536,7 +2536,7 @@ class unflagged(object):
 #        avgTime         = CP(selection.averageTime)
 #        #solint_fn       = solint_none
 #        self.timebin_fn = functional.identity
-#        if avgTime!=AVG.None:
+#        if avgTime!=AVG.NoAveraging:
 #            if solint is None:
 #                # Ah. Hmm. Have to integrate different time ranges
 #                # Let's transform our timerng list of (start, end) intervals into
@@ -2566,7 +2566,7 @@ class unflagged(object):
 #                    raise RuntimeError("solint value {0:.3f} is less than integration time {1:.3f}".format(solint, ti))
 #                self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
 #
-#        self.dataset_proto = dataset_list if avgTime == AVG.None else dataset_solint
+#        self.dataset_proto = dataset_list if avgTime == AVG.NoAveraging else dataset_solint
 #        
 #        ## we plot using the WEIGHT column
 #
@@ -2622,11 +2622,11 @@ class weight_time(plotbase):
     #       (currently 1 entry with the identity transform ...) because that way
     #       we could in the future have different flavours of this fn
     _averaging = {
-        (AVG.None,   AVG.None):           (avg_none,       avg_none,       False),
-        (AVG.None,   AVG.Scalar):         (avg_none,       avg_arithmetic, False),
-        (AVG.Scalar, AVG.None):           (avg_arithmetic, avg_none,       False),
+        (AVG.NoAveraging,   AVG.NoAveraging):           (avg_none,       avg_none,       False),
+        (AVG.NoAveraging,   AVG.Scalar):         (avg_none,       avg_arithmetic, False),
+        (AVG.Scalar, AVG.NoAveraging):           (avg_arithmetic, avg_none,       False),
         (AVG.Scalar, AVG.Scalar):         (avg_arithmetic, avg_arithmetic, False),
-        (AVG.None,   AVG.Sum):            (avg_none,       avg_sum,        False),
+        (AVG.NoAveraging,   AVG.Sum):            (avg_none,       avg_sum,        False),
         (AVG.Scalar, AVG.Sum):            (avg_arithmetic, avg_sum,        False),
         (AVG.Sum,    AVG.Sum):            (avg_sum,        avg_sum,        False),
     }
@@ -2647,9 +2647,9 @@ class weight_time(plotbase):
         timerng    = CP(selection.timeRange)
 
         # some sanity checks
-        if solchan is not None and avgChannel==AVG.None:
+        if solchan is not None and avgChannel==AVG.NoAveraging:
             raise RuntimeError("nchav value was set without specifiying a channel averaging method; please tell me how you want them averaged")
-        if solint is not None and avgTime==AVG.None:
+        if solint is not None and avgTime==AVG.NoAveraging:
             raise RuntimeError("solint value was set without specifiying a time averaging method; please tell me how you want your time range(s) averaged")
 
         ## initialize the base class
@@ -2677,24 +2677,24 @@ class weight_time(plotbase):
                 if channels!=range(n_chan):
                     chansel = channels
                 # ignore channel averaging if only one channel specified
-                if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.None:
+                if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.NoAveraging:
                     print("WARNING: channel averaging method {0} ignored because only one channel selected".format( avgChannel ))
-                    avgChannel = AVG.None
+                    avgChannel = AVG.NoAveraging
             else:
                 # channel selection active but only WEIGHT column
                 print("WARNING: you have selected channels but there is no WEIGHT_SPECTRUM column")
                 print("         your channel selection will be IGNORED")
                 chansel = None
-                if avgChannel != AVG.None:
+                if avgChannel != AVG.NoAveraging:
                     print("WARNING: you specified {0} channel averaging".format(avgChannel))
                     print("         but there is no WEIGHT_SPECTRUM column so IGNORING channel averaging")
-                    avgChannel = AVG.None
+                    avgChannel = AVG.NoAveraging
         else:
             # no channels selected by user, check wether we actually *have* channels if averaging requested
-            if avgChannel != AVG.None and not spectrum:
+            if avgChannel != AVG.NoAveraging and not spectrum:
                 print("WARNING: you specified {0} channel averaging".format(avgChannel))
                 print("         but there is no WEIGHT_SPECTRUM column so IGNORING channel averaging")
-                avgChannel = AVG.None
+                avgChannel = AVG.NoAveraging
 
         # Test if the selected combination of averaging settings makes sense
         setup = weight_time._averaging.get((avgChannel, avgTime), None)
@@ -2708,7 +2708,7 @@ class weight_time(plotbase):
         # all data points with the same TIME stamp be integrated into the same
         # data set
         self.timebin_fn = functional.identity
-        if avgTime!=AVG.None:
+        if avgTime!=AVG.NoAveraging:
             if solint is None:
                 # Ah. Hmm. Have to integrate different time ranges
                 # Let's transform our timerng list of (start, end) intervals into
@@ -2718,7 +2718,7 @@ class weight_time(plotbase):
 
                 # It is important to KNOW that "selection.timeRange" (and thus our
                 # local copy 'timerng') is a list or sorted, non-overlapping time ranges
-                timerng = map(lambda (s, e): (s, e, (s+e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
+                timerng = map(lambda s_e: (s_e[0], s_e[1], sum(s_e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
                 if len(timerng)==1:
                     print("WARNING: averaging all data into one point in time!")
                     print("         This is because no solint was set or no time")
@@ -2731,7 +2731,7 @@ class weight_time(plotbase):
                 def do_it(x):
                     mi,ma  = numpy.min(x), numpy.max(x)
                     ranges = filter(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-                    return reduce(lambda acc, (s, e, m): numpy.put(acc, numpy.where((acc>=s) & (acc<=e)), m) or acc, ranges, x) 
+                    return reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
                 self.timebin_fn = do_it
             else:
                 # Check if solint isn't too small
@@ -2748,7 +2748,7 @@ class weight_time(plotbase):
         self.tmVectAvg = functional.identity
         self.tmScalAvg = functional.identity
 
-        if avgChannel==AVG.None:
+        if avgChannel==AVG.NoAveraging:
             if spectrum:
                 # No channel averaging - each selected channel goes into self.chanidx
                 self.chanidx = list(enumerate(range(n_chan) if chansel is Ellipsis else chansel))
@@ -2958,7 +2958,7 @@ class weight_time(plotbase):
 
         # Let's keep the channels together as long as possible. If only one channel remains then we can do it
         # in our inner loop
-        if avgTime == AVG.None:
+        if avgTime == AVG.NoAveraging:
             dataset_proto = dataset_list
         else:
             # depending on wether we need to solint one or more channels in one go
@@ -3103,7 +3103,7 @@ class uv(plotbase):
 
         print_if("WARNING: Ignoring the following settings:"+uv._sep + uv._sep.join(
                  map(lambda tup: tup[0](tup[1]),
-                     filter(lambda tup: tup[1] not in [AVG.None, None],
+                     filter(lambda tup: tup[1] not in [AVG.NoAveraging, None],
                             zip(["your channel selection".format, "solint {0}".format, "{0} avg in time".format, "nchav of {0}".format, "{0} avg in frequency".format, "weight threshold of {0}".format],
                                 [selection.chanSel, selection.solint, selection.averageTime, selection.solchan, selection.averageChannel, selection.weightThreshold])))))
         
@@ -3159,12 +3159,12 @@ class data_quantity_uvdist(plotbase):
     # Also return wether the quantities must be postponed
     _averaging = {
         # no averaging at all, no need to postpone computing the quantity(ies)
-        (AVG.None, AVG.None):             (avg_none, avg_none, False),
-        (AVG.Scalar, AVG.None):           (avg_arithmetic, avg_none, False),
-        (AVG.Vector, AVG.None):           (avg_arithmetic, avg_none, False),
-        (AVG.Vectornorm, AVG.None):       (avg_vectornorm, avg_none, False),
-        (AVG.Sum, AVG.None):              (avg_sum, avg_none,        False),
-        (AVG.Vectorsum, AVG.None):        (avg_sum, avg_none,        False),
+        (AVG.NoAveraging, AVG.NoAveraging):             (avg_none, avg_none, False),
+        (AVG.Scalar, AVG.NoAveraging):           (avg_arithmetic, avg_none, False),
+        (AVG.Vector, AVG.NoAveraging):           (avg_arithmetic, avg_none, False),
+        (AVG.Vectornorm, AVG.NoAveraging):       (avg_vectornorm, avg_none, False),
+        (AVG.Sum, AVG.NoAveraging):              (avg_sum, avg_none,        False),
+        (AVG.Vectorsum, AVG.NoAveraging):        (avg_sum, avg_none,        False),
     }
 
 
@@ -3207,9 +3207,9 @@ class data_quantity_uvdist(plotbase):
             if channels!=range(n_chan):
                 chansel = channels
             # ignore channel averaging if only one channel specified
-            if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.None:
+            if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.NoAveraging:
                 print("WARNING: channel averaging method {0} ignored because only one channel selected".format( avgChannel ))
-                avgChannel = AVG.None
+                avgChannel = AVG.NoAveraging
 
         # Test if the selected combination of averaging settings makes sense
         setup = data_quantity_time._averaging.get((avgChannel, avgTime), None)
@@ -3218,7 +3218,7 @@ class data_quantity_uvdist(plotbase):
         (avgchan_fn, avgtime_fn, postpone) = setup
 
         # some sanity checks
-        if solchan is not None and avgChannel==AVG.None:
+        if solchan is not None and avgChannel==AVG.NoAveraging:
             raise RuntimeError("nchav value was set without specifiying a channel averaging method; please tell me how you want them averaged")
 
         # How integration/averaging actually is implemented is by modifying the
@@ -3228,7 +3228,7 @@ class data_quantity_uvdist(plotbase):
         # data set
         self.timebin_fn = functional.identity
         # currently we don't support time averaging!
-#        if avgTime!=AVG.None:
+#        if avgTime!=AVG.NoAveraging:
 #            if solint is None:
 #                # Ah. Hmm. Have to integrate different time ranges
 #                # Let's transform our timerng list of (start, end) intervals into
@@ -3272,7 +3272,7 @@ class data_quantity_uvdist(plotbase):
         for dd in self.freq_of_dd.keys():
             self.freq_of_dd[dd] = (ARRAY(self.freq_of_dd[dd]) * 1e6) / 299792458.0 
 
-        if avgChannel==AVG.None:
+        if avgChannel==AVG.NoAveraging:
             # No channel averaging - the new x-axis will be the indices of the selected channels
             # [0,1,...,n-1] if ellipsis else [3, 6, 12, 128] (selected channels)
             self.chanidx = range(n_chan) if chansel is Ellipsis else chansel
@@ -3548,7 +3548,7 @@ class data_quantity_uvdist(plotbase):
 #        #   Vector => compute average cplx number, then the quantity
 #        avgChannel = CP(selection.averageChannel)
 #
-#        if selection.averageTime!=AVG.None:
+#        if selection.averageTime!=AVG.NoAveraging:
 #            print "Warning: {0} time averaging ignored for this plot".format(selection.averageTime)
 #
 #        ## initialize the base class
@@ -3623,7 +3623,7 @@ class data_quantity_uvdist(plotbase):
 #            self.scalarAvg = lambda x: numpy.average(x, axis=1).reshape( (x.shape[0], 1, x.shape[2]) )
 #            self.chanidx   = [(0, '*')]
 #
-#        if avgChannel!=AVG.None:
+#        if avgChannel!=AVG.NoAveraging:
 #            self.factors   = numpy.average(self.factors[:,self.chansel], axis=1)
 #
 #        fields = [AX.TYPE, AX.BL, AX.FQ, AX.SB, AX.SRC, AX.P, AX.CH]

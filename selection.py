@@ -52,8 +52,8 @@ class selection:
         self.plotType        = None
         self.solint          = None # AIPS legacy :D
         self.solchan         = None # AIPS legacy :D
-        self.averageTime     = jenums.Averaging.None
-        self.averageChannel  = jenums.Averaging.None
+        self.averageTime     = jenums.Averaging.NoAveraging
+        self.averageChannel  = jenums.Averaging.NoAveraging
         self.taqlString      = None
         self.weightThreshold = None
         # We keep the baseline selection as human readable format (is an array of
