@@ -395,7 +395,7 @@
 #
 import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, imp, time
 import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors, functools
-from   functional import compose
+from   functional import compose, const, identity
 
 if '-d' in sys.argv:
     print "PPGPLOT=",repr(ppgplot)
@@ -1336,14 +1336,20 @@ class jplotter:
             self.dirty = True
         print "{0} {1}".format(pplt("weightThreshold:"), self.selection.weightThreshold)
 
+    # in Py3 we can't have an attribute by the name of None apparently;
+    # so jenums.Averaging.None yields SyntaxError
+    # But we don't want to disrupt the interface to the user too much
+    # so "None" must be mapped to "NoAveraging"
+    _avgMapFn = { 'None': const('NoAveraging') }
     def averageTime(self, *args):
         if args:
             if len(args)>1:
                 raise RuntimeError, "averageTime() takes only one or no parameters"
-            # 'scalar' => 'Scalar', 'vector' => 'Vector', 'none' => 'None'
+            # 'scalar' => 'Scalar', 'vector' => 'Vector', 'none' => 'NoAveraging'
             s = args[0].capitalize()
+            s = _avgMapFn.get(s, identity)(s)
             if s not in AVG:
-                raise RuntimeError,"'{0}' is not a valid time averaging method".format(args[0])
+                raise RuntimeError("'{0}' is not a valid time averaging method".format(args[0]))
             self.selection.averageTime = AVG[s]
             self.dirty = True
         print "{0} {1}".format(pplt("averageTime:"),self.selection.averageTime)
@@ -1354,6 +1360,7 @@ class jplotter:
                 raise RuntimeError, "averageChannel() takes only one or no parameters"
             # 'scalar' => 'Scalar', 'vector' => 'Vector', 'none' => 'None'
             s = args[0].capitalize()
+            s = _avgMapFn.get(s, identity)(s)
             if s not in AVG:
                 raise RuntimeError,"'{0}' is not a valid channel averaging method".format( args[0] )
             self.selection.averageChannel = AVG[s]
@@ -1554,7 +1561,7 @@ class jplotter:
             return errf("No plot type selected yet")
 
         ## Cannot do both time AND frequency averaging at the moment :-(
-        #if sel_.averageTime!=AVG.None and sel_.averageChannel!=AVG.None:
+        #if sel_.averageTime!=AVG.NoAveraging and sel_.averageChannel!=AVG.NoAveraging:
         #    raise RuntimeError, "Unfortunately, we cannot do time *and* channel averaging at the same time at the moment. Please disable one (or both)"
 
         ## Create the plots!
@@ -1593,7 +1600,7 @@ class jplotter:
         plotar2.weightThres   = CP(self.selection.weightThreshold)
 
         # Annotate with averaging setting, if any 
-        if sel_.averageTime != AVG.None:
+        if sel_.averageTime != AVG.NoAveraging:
             if sel_.timeRange:
                 # Need to to better formatting
                 # One full timestamp, rest offsets?
@@ -1621,7 +1628,7 @@ class jplotter:
                 timerngs = "{0}->{1}".format(ms2util.as_time(se.start), ms2util.as_time(se.end))
             plotar2.comment = plotar2.comment + "[" + ("" if sel_.solint is None else str(sel_.solint)+"s") +" " + str(sel_.averageTime) + " avg'ed " + timerngs + "]"
 
-        if sel_.averageChannel != AVG.None:
+        if sel_.averageChannel != AVG.NoAveraging:
             plotar2.comment = plotar2.comment + "[" + str(sel_.averageChannel) + "averaged channels " + \
                     (hvutil.range_repr(hvutil.find_consecutive_ranges(sel_.chanSel)) if sel_.chanSel else "*") + ("" if sel_.solchan is None else ":{0}".format(sel_.solchan)) + "]"
 
@@ -1784,7 +1791,7 @@ class jplotter:
         self.dirty               = False
         self.npmodify            = 0
         self.scanlist            = []
-        self.averaging           = AVG.None
+        self.averaging           = AVG.NoAveraging
         self.selection           = selection.selection()
         self.mappings            = ms2mappings.mappings()
         self._showSetting        = FLAG.Unflagged

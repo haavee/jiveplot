@@ -1,6 +1,6 @@
 # HV: Contains parsers for querying list of scans 
 from   __future__ import print_function
-import re, hvutil, operator, math, itertools, inspect, plots, plotiterator, copy, numpy
+import re, hvutil, operator, math, itertools, inspect, plotiterator, copy, numpy, plotutil
 
 haveQuanta = False
 try:
@@ -222,7 +222,7 @@ def parse_scan(qry, **kwargs):
     # The output of the parsing is a filter function that returns
     # True or False given a scan object
 
-    next    = lambda s: s.next()
+    #next    = lambda s: s.next()
     tok     = lambda s: s.token
     tok_tp  = lambda s: s.token.type
     tok_val = lambda s: s.token.value
@@ -296,7 +296,7 @@ def parse_scan(qry, **kwargs):
             # consume the integer
             next(s)
             count = itertools.count()
-            limit.value = lambda x: itertools.takewhile(lambda obj: count.next()<ival.value, x)
+            limit.value = lambda x: itertools.takewhile(lambda obj: next(count)<ival.value, x)
         else:
             limit.value = lambda x: x
 
@@ -589,10 +589,10 @@ def parse_scan(qry, **kwargs):
         def __init__(self, tokstream):
             self.tokenstream = tokstream
             self.depth       = 0
-            self.next()
+            next(self)
 
-        def next(self):
-            self.token       = self.tokenstream.next()
+        def __next__(self):
+            self.token       = next(self.tokenstream)
             return self
 
     tokenizer  = mk_tokenizer(tokens, **kwargs)
@@ -671,7 +671,7 @@ def parse_time_expr(txt, **env):
     ]
 
     # shorthands that work on the parser state 's'
-    next    = lambda s: s.next()
+    #next    = lambda s: s.next()
     tok     = lambda s: s.token
     tok_tp  = lambda s: s.token.type
     tok_val = lambda s: s.token.value
@@ -804,10 +804,10 @@ def parse_time_expr(txt, **env):
         def __init__(self, tokstream):
             self.tokenstream = tokstream
             self.depth       = 0
-            self.next()
+            next(self)
 
-        def next(self):
-            self.token       = self.tokenstream.next()
+        def __next__(self):
+            self.token       = next(self.tokenstream)
             return self
 
     tokenizer  = mk_tokenizer(tokens, **env)
@@ -839,7 +839,7 @@ def parse_duration(txt, **env):
     ]
 
     # shorthands that work on the parser state 's'
-    next    = lambda s: s.next()
+    #next    = lambda s: s.next()
     tok     = lambda s: s.token
     tok_tp  = lambda s: s.token.type
     tok_val = lambda s: s.token.value
@@ -861,10 +861,10 @@ def parse_duration(txt, **env):
         def __init__(self, tokstream):
             self.tokenstream = tokstream
             self.depth       = 0
-            self.next()
+            next(self)
 
-        def next(self):
-            self.token       = self.tokenstream.next()
+        def __next__(self):
+            self.token       = next(self.tokenstream)
             return self
 
     tokenizer  = mk_tokenizer(tokens, **env)
@@ -904,7 +904,7 @@ def parse_duration(txt, **env):
 def ds_iter(value):
     for plot in value.keys():
         for dataset in value[plot].keys():
-            yield (plots.join_label(plot, dataset), value[plot][dataset])
+            yield (plotutil.join_label(plot, dataset), value[plot][dataset])
     raise StopIteration
 
 
@@ -923,7 +923,7 @@ def copy_attributes(outp, inp):
     return outp
 
 def ds_flat_filter(value, tp=None, subscript=None):
-    rv                 = copy_attributes(plots.Dict(), value)
+    rv                 = copy_attributes(plotutil.Dict(), value)
     (mklabf, subquery) = (lambda x: x, lambda x: True) if subscript is None else subscript
     for ds in (value.keys() if tp is None else filter(lambda k: k.TYPE==tp, value.keys())):
         # Do we accept this dataset?
@@ -936,13 +936,13 @@ def ds_flat_filter(value, tp=None, subscript=None):
     return rv
 
 def ds_key_filter(value, keys):
-    rv = copy_attributes(plots.Dict(), value)
+    rv = copy_attributes(plotutil.Dict(), value)
     for k in keys:
         rv[k] = value[k]
     return rv
 
 dictType  = type({})
-#isDataset = lambda x: isinstance(x, plots.plt_dataset)
+#isDataset = lambda x: isinstance(x, plotutil.plt_dataset)
 isDataset = lambda x: isinstance(x, dictType)
 
 def normal_apply(l, f, r):
@@ -977,9 +977,9 @@ def do_isect(d0, f, d1):
             print("{0}: {1}".format(key, msg))
         # the new dataset has the combined flagged between the two participating datasets
         nOutput    = len(res[0])
-        acc[ key ] = plots.plt_dataset(res[0], res[1], numpy.logical_or(ds0._m_flagged[:nOutput], ds1._m_flagged[:nOutput]))
+        acc[ key ] = plotutil.plt_dataset(res[0], res[1], numpy.logical_or(ds0._m_flagged[:nOutput], ds1._m_flagged[:nOutput]))
         return acc
-    return reduce(app, set(d0.keys()) & set(d1.keys()), copy_attributes(plots.Dict(), d0))
+    return reduce(app, set(d0.keys()) & set(d1.keys()), copy_attributes(plotutil.Dict(), d0))
 
 # implement infix operator 'f' on two datums
 def immediate_apply(l, f, r):
@@ -993,9 +993,9 @@ def do_iterate(d0, f, d1):
     app      = (lambda d: f(d, d1)) if isDataset(d0) else (lambda d: f(d0, d))
     def reductor(acc, k_ds):
         (key, ds)  = k_ds
-        acc[ key ] = plots.plt_dataset(ds._xval.data, app(ds._yval.data), ds._yval.mask)
+        acc[ key ] = plotutil.plt_dataset(ds._xval.data, app(ds._yval.data), ds._yval.mask)
         return acc
-    return reduce(reductor, proto.iteritems(), copy_attributes(plots.Dict(), proto))
+    return reduce(reductor, proto.iteritems(), copy_attributes(plotutil.Dict(), proto))
 
 applicator_table = { 
     # infix:  lhs <operator> rhs
@@ -1066,7 +1066,7 @@ def parse_dataset_expr(txt, datasets, **env):
     ]
 
     # shorthands that work on the parser state 's'
-    next    = lambda s: s.next()
+    #next    = lambda s: s.next()
     tok     = lambda s: s.token
     tok_tp  = lambda s: s.token.type
     tok_val = lambda s: s.token.value
@@ -1228,9 +1228,9 @@ def parse_dataset_expr(txt, datasets, **env):
             # but tell it to only take the values not in l!
             # (values not in the list of attributes to copy will be initialized to None by
             #  the new label class)
-            attrs_to_copy = plots.label._attrs - set(l)
+            attrs_to_copy = plotutil.label._attrs - set(l)
             def do_it(ds):
-                return plots.label(ds, attrs_to_copy)
+                return plotutil.label(ds, attrs_to_copy)
             return do_it
         (anames, matchfns) = zip(*rv)
         return (mk_lab_f(anames), mk_match_f(matchfns))
@@ -1469,10 +1469,10 @@ def parse_dataset_expr(txt, datasets, **env):
         def __init__(self, tokstream):
             self.tokenstream = tokstream
             self.depth       = 0
-            self.next()
+            next(self)
 
-        def next(self):
-            self.token       = self.tokenstream.next()
+        def __next__(self):
+            self.token       = next(self.tokenstream)
             return self
 
         def __str__(self):
@@ -1565,7 +1565,7 @@ def parse_ckey_expr(expr):
     ]
 
     # shorthands that work on the parser state 's'
-    next    = lambda s: s.next()
+    #next    = lambda s: s.next()
     tok     = lambda s: s.token
     tok_tp  = lambda s: s.token.type
     tok_val = lambda s: s.token.value
@@ -1714,7 +1714,7 @@ def parse_ckey_expr(expr):
                     return None
                 # create new label with all attributes
                 # taken from the conditions
-                nl = plots.label( dict(ms), map(lambda kv: kv[0], ms) )
+                nl = plotutil.label( dict(ms), map(lambda kv: kv[0], ms) )
                 # str representation is key
                 return colouridxfn(keycoldict, str(nl))
             return do_it
@@ -1825,10 +1825,10 @@ def parse_ckey_expr(expr):
         def __init__(self, tokstream):
             self.tokenstream = tokstream
             self.depth       = 0
-            self.next()
+            next(self)
 
-        def next(self):
-            self.token       = self.tokenstream.next()
+        def __next__(self):
+            self.token       = next(self.tokenstream)
             return self
 
         def __str__(self):
@@ -1926,7 +1926,7 @@ def parse_filter_expr(qry, **kwargs):
     # The output of the parsing is a filter function that returns
     # True or False given a dataset object
 
-    next    = lambda s: s.next()
+    #next    = lambda s: s.next()
     tok     = lambda s: s.token
     tok_tp  = lambda s: s.token.type
     tok_val = lambda s: s.token.value
@@ -2124,10 +2124,10 @@ def parse_filter_expr(qry, **kwargs):
         def __init__(self, tokstream):
             self.tokenstream = tokstream
             self.depth       = 0
-            self.next()
+            next(self)
 
-        def next(self):
-            self.token       = self.tokenstream.next()
+        def __next__(self):
+            self.token       = next(self.tokenstream)
             return self
 
     tokenizer  = mk_tokenizer(tokens, **kwargs)
@@ -2282,7 +2282,7 @@ def parse_animate_expr(qry, **kwargs):
     # The output of the parsing is a filter function that returns
     # True or False given a dataset object
 
-    next    = lambda s: s.next()
+    #next    = lambda s: s.next()
     tok     = lambda s: s.token
     tok_tp  = lambda s: s.token.type
     tok_val = lambda s: s.token.value
@@ -2669,18 +2669,18 @@ def parse_animate_expr(qry, **kwargs):
             self.tokenstream = tokstream
             self.depth       = 0
             self.lookAhead   = []
-            self.next()
+            next(self)
 
         def peek(self):
             self.lookAhead.append( self.tokenstream.next() )
             return self.lookAhead[-1]
 
-        def next(self):
+        def __next__(self):
             if self.lookAhead:
                 self.token     = self.lookAhead.pop(0) #self.lookAhead[0]
                 #self.lookAhead = None
             else:
-                self.token     = self.tokenstream.next()
+                self.token     = next(self.tokenstream)
             return self
 
     tokenizer  = mk_tokenizer(tokens, **kwargs)
@@ -2715,7 +2715,7 @@ def parse_baseline_expr(qry, **kwargs):
         token_def(r"\(",                                    simple_t('lparen')),
         token_def(r"\)",                                    simple_t('rparen')),
         token_def(r"\b(\*|auto|cross)\b",                   operator_t('magic')),
-        token_def(r"-|\+",                                  xform_t('add_or_rem')),
+        token_def(r"-|\+",                                  xform_t('add_or_rem', operator2set)),
         # values + regex
         int_token,
         token_def(r"\S+",                                   value_t('text')),
@@ -2729,7 +2729,7 @@ def parse_baseline_expr(qry, **kwargs):
     # The output of the parsing is a filter function that returns
     # True or False given a dataset object
 
-    next    = lambda s: s.next()
+    #next    = lambda s: s.next()
     tok     = lambda s: s.token
     tok_tp  = lambda s: s.token.type
     tok_val = lambda s: s.token.value
@@ -3075,18 +3075,18 @@ def parse_baseline_expr(qry, **kwargs):
             self.tokenstream = tokstream
             self.depth       = 0
             self.lookAhead   = []
-            self.next()
+            next(self)
 
         def peek(self):
-            self.lookAhead.append( self.tokenstream.next() )
+            self.lookAhead.append( next(self.tokenstream) )
             return self.lookAhead[-1]
 
-        def next(self):
+        def __next__(self):
             if self.lookAhead:
                 self.token     = self.lookAhead.pop(0) #self.lookAhead[0]
                 #self.lookAhead = None
             else:
-                self.token     = self.tokenstream.next()
+                self.token     = next(self.tokenstream)
             return self
 
     tokenizer  = mk_tokenizer(tokens, **kwargs)
