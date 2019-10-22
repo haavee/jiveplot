@@ -91,29 +91,6 @@ class mappings:
         # test length of MS. If we think it's too long (say >500000 rows) and
         # 'unique' is True, then warn + ask 
         with ms2util.opentable(nm) as m:
-            if False: #len(m)>limit and defaults['unique']:
-                print
-                print "===> WARNING: this MS contains {0} rows and you requested".format(len(m))
-                print "     'unique' meta data values - i.e. only meta data which"
-                print "     is actually used in the main table."
-                print
-                print "     Finding this out on a MS this size usually takes (a lot of)"
-                print "     time. If you do not want this, cancel when you're asked and"
-                print "     restart jplotter.jcli() with 'unique=False' keyword:"
-                print "         .... "
-                print "         >>> jplotter.jcli(unique=False)"
-                print "     otherwise the code will continue as normal"
-                print
-                ans = None
-                while not ans:
-                    a = raw_input("Do you wish to continue? [y]/n ").lower()
-                    if not a:
-                        a = "n"
-                    if a in "yn":
-                        ans = a
-                if ans=="n":
-                    raise RuntimeError, "Opening of MS cancelled by user"
-
             def logit(x):
                 sys.stdout.write("{0} ... {1}                            \r".format(nm, x))
                 sys.stdout.flush()
