@@ -1,2 +1,11 @@
-sudo docker build -t haavee/jiveplot .
-sudo docker push haavee/jiveplot
+#!/bin/bash
+VERSION=latest
+if [ -n "$1" ]; then
+    VERSION=$1
+fi
+sudo docker build --build-arg JIVEPLOT_VERSION=${VERSION} -t haavee/jiveplot:${VERSION} .
+if [ $? -eq 0 ]; then
+    sudo docker push haavee/jiveplot:${VERSION}
+else
+    echo "You're doing it wrong - #FAIL to build version ${VERSION}"
+fi
