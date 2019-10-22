@@ -1,7 +1,8 @@
-from __future__ import print_function
-from functools  import partial
-from itertools  import product, repeat
-from operator   import truth, contains, eq, is_not, attrgetter, itemgetter, methodcaller, __add__, is_
+from __future__  import print_function
+from functools   import partial, reduce
+from itertools   import product, repeat
+from operator    import truth, contains, eq, is_not, attrgetter, itemgetter, methodcaller, __add__, is_
+from collections import deque
 
 # everybody SHOULD love function composition :-)
 compose     = lambda *fns   : (lambda x: reduce(lambda acc, f: f(acc), reversed(fns), x))
@@ -47,4 +48,102 @@ listify     = choice(is_iterable, identity, lambda x: [x])
 mk_list     = lambda *args: list(args)
 mk_tuple    = lambda *args: args
 truth_tbl   = lambda *args: tuple(map(truth, args))
+# shorter
+GetA        = attrgetter
+GetN        = itemgetter
+Map         = lambda f: functools.partial(map, f)
+Filter      = lambda f: functools.partial(filter, f)
 
+# In Py3 one must sometimes drain an iterable for its side-effect (thx guys).
+# Py2:
+#     # no print function
+#     def p(x):
+#       print x
+#     # but this does something useful
+#     map(p, list(...))
+# Py3:
+#     # we have print() ...
+#     # but this don't do nuttin' (so to speak):
+#     map(p, list(...))
+#     # this does the printing but discards the results
+#     drain( map(p, list(...)) )
+# I like this approach: https://stackoverflow.com/a/9372429
+drain       = deque(maxlen=0).extend
+
+# Quite a few times I use map(...) for its sideeffects
+# So why not have a shortcut "drap()" drain(map(...))
+drap        = compose(drain, partial(map))
+
+# A dynamically constructed List wrapper. Whenever the 2to3 tool wants to wrap map() or
+# filter() in plain "list(...)", replace with this "List(...)".
+# The code will then run optimal under both Py2 and Py3
+# (see timing results below)
+try:
+    # Crude Py2 detection
+    r = raw_input
+    List = lambda x: x
+except NameError:
+    List = lambda x: list(x)
+
+# composition of List(map(...)) and List(filter(...))
+map_       = compose(List, partial(map))
+filter_    = compose(List, partial(filter))
+
+# I've included a source listing of a file "tlist.py" which cleary illustrates this:
+#
+# tlist.py: # Our objective is construct something which makes our code
+# tlist.py: # similar between Py2/Py3 -> such that map()/filter() expressions
+# tlist.py: # return a list; our code assumes that len() and []-indexing are
+# tlist.py: # immediately possible after map()/filter()
+# tlist.py: #
+# tlist.py: # The 2to3 tool does this by wrapping map()/filter() in plain "list(...)".
+# tlist.py: # But for code which can be run under Py2 as well as Py3 this incurs
+# tlist.py: # a penalty if that is done.
+# tlist.py: #
+# tlist.py: # The timing tests below clearly show this. The net result is that 
+# tlist.py: # Py3 is always a factor 3 slower compared to Py2 map()/filter()
+# tlist.py: # returning a direct list.
+# tlist.py: from __future__ import print_function
+# tlist.py: 
+# tlist.py: test_list = filter(lambda x: x%2==0, range(1000))
+# tlist.py: 
+# tlist.py: try:
+# tlist.py:     r = raw_input
+# tlist.py:     List = lambda x: x
+# tlist.py: except NameError:
+# tlist.py:     List = lambda x: list(x)
+# tlist.py: 
+# tlist.py: # This is definitely fastest but under Py3 does not satisfy our
+# tlist.py: # constraint that len() and []-indexing are possible on the return value
+# tlist.py: def immediate():
+# tlist.py:     return test_list
+# tlist.py: 
+# tlist.py: # This is what 2to3 does, wrap map()/filter() in "list(...)"
+# tlist.py: def wrapped():
+# tlist.py:     return list(test_list)
+# tlist.py: 
+# tlist.py: # This is what I propose to wrap with instead
+# tlist.py: def dynamic():
+# tlist.py:     return List(test_list)
+# tlist.py: 
+# tlist.py: 
+# tlist.py: if __name__=='__main__':
+# tlist.py:     import timeit
+# tlist.py:     print("immedate: ", timeit.timeit("immediate()", setup="from __main__ import immediate"))
+# tlist.py:     print("wrapped: ",  timeit.timeit("wrapped()", setup="from __main__ import wrapped"))
+# tlist.py:     print("dynamic: ",  timeit.timeit("dynamic()", setup="from __main__ import dynamic"))
+# tlist.py: 
+# tlist.py: ########################################################################################
+# tlist.py: #  Timing results using anaconda/Python2 
+# tlist.py: #  immedate:  0.133291959763
+# tlist.py: #   wrapped:  1.37940621376
+# tlist.py: #   dynamic:  0.129576206207
+# tlist.py: #
+# tlist.py: #  Timing results using anaconda/Python3 
+# tlist.py: #  immedate:  0.12062911898829043
+# tlist.py: #   wrapped:  0.419401798164472
+# tlist.py: #   dynamic:  0.39737311704084277
+# tlist.py: #
+# tlist.py: #  These were repeatable, done on the same hardware.
+# tlist.py: #  So the "dynamic" approach is fastest compatible between Py2/Py3, with Py3 factor
+# tlist.py: #  of ~3 slower!
