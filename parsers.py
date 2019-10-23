@@ -1,5 +1,8 @@
 # HV: Contains parsers for querying list of scans 
 from   __future__ import print_function
+from   six        import iteritems
+from   functools  import reduce
+from   functional import filter_, range_, map_, drap, drain, List, Filter, Map, GetN, const, ylppa
 import re, hvutil, operator, math, itertools, inspect, plotiterator, copy, numpy, plotutil
 
 haveQuanta = False
@@ -28,9 +31,8 @@ def mk_tokenizer(tokens, **env):
         pos = 0
         while pos<len(string):
             # Run all known regexps against the current string and filter out which one matched
-            moList = map(lambda mo_tp: (mo_tp[0], tp(mo_tp[0], position=pos, **env)),
-                         filter(lambda tup: None if tup[0] is None else tup,
-                                map(lambda rx_tp: (rx_tp[0].match(string, pos), rx_tp[1]), tokens)))
+            moList = map_(lambda mo_tp: (mo_tp[0], tp(mo_tp[0], position=pos, **env)),
+                          filter(GetN(0), map(lambda rx_tp: (rx_tp[0].match(string, pos), rx_tp[1]), tokens)))
             if len(moList)==0:
                 raise RuntimeError("\n{0}\n{1:>{2}s}^\n{3} tokens matched here".format(string, "", pos, len(moList)))
             # extract match-object and the token from the result list
@@ -284,7 +286,7 @@ def parse_scan(qry, **kwargs):
             orderby.value = lambda x: reduce(lambda acc, sortfn: sortfn(acc), sortlist, x)
         else:
             # no sorting
-            orderby.value = lambda x: x
+            orderby.value = identity
         # "LIMIT"
         limit     = tok(s)
         if limit.type=='limit':
@@ -298,7 +300,7 @@ def parse_scan(qry, **kwargs):
             count = itertools.count()
             limit.value = lambda x: itertools.takewhile(lambda obj: next(count)<ival.value, x)
         else:
-            limit.value = lambda x: x
+            limit.value = identity
 
         # the only token left should be 'eof' AND, after consuming it,
         # the stream should be empty. Anything else is a syntax error
@@ -306,7 +308,7 @@ def parse_scan(qry, **kwargs):
             if tok(s).type is None:
                 next(s)
         except StopIteration:
-            return (perscan_f, lambda scans: limit.value(orderby.value(filter(filter_f, scans))))
+            return (perscan_f, compose(List, limit.value, orderby.value, Filter(filter_f)))
         raise SyntaxError("Tokens left after parsing %s" % tok(s))
 
     # modifier = expr 'to' expr 
@@ -594,6 +596,7 @@ def parse_scan(qry, **kwargs):
         def __next__(self):
             self.token       = next(self.tokenstream)
             return self
+        next = __next__
 
     tokenizer  = mk_tokenizer(tokens, **kwargs)
     return parse_query(state_type(tokenizer(qry)))
@@ -809,6 +812,7 @@ def parse_time_expr(txt, **env):
         def __next__(self):
             self.token       = next(self.tokenstream)
             return self
+        next = __next__
 
     tokenizer  = mk_tokenizer(tokens, **env)
     return parse_time_ranges(state_type(tokenizer(txt)))
@@ -866,6 +870,7 @@ def parse_duration(txt, **env):
         def __next__(self):
             self.token       = next(self.tokenstream)
             return self
+        next = __next__
 
     tokenizer  = mk_tokenizer(tokens, **env)
     return parse_time_duration(state_type(tokenizer(txt)))
@@ -899,15 +904,6 @@ def parse_duration(txt, **env):
 #   <id>     = <alnum>{'.'<alnum>}
 #   <alnum>  = [a-zA-Z_][a-zA-Z0-9_]*
 
-# turn datasets[<name>] into an iterator over all contained data sets,
-# yielding (label, dataset) tuples
-def ds_iter(value):
-    for plot in value.keys():
-        for dataset in value[plot].keys():
-            yield (plotutil.join_label(plot, dataset), value[plot][dataset])
-    raise StopIteration
-
-
 methodwrappert = type({}.__delitem__)
 def isAttr(o):
     # in fact, 'inspect.is<predicate>' predicates are useless. They still return all
@@ -917,14 +913,14 @@ def isAttr(o):
     return not (inspect.isbuiltin(o) or o is methodwrappert)
 
 def copy_attributes(outp, inp):
-    map(lambda a_v: setattr(outp, a_v[0], a_v[1]), \
+    drap(lambda a_v: setattr(outp, a_v[0], a_v[1]), \
             map(lambda a_tp: (a_tp[0], getattr(inp, a_tp[0])), \
                 filter(lambda nm_tp: not nm_tp[0].startswith('__'), inspect.getmembers(inp, isAttr))))
     return outp
 
 def ds_flat_filter(value, tp=None, subscript=None):
     rv                 = copy_attributes(plotutil.Dict(), value)
-    (mklabf, subquery) = (lambda x: x, lambda x: True) if subscript is None else subscript
+    (mklabf, subquery) = (identity, const(True)) if subscript is None else subscript
     for ds in (value.keys() if tp is None else filter(lambda k: k.TYPE==tp, value.keys())):
         # Do we accept this dataset?
         if not subquery(ds):
@@ -995,7 +991,7 @@ def do_iterate(d0, f, d1):
         (key, ds)  = k_ds
         acc[ key ] = plotutil.plt_dataset(ds._xval.data, app(ds._yval.data), ds._yval.mask)
         return acc
-    return reduce(reductor, proto.iteritems(), copy_attributes(plotutil.Dict(), proto))
+    return reduce(reductor, iteritems(proto), copy_attributes(plotutil.Dict(), proto))
 
 applicator_table = { 
     # infix:  lhs <operator> rhs
@@ -1092,7 +1088,7 @@ def parse_dataset_expr(txt, datasets, **env):
                       'store': parse_store_dataset }
         cur = tok(s)
         if cur.type not in supported:
-            raise SyntaxError("Unexpected token {0} in stead of {1}".format(cur.type, supported.keys()))
+            raise SyntaxError("Unexpected token {0} in stead of {1}".format(cur.type, list(supported.keys())))
         else:
             # eat up the token and dive in
             rv = supported[cur.type]( next(s) )
@@ -1232,7 +1228,7 @@ def parse_dataset_expr(txt, datasets, **env):
             def do_it(ds):
                 return plotutil.label(ds, attrs_to_copy)
             return do_it
-        (anames, matchfns) = zip(*rv)
+        (anames, matchfns) = zip_(*rv)
         return (mk_lab_f(anames), mk_match_f(matchfns))
 
     #@argprint
@@ -1396,7 +1392,7 @@ def parse_dataset_expr(txt, datasets, **env):
                     def do_it(ds):
                         # lookup fn
                         #callable_obj = do_resolve(fn)
-                        print("{0}({1})".format(fn, ",".join(map(lambda x: repr(x(ds)), al))))
+                        print("{0}({1})".format(fn, ",".join([repr(x(ds)) for x in al])))
                         #return apply_fn(callable_obj, ds, al)
                         return 42
                     return do_it
@@ -1474,6 +1470,7 @@ def parse_dataset_expr(txt, datasets, **env):
         def __next__(self):
             self.token       = next(self.tokenstream)
             return self
+        next = __next__
 
         def __str__(self):
             return "<{0}/{1}>".format(self.depth, self.token)
@@ -1577,7 +1574,7 @@ def parse_ckey_expr(expr):
             def do_it(label, keycoldict, **opts):
                 # run the label through all the filters and see if something sticks
                 #print "parse_ckey_expr:ckey_fn label={0}".format( str(label) )
-                cks = filter(lambda x: x is not None, [ck(label, keycoldict) for ck in lst])
+                cks = filter_(lambda x: x is not None, [ck(label, keycoldict) for ck in lst])
                 # if no color for the label ... that's a bad thing isn't it?!
                 if not cks:
                     raise RuntimeError("None of the colour filters matched label {0}".format( label ))
@@ -1667,7 +1664,7 @@ def parse_ckey_expr(expr):
                 ck = keycoldict.get(key, None)
                 if ck is None:
                     # find values in the keycoldict and choose one that isn't there already
-                    colours = sorted([v for (k,v) in keycoldict.iteritems()])
+                    colours = sorted([v for (k,v) in iteritems(keycoldict)])
                     # find first unused colour index, skip colour 0 and 1 (black & white)
                     ck = 2
                     while colours and ck<=colours[-1]:
@@ -1706,7 +1703,7 @@ def parse_ckey_expr(expr):
             def do_it(l, keycoldict):
                 #print "parse_selector:colorselector[{0} conds] for label {1}".format(len(conds), str(l))
                 # run all our conditions on the label; they ALL must match
-                ms   = map(lambda cond: cond(l), conds)
+                ms   = map_(ylppa(l), conds)
                 # if any of them are (None, None) - this label doesn't meet
                 # all our criteria
                 #print "parse_selector:colorselector[{0} conds] ms={1}".format(len(conds), ms)
@@ -1714,7 +1711,7 @@ def parse_ckey_expr(expr):
                     return None
                 # create new label with all attributes
                 # taken from the conditions
-                nl = plotutil.label( dict(ms), map(lambda kv: kv[0], ms) )
+                nl = plotutil.label( dict(ms), map(GetN(0), ms) )
                 # str representation is key
                 return colouridxfn(keycoldict, str(nl))
             return do_it
@@ -1830,6 +1827,7 @@ def parse_ckey_expr(expr):
         def __next__(self):
             self.token       = next(self.tokenstream)
             return self
+        next = __next__
 
         def __str__(self):
             return "<{0}/{1}>".format(self.depth, self.token)
@@ -2129,6 +2127,7 @@ def parse_filter_expr(qry, **kwargs):
         def __next__(self):
             self.token       = next(self.tokenstream)
             return self
+        next = __next__
 
     tokenizer  = mk_tokenizer(tokens, **kwargs)
     return parse_filter(state_type(tokenizer(qry)))
@@ -2543,7 +2542,7 @@ def parse_animate_expr(qry, **kwargs):
             raise SyntaxError("Expected an integer here, not a {0}".format(end))
         # don't forget to consume the number
         next(s)
-        return range(start.value, end.value+1)
+        return range_(start.value, end.value+1)
 
     def parse_list_list(s):
         bracket = tok(s)
@@ -2672,7 +2671,7 @@ def parse_animate_expr(qry, **kwargs):
             next(self)
 
         def peek(self):
-            self.lookAhead.append( self.tokenstream.next() )
+            self.lookAhead.append( next(self.tokenstream) )
             return self.lookAhead[-1]
 
         def __next__(self):
@@ -2682,6 +2681,7 @@ def parse_animate_expr(qry, **kwargs):
             else:
                 self.token     = next(self.tokenstream)
             return self
+        next = __next__
 
     tokenizer  = mk_tokenizer(tokens, **kwargs)
     return parse_animate(state_type(tokenizer(qry)))
@@ -2988,7 +2988,7 @@ def parse_baseline_expr(qry, **kwargs):
             raise SyntaxError("Expected an integer here, not a {0}".format(end))
         # don't forget to consume the number
         next(s)
-        return range(start.value, end.value+1)
+        return range_(start.value, end.value+1)
 
     def parse_list_list(s):
         bracket = tok(s)
@@ -3088,6 +3088,7 @@ def parse_baseline_expr(qry, **kwargs):
             else:
                 self.token     = next(self.tokenstream)
             return self
+        next = __next__
 
     tokenizer  = mk_tokenizer(tokens, **kwargs)
     return parse_animate(state_type(tokenizer(qry)))
