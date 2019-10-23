@@ -4,6 +4,8 @@ from itertools   import product, repeat
 from operator    import truth, contains, eq, is_not, attrgetter, itemgetter, methodcaller, __add__, is_
 from collections import deque
 
+# why this isn't in stdlib ... is probably because Guido does't like functional programming ...
+identity    = lambda x      : x
 # everybody SHOULD love function composition :-)
 compose     = lambda *fns   : (lambda x: reduce(lambda acc, f: f(acc), reversed(fns), x))
 choice      = lambda p, t, f: (lambda x: t(x) if p(x) else f(x))  # branch
@@ -81,13 +83,17 @@ drap        = compose(drain, partial(map))
 try:
     # Crude Py2 detection
     r = raw_input
-    List = lambda x: x
+    List = ensure_list = identity
 except NameError:
     List = lambda x: list(x)
+    ensure_list = lambda f: (lambda *args, **kwargs: list(f(*args, **kwargs)))
 
-# composition of List(map(...)) and List(filter(...))
-map_       = compose(List, partial(map))
-filter_    = compose(List, partial(filter))
+# The "_" versions evaluate to something that always yields a 
+# list and does that efficiently under both Py2 and Py3
+map_       = ensure_list(map)    #compose(List, partial(map))
+zip_       = ensure_list(zip)    #compose(List, partial(zip))
+range_     = ensure_list(range)  #compose(List, partial(range))
+filter_    = ensure_list(filter) #compose(List, partial(filter))
 
 # I've included a source listing of a file "tlist.py" which cleary illustrates this:
 #
