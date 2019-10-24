@@ -297,9 +297,140 @@ class InvalidFieldId(Exception):
     def __str__(self):
         return "The field code {0} is not a recognized field".format(self.fieldId)
 
+##############################################################################################
+##                    data structures
+##############################################################################################
+
+##
+## The polarization mapping
+##
+class polarizationmap():
+    ## there exists a static mapping between AIPS++ polarization code
+    ##  numerical value (as found in the MS) to the human readable equivalent
+    ##  so we start with a bit of class-level code to deal with that
+    class polcode():
+        def __init__(self, **kwargs):
+            self.code = kwargs['id']
+            self.name = kwargs['name']
+
+    CorrelationStrings = [
+          polcode(id=1 ,name='I' ),
+          polcode(id=2 ,name='Q' ),
+          polcode(id=3 ,name='U' ),
+          polcode(id=4 ,name='V' ),
+          polcode(id=5 ,name='RR'),
+          polcode(id=6 ,name='RL'),
+          polcode(id=7 ,name='LR'),
+          polcode(id=8 ,name='LL'),
+          polcode(id=9 ,name='XX'),
+          polcode(id=10,name='XY'),
+          polcode(id=11,name='YX'),
+          polcode(id=12,name='YY')#,
+          #polcode(id=13,name='RX'),
+          #polcode(id=14,name='RY'),
+          #polcode(id=15,name='LX'),
+          #polcode(id=16,name='LY'),
+          #polcode(id=17,name='XR'),
+          #polcode(id=18,name='XL'),
+          #polcode(id=19,name='YR'),
+          #polcode(id=20,name='YL') 
+          ]
+
+    @staticmethod
+    def polcodeById(corrtype):
+        try:
+            [pcode] = filter_(lambda x: x.code==corrtype, polarizationmap.CorrelationStrings)
+            return copy.deepcopy(pcode)
+        except ValueError:
+            raise InvalidPolarizationCode(corrtype)
+
+    # Return a list of correlationIDs for which the name matches the regex...
+    @staticmethod
+    def matchingName2ID(rx):
+        return [x.code for x in polarizationmap.CorrelationStrings if rx.match(x.name)]
+
+    @staticmethod
+    def correlationId2String(id):
+        return ",".join( polarizationmap.correlationId2Strings(id) )
+    @staticmethod
+    def correlationId2Strings(id):
+        # Assume 'id' is a list-of-correlation-types
+        return map_(lambda x: polarizationmap.polcodeById(x).name, id)
+
+    #  Turn an array of polarizationcombination strings into
+    #  an array of correlation types
+    #  FIXME XXX FIXME
+    @staticmethod
+    def string2CorrelationId(s):
+        lows = s.lower()
+        cs   = map(lambda x: polarizationmap.polcode(id=x.code, name=x.name.lower()), polarizationmap.CorrelationStrings)
+        def findid(nm):
+            try:
+                [x] = filter_(lambda y: y.name.lower()==nm.lower(), cs)
+                return x.code
+            except ValueError:
+                raise InvalidPolarizationCode(nm)
+        (result,names) = ([],s.lstrip().rstrip().split(','))
+        map(result.append, map(findid, names))
+        return result
+
+    # This is where the instance methods go - these are
+    # for mapping what was actually contained in the MS
+    #  polmap = [(polid, poltypes)]
+    def __init__(self, polmap):
+        self.polarizationMap = polmap
+
+    # Note: technically speaking the polarization id is
+    #       a direct index into the list of polarizations
+    #       so *technically* we could do self.polarizationMap[id]
+    #       but then we - because of pythonicity - also can
+    #       address polarization id "-1", which would be the
+    #       last one in the list. Which we don't want because
+    #       then the "id" isn't actually the id anymore.
+
+    # return the polarizations as a string with comma-separated
+    # polarization strings
+    def getPolarizationsString(self, id):
+        return ",".join(self.getPolarizations(id))
+
+    # return the polarization strings as list of strings
+    def getPolarizations(self, id):
+        try:
+            # enforce unique search result otherwise bomb out
+            [x] = filter_(lambda y: y[0]==id, self.polarizationMap)
+            return polarizationmap.correlationId2Strings(x[1])
+        except ValueError:
+            raise InvalidPolarizationCode(id)
+
+    def getCorrelationTypes(self, id):
+        try:
+            # enforce unique search result otherwise bomb out
+            [x] = filter_(lambda y: y[0]==id, self.polarizationMap)
+            return x[1]
+        except ValueError:
+            raise InvalidPolarizationCode(id)
+
+    def polarizationIDs(self):
+        return [x[0] for x in self.polarizationMap]
+
+    def nrPolarizationIDs(self):
+        return len(self.polarizationMap)
+
+def makePolarizationMap(nm, **args):
+    errf   = hvutil.mkerrf("makePolarizationMap({0})".format(nm))
+    with opentable(nm) as tbl:
+        with opentable(tbl.getkeyword('POLARIZATION')) as poltab:
+            if len(poltab)==0:
+                return errf("No rows in POLARIZATION table?!")
+
+            # read all polarization types
+            get_type = lambda x: x['CORR_TYPE']
+            return polarizationmap(zip_(itertools.count(), map(get_type, poltab)))
+
+
+
 ct2str = polarizationmap.correlationId2String
 
-## data structures
 class subband:
     # ddmap = Map POLARIZATION_ID => DATA_DESCRIPTION_ID,
     #    all polarization IDs this subband was correlated with
@@ -886,133 +1017,6 @@ def makeBaselineMap(nm, **kwargs):
 
             return baselinemap(filter(lambda n_i: filter_f(n_i[1]), zip(names, ids)), baselines=baselines)
 
-
-
-##
-## The polarization mapping
-##
-class polarizationmap():
-    ## there exists a static mapping between AIPS++ polarization code
-    ##  numerical value (as found in the MS) to the human readable equivalent
-    ##  so we start with a bit of class-level code to deal with that
-    class polcode():
-        def __init__(self, **kwargs):
-            self.code = kwargs['id']
-            self.name = kwargs['name']
-
-    CorrelationStrings = [
-          polcode(id=1 ,name='I' ),
-          polcode(id=2 ,name='Q' ),
-          polcode(id=3 ,name='U' ),
-          polcode(id=4 ,name='V' ),
-          polcode(id=5 ,name='RR'),
-          polcode(id=6 ,name='RL'),
-          polcode(id=7 ,name='LR'),
-          polcode(id=8 ,name='LL'),
-          polcode(id=9 ,name='XX'),
-          polcode(id=10,name='XY'),
-          polcode(id=11,name='YX'),
-          polcode(id=12,name='YY')#,
-          #polcode(id=13,name='RX'),
-          #polcode(id=14,name='RY'),
-          #polcode(id=15,name='LX'),
-          #polcode(id=16,name='LY'),
-          #polcode(id=17,name='XR'),
-          #polcode(id=18,name='XL'),
-          #polcode(id=19,name='YR'),
-          #polcode(id=20,name='YL') 
-          ]
-
-    @staticmethod
-    def polcodeById(corrtype):
-        try:
-            [pcode] = filter_(lambda x: x.code==corrtype, polarizationmap.CorrelationStrings)
-            return copy.deepcopy(pcode)
-        except ValueError:
-            raise InvalidPolarizationCode(corrtype)
-
-    # Return a list of correlationIDs for which the name matches the regex...
-    @staticmethod
-    def matchingName2ID(rx):
-        return [x.code for x in polarizationmap.CorrelationStrings if rx.match(x.name)]
-
-    @staticmethod
-    def correlationId2String(id):
-        return ",".join( polarizationmap.correlationId2Strings(id) )
-    @staticmethod
-    def correlationId2Strings(id):
-        # Assume 'id' is a list-of-correlation-types
-        return map_(lambda x: polarizationmap.polcodeById(x).name, id)
-
-    #  Turn an array of polarizationcombination strings into
-    #  an array of correlation types
-    #  FIXME XXX FIXME
-    @staticmethod
-    def string2CorrelationId(s):
-        lows = s.lower()
-        cs   = map(lambda x: polarizationmap.polcode(id=x.code, name=x.name.lower()), polarizationmap.CorrelationStrings)
-        def findid(nm):
-            try:
-                [x] = filter_(lambda y: y.name.lower()==nm.lower(), cs)
-                return x.code
-            except ValueError:
-                raise InvalidPolarizationCode(nm)
-        (result,names) = ([],s.lstrip().rstrip().split(','))
-        map(result.append, map(findid, names))
-        return result
-
-    # This is where the instance methods go - these are
-    # for mapping what was actually contained in the MS
-    #  polmap = [(polid, poltypes)]
-    def __init__(self, polmap):
-        self.polarizationMap = polmap
-
-    # Note: technically speaking the polarization id is
-    #       a direct index into the list of polarizations
-    #       so *technically* we could do self.polarizationMap[id]
-    #       but then we - because of pythonicity - also can
-    #       address polarization id "-1", which would be the
-    #       last one in the list. Which we don't want because
-    #       then the "id" isn't actually the id anymore.
-
-    # return the polarizations as a string with comma-separated
-    # polarization strings
-    def getPolarizationsString(self, id):
-        return ",".join(self.getPolarizations(id))
-
-    # return the polarization strings as list of strings
-    def getPolarizations(self, id):
-        try:
-            # enforce unique search result otherwise bomb out
-            [x] = filter_(lambda y: y[0]==id, self.polarizationMap)
-            return polarizationmap.correlationId2Strings(x[1])
-        except ValueError:
-            raise InvalidPolarizationCode(id)
-
-    def getCorrelationTypes(self, id):
-        try:
-            # enforce unique search result otherwise bomb out
-            [x] = filter_(lambda y: y[0]==id, self.polarizationMap)
-            return x[1]
-        except ValueError:
-            raise InvalidPolarizationCode(id)
-
-    def polarizationIDs(self):
-        return [x[0] for x in self.polarizationMap]
-
-    def nrPolarizationIDs(self):
-        return len(self.polarizationMap)
-
-def makePolarizationMap(nm, **args):
-    errf   = hvutil.mkerrf("makePolarizationMap({0})".format(nm))
-    with opentable(nm) as tbl:
-        with opentable(tbl.getkeyword('POLARIZATION')) as poltab:
-            if len(poltab)==0:
-                return errf("No rows in POLARIZATION table?!")
-
-            # read all polarization types
-            get_type = lambda x: x['CORR_TYPE']
-            return polarizationmap(zip_(itertools.count(), map(get_type, poltab)))
 
 
 ##
