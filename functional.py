@@ -53,8 +53,8 @@ truth_tbl   = lambda *args: tuple(map(truth, args))
 # shorter
 GetA        = attrgetter
 GetN        = itemgetter
-Map         = lambda f: functools.partial(map, f)
-Filter      = lambda f: functools.partial(filter, f)
+Map         = lambda f: partial(map, f)
+Filter      = lambda f: partial(filter, f)
 
 # In Py3 one must sometimes drain an iterable for its side-effect (thx guys).
 # Py2:
