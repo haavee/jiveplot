@@ -83,6 +83,9 @@
 # HV: * time to commit - added some more basic stuff
 #
 from   __future__ import print_function
+from   functional import map_, filter_, zip_, enumerate_, range_, is_not_none, drap
+from   six        import iteritems
+from   functools  import reduce, partial
 import itertools, operator, re, string, copy, math, datetime
 
 ## Partition a list into two lists - one with the elements satisfying the predicate
@@ -96,14 +99,14 @@ def partition(pred, lst):
 # map a function over all the values in the dict
 # {k:v} => {k:f(v)}
 def dictmap(f, d):
-    return dict((k, f((k,v))) for (k,v) in d.iteritems())
+    return dict((k, f((k,v))) for (k,v) in iteritems(d))
 
 # reduce a dict to one value:
 #  acc = f( (k1, v1), f( (k0,v0), acc0 ) )  etc
 # "f" is called as: f(elem, acc)
 # and should return the new accumulator
 def dictfold(f, a, d):
-    for x in d.iteritems():
+    for x in iteritems(d):
         a = f(x, a)
     return a
 
@@ -176,7 +179,7 @@ def quote_split(s, splitchar=';', quotes="'"):
     # switch quotiness if we see quotes[switch]
     switch  = 0  
     inquote = False
-    for i in xrange(len(s)):
+    for i in range_(len(s)):
         if not inquote and s[i]==splitchar:
             rv.append( "" )
             continue
@@ -199,8 +202,8 @@ def quote_split(s, splitchar=';', quotes="'"):
 ##
 ##     n                                    return a tuple with the n addressed objects
 ##                                            irrespective of n==0, n==1,... n==42, ...
-itemgetter = lambda *args: lambda thing: tuple(map(lambda x: thing[x], args))
-attrgetter = lambda *args: lambda thing: tuple(map(lambda x: getattr(thing, x), args))
+itemgetter = lambda *args: lambda thing: tuple([thing[x] for x in args])
+attrgetter = lambda *args: lambda thing: tuple([getattr(thing, x) for x in args])
 
 
 ## Finds consecutive ranges in the sequence
@@ -227,11 +230,11 @@ def find_consecutive_ranges(seq):
     def maker( key_seq ):
         # undo the enumeration we added to allow
         # identification of consecutive elements
-        l = map(operator.itemgetter(1), key_seq[1])
+        l = map_(operator.itemgetter(1), key_seq[1])
         if l:
             return (l[0], l[-1])
         return None
-    return filter(lambda x: x!=None, map(maker, itertools.groupby(enumerate(sorted(key_seq[1])), lambda i_x:i_x[0]-i_x[1])))
+    return filter_(is_not_none, map(maker, itertools.groupby(enumerate(sorted(key_seq[1])), lambda i_x:i_x[0]-i_x[1])))
 
 ## After having found consecutive ranges, you might want a string representation
 ##  [(start, end), ...] =>
@@ -339,6 +342,7 @@ def strcut(s, n, char):
 #rxSplit          = re.compile(r"('.*?(?<!\\)'|\S+)")
 rxSplit          = re.compile(r"('.*?(?<!\\)'(?=\s|$)|\S+)")
 rxUnescapedQuote = re.compile(r"(?<!\\)'")
+stripEscapeChars = partial(re.sub, r"\\", r"")
 def escape_split(s):
     # three stage process:
     #   (1) find all quoted string + whitespace separated words
@@ -348,16 +352,16 @@ def escape_split(s):
 
     # (1) find a list of strings and strip the leading+trailing quote
     #     if any
-    words  = map(lambda x: x[1:-1] if x[0]=="'" else x, rxSplit.findall(s))
+    words  = map_(lambda x: x[1:-1] if x[0]=="'" else x, rxSplit.findall(s))
 
     # (2) detect syntax errors like "n'oot" "aap 'noot''mies'"
-    if any(map(lambda x: rxUnescapedQuote.search(x), words)):
+    if any(map(rxUnescapedQuote.search, words)):
         raise SyntaxError("quoted string error - either no whitespace between " \
                           "quoted elements or an unescaped quote in the middle " \
                           "of a word")
 
     # (3) strip the escape character(s)
-    return map(lambda x:re.sub("\\\\","", x), words)
+    return map_(stripEscapeChars, words)
 
 
 ## Flatten a list of lists
@@ -408,7 +412,8 @@ def dfs_seen(node, graph, seen, cycles):
     else:
         seen.append(node)
         if node in graph:
-            map(lambda x: dfs_seen(x, graph, copy.deepcopy(seen), cycles), graph[node])
+            # drain + map() - we not interested in the return value of the map()
+            drap(lambda x: dfs_seen(x, graph, copy.deepcopy(seen), cycles), graph[node])
     return cycles
 
 def cycle_detect(graph):
