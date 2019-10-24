@@ -123,6 +123,7 @@ from   six        import iteritems
 from   functools  import reduce
 import itertools, operator, math, re, jenums, hvutil, numpy, pyrap.tables, pyrap.quanta, sys
 import datetime, copy, collections
+from functools import reduce
 
 # Return a nicely human readable string representation
 # of a MS::TIME column value
