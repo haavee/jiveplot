@@ -90,10 +90,11 @@ except NameError:
 
 # The "_" versions evaluate to something that always yields a 
 # list and does that efficiently under both Py2 and Py3
-map_       = ensure_list(map)    #compose(List, partial(map))
-zip_       = ensure_list(zip)    #compose(List, partial(zip))
-range_     = ensure_list(range)  #compose(List, partial(range))
-filter_    = ensure_list(filter) #compose(List, partial(filter))
+map_       = ensure_list(map)
+zip_       = ensure_list(zip)
+range_     = ensure_list(range)
+filter_    = ensure_list(filter)
+enumerate_ = compose(list, enumerate) # enumerate gives list() neither in 2 nor 3
 
 # I've included a source listing of a file "tlist.py" which cleary illustrates this:
 #
