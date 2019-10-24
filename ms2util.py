@@ -118,8 +118,11 @@
 #  Revision 1.1.1.1  2001/04/06 13:34:34  verkout
 #  Files, new + from jivegui/MS1
 from   __future__ import print_function
+from   functional import map_, filter_, zip_, enumerate_
+from   six        import iteritems
 import itertools, operator, math, re, jenums, hvutil, numpy, pyrap.tables, pyrap.quanta, sys
 import datetime, copy, collections
+from functools import reduce
 
 # Return a nicely human readable string representation
 # of a MS::TIME column value
@@ -294,7 +297,7 @@ class InvalidFieldId(Exception):
     def __str__(self):
         return "The field code {0} is not a recognized field".format(self.fieldId)
 
-ct2str = lambda x : polarizationmap.correlationId2String(x)
+ct2str = polarizationmap.correlationId2String
 
 ## data structures
 class subband:
@@ -357,7 +360,7 @@ class subband:
         return hvutil.dictfold(foldfn, [], self.datadescMap)
 
     def getDataDescIDs(self):
-        return self.datadescMap.values()
+        return list(self.datadescMap.values())
 
 ## the spectral map class
 ##   holds a mapping and defines lookup functions on those mappings
@@ -371,18 +374,18 @@ class spectralmap:
     #
     #  Update: assume FQGROUP == (FREQ_GROUP :: int, FREQ_GROUP_NAME :: string)
     def __init__(self, spm):
-        self.spectralMap  = hvutil.dictmap(lambda k_v: zip(itertools.count(), k_v[1]), spm)
+        self.spectralMap  = hvutil.dictmap(lambda k_v: enumerate_(k_v[1]), spm)
 
     # Simple API functions
     def nFreqId(self):
         return len(self.spectralMap)
 
     def freqIds(self):
-        return map(operator.itemgetter(0), self.spectralMap.keys())
+        return map_(operator.itemgetter(0), self.spectralMap.keys())
 
     def freqGroupName(self, fq):
         try:
-            [key] = filter(lambda num_name: fq==num_name[0] or fq==num_name[1], self.spectralMap.keys())
+            [key] = filter_(lambda num_name: fq==num_name[0] or fq==num_name[1], self.spectralMap.keys())
             return key[1]
         except ValueError:
             raise InvalidFreqGroup(fq)
@@ -391,7 +394,7 @@ class spectralmap:
     # may raise KeyError if not found
     def _findFQ(self, fqkey):
         try:
-            [key] = filter(lambda num_name: fqkey==num_name[0] or fqkey==num_name[1], self.spectralMap.keys())
+            [key] = filter_(lambda num_name: fqkey==num_name[0] or fqkey==num_name[1], self.spectralMap.keys())
             return self.spectralMap[key]
         except ValueError:
             raise KeyError
@@ -467,7 +470,7 @@ class spectralmap:
             # the polarization Ids are the keys in the datadescription map,
             # the values are the associated data description id's
             fqref = self._findFQ(fq)
-            return fqref[sb][1].datadescMap.keys()
+            return list(fqref[sb][1].datadescMap.keys())
         except KeyError:
             raise InvalidFreqGroup(fq)
         except IndexError:
@@ -571,7 +574,7 @@ class spectralmap:
     #  FREQID is the freqid (you'd never guessed that eh?) and SUBBAND is the *zero*
     #  based subband nr in this freqid that the requested spectral window represents..
     def unmap(self, spwid):
-        for (fq, sbs) in self.spectralMap.iteritems():
+        for (fq, sbs) in iteritems(self.spectralMap):
             for (idx, sb) in sbs:
                 if sb.spWinId==spwid:
                     o = type('',(),{})()
@@ -583,7 +586,7 @@ class spectralmap:
     #  Unmap a DATA_DESC_ID into FREQID/SUBBAND/POLID
     def unmapDDId(self, ddid):
         # look in all FREQGROUPS, in all SUBBANDS for the given DATA_DESC_ID
-        for (k,v) in hvutil.dictmap(lambda k_v: [sb for sb in k_v[1] if sb[1].unmapDDId(ddid)], self.spectralMap).iteritems():
+        for (k,v) in iteritems(hvutil.dictmap(lambda k_v: [sb for sb in k_v[1] if sb[1].unmapDDId(ddid)], self.spectralMap)):
             if len(v)==1:
                 class sbres:
                     def __init__(self,fid,sb,pid):
@@ -603,14 +606,14 @@ class spectralmap:
     # Print ourselves in readable format
     def __str__(self):
         r =  "*** SPWIN <-> FREQID/SUBBAND MAP ***\n"
-        for (fgrp,subbands) in self.spectralMap.iteritems():
+        for (fgrp,subbands) in iteritems(self.spectralMap):
             r = r+"FQ={0} ({1})\n".format(fgrp[0], fgrp[1])
             for (idx,sb) in subbands:
                 r = r + "  {0:2d}: {1}".format(idx,sb)
                 if len(sb.datadescMap)>0:
                     r = r + " // {0}\n".format( \
                                       ",".join(["POLID #{0} (DDI={1})".format(pol,ddi) \
-                                                   for (pol,ddi) in sb.datadescMap.iteritems()]) \
+                                                   for (pol,ddi) in iteritems(sb.datadescMap)]) \
                     )
         return r
 
@@ -706,7 +709,7 @@ def makeSpectralMap(nm, **kwargs):
                                     processed = True
                                     # now update the subband object's data desc map with this one's
                                     # let's verify that existing (POLID -> DATA_DESC_ID) are not violated!
-                                    for (p,d) in sb.datadescMap.iteritems():
+                                    for (p,d) in iteritems(sb.datadescMap):
                                         if p in k.datadescMap:
                                             if k.datadescMap[p]!=d:
                                                 #### FIXME TODO
@@ -773,30 +776,30 @@ class baselinemap:
             # the entries in 'antennaList' are ('<name>', AntennaId) tuples!
             bls = [(x[1],y[1]) for (idx, x) in enumerate(self.antennaList) for y in self.antennaList[idx:]]
         # Now transform the list of indices into a list of names + codes
-        self.baselineList = map(lambda x_y: (x_y, "{0}{1}".format(self.antennaName(x_y[0]), self.antennaName(x_y[1]))), bls)
+        self.baselineList = map_(lambda x_y: (x_y, "{0}{1}".format(self.antennaName(x_y[0]), self.antennaName(x_y[1]))), bls)
 
     def baselineNames(self):
-        return map(operator.itemgetter(1), self.baselineList)
+        return map_(operator.itemgetter(1), self.baselineList)
 
     def baselineIndices(self):
-        return map(operator.itemgetter(0), self.baselineList)
+        return map_(operator.itemgetter(0), self.baselineList)
 
     def baselineName(self, blidx):
         try:
-            [(x,y)] = filter(lambda idx_nm: idx_nm[0]==blidx, self.baselineList)
+            [(x,y)] = filter_(lambda idx_nm: idx_nm[0]==blidx, self.baselineList)
             return y
         except ValueError:
             raise InvalidBaselineId(blidx)
 
     def baselineIndex(self, blname):
         try:
-            [(x,y)] = filter(lambda idx_nm: idx_nm[1]==blname, self.baselineList)
+            [(x,y)] = filter_(lambda idx_nm: idx_nm[1]==blname, self.baselineList)
             return x
         except ValueError:
             raise InvalidBaselineId(blname)
 
     def antennaNames(self):
-        return map(operator.itemgetter(0), self.antennaList)
+        return map_(operator.itemgetter(0), self.antennaList)
 
     # return the list of (antenna, id) tuples, sorted by id
     def antennas(self):
@@ -804,7 +807,7 @@ class baselinemap:
 
     def antennaName(self, id):
         try:
-            [(nm, i)] = filter(lambda ant_antid: ant_antid[1]==id, self.antennaList)
+            [(nm, i)] = filter_(lambda ant_antid: ant_antid[1]==id, self.antennaList)
             return nm
         except ValueError:
             raise InvalidAntenna(id)
@@ -812,7 +815,7 @@ class baselinemap:
     def antennaId(self, name):
         try:
             namelower = name.lower()
-            [(nm, id)] = filter(lambda ant_antid: ant_antid[0].lower()==namelower, self.antennaList)
+            [(nm, id)] = filter_(lambda ant_antid: ant_antid[0].lower()==namelower, self.antennaList)
             return id
         except ValueError:
             raise InvalidAntenna(name)
@@ -870,7 +873,7 @@ def makeBaselineMap(nm, **kwargs):
                 # tuples with antenna indices
                 maxant    = max(ants)+1
                 make_tup  = lambda blcode: (blcode/maxant, blcode%maxant)
-                baselines = map(make_tup, numpy.unique(numpy.add(numpy.multiply(a1, maxant), a2)))
+                baselines = map_(make_tup, numpy.unique(numpy.add(numpy.multiply(a1, maxant), a2)))
 
             names = antab.getcol('NAME')
 
@@ -923,7 +926,7 @@ class polarizationmap():
     @staticmethod
     def polcodeById(corrtype):
         try:
-            [pcode] = filter(lambda x: x.code==corrtype, polarizationmap.CorrelationStrings)
+            [pcode] = filter_(lambda x: x.code==corrtype, polarizationmap.CorrelationStrings)
             return copy.deepcopy(pcode)
         except ValueError:
             raise InvalidPolarizationCode(corrtype)
@@ -939,22 +942,23 @@ class polarizationmap():
     @staticmethod
     def correlationId2Strings(id):
         # Assume 'id' is a list-of-correlation-types
-        return map(lambda x: polarizationmap.polcodeById(x).name, id)
+        return map_(lambda x: polarizationmap.polcodeById(x).name, id)
 
     #  Turn an array of polarizationcombination strings into
     #  an array of correlation types
+    #  FIXME XXX FIXME
     @staticmethod
     def string2CorrelationId(s):
         lows = s.lower()
         cs   = map(lambda x: polarizationmap.polcode(id=x.code, name=x.name.lower()), polarizationmap.CorrelationStrings)
         def findid(nm):
             try:
-                [x] = filter(lambda y: y.name.lower()==nm.lower(), cs)
+                [x] = filter_(lambda y: y.name.lower()==nm.lower(), cs)
                 return x.code
             except ValueError:
                 raise InvalidPolarizationCode(nm)
         (result,names) = ([],s.lstrip().rstrip().split(','))
-        map(lambda x: result.append(x), map(findid, names))
+        map(result.append, map(findid, names))
         return result
 
     # This is where the instance methods go - these are
@@ -980,7 +984,7 @@ class polarizationmap():
     def getPolarizations(self, id):
         try:
             # enforce unique search result otherwise bomb out
-            [x] = filter(lambda y: y[0]==id, self.polarizationMap)
+            [x] = filter_(lambda y: y[0]==id, self.polarizationMap)
             return polarizationmap.correlationId2Strings(x[1])
         except ValueError:
             raise InvalidPolarizationCode(id)
@@ -988,7 +992,7 @@ class polarizationmap():
     def getCorrelationTypes(self, id):
         try:
             # enforce unique search result otherwise bomb out
-            [x] = filter(lambda y: y[0]==id, self.polarizationMap)
+            [x] = filter_(lambda y: y[0]==id, self.polarizationMap)
             return x[1]
         except ValueError:
             raise InvalidPolarizationCode(id)
@@ -1008,7 +1012,7 @@ def makePolarizationMap(nm, **args):
 
             # read all polarization types
             get_type = lambda x: x['CORR_TYPE']
-            return polarizationmap(zip(itertools.count(), map(get_type, poltab)))
+            return polarizationmap(zip_(itertools.count(), map(get_type, poltab)))
 
 
 ##
@@ -1020,7 +1024,7 @@ class fieldmap:
         self.fieldMap = fm
 
     def fldextractor(self, n):
-        return map(operator.itemgetter(n), self.fieldMap)
+        return map_(operator.itemgetter(n), self.fieldMap)
 
     def getFields(self):
         return self.fldextractor(1)
@@ -1036,14 +1040,14 @@ class fieldmap:
     def field(self, id):
         try:
             # enforce unique search result otherwise bomb out
-            [x] = filter(lambda y: y[0]==id, self.fieldMap)
+            [x] = filter_(lambda y: y[0]==id, self.fieldMap)
             return x[1]
         except ValueError:
             raise InvalidFieldId(id)
     def unfield(self, name):
         try:
             # enforce unique search result otherwise bomb out
-            [x] = filter(lambda y: y[1]==name, self.fieldMap)
+            [x] = filter_(lambda y: y[1]==name, self.fieldMap)
             return x[0]
         except ValueError:
             raise InvalidFieldId(name)
@@ -1067,7 +1071,7 @@ def makeFieldMap(nm, **kwargs):
                 filter_f  = lambda fld_nm: fld_nm[0] in field_ids
 
             get_name = lambda x: x['NAME']
-            return fieldmap(filter(filter_f, zip(itertools.count(), map(get_name, fldtab))))
+            return fieldmap(filter_(filter_f, zip(itertools.count(), map(get_name, fldtab))))
 
 
 ##
@@ -1290,7 +1294,7 @@ def reducems(function, ms, init, columns, **kwargs):
     while i<mslen:
         cs   = min(chunksize, mslen-i)  # chunksize
         logfn(progress(i, 0, mslen, 50))
-        init = reduce(function, itertools.izip( *map(lambda c_f: f(ms, c_f[0], i, cs), fns)), init)
+        init = reduce(function, itertools.izip( *map_(lambda c_f: f(ms, c_f[0], i, cs), fns)), init)
         i    = i + cs
     e = now()
     logfn(" "*60)
@@ -1319,7 +1323,7 @@ def reducems_raw(function, ms, init, columns, **kwargs):
     chunksz = kwargs.get('chunksize', 5000)
     fns     = map(lambda col: (col, slicers.get(col, lambda tab, c, s, n: tab.getcol(c, startrow=s, nrow=n))), columns)
     return reduce(lambda acc, i_cs:\
-                    reduce(function, itertools.izip( *map(lambda c_f: f(ms, c_f[0], i_cs[0], i_cs[1]), fns)), acc),
+                    reduce(function, itertools.izip( *map_(lambda c_f: f(ms, c_f[0], i_cs[0], i_cs[1]), fns)), acc),
                   chunkert(0, len(ms), chunksz), init)
 
 ## reducems calls function as:
@@ -1331,5 +1335,5 @@ def reducems2(function, ms, init, columns, **kwargs):
     slicers = kwargs.get('slicers', {})
     chunksz = kwargs.get('chunksize', 5000)
     fns     = map(lambda col: (col, slicers.get(col, lambda tab, c, s, n: tab.getcol(c, startrow=s, nrow=n))), columns)
-    return reduce(lambda acc, i_cs: function(acc, *map(lambda c_f: f(ms, c_f[0], i_cs[0], i_cs[1]), fns)),
+    return reduce(lambda acc, i_cs: function(acc, *map_(lambda c_f: f(ms, c_f[0], i_cs[0], i_cs[1]), fns)),
                   chunkert(0, len(ms), chunksz, verbose=kwargs.get('verbose', False)), init)
