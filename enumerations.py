@@ -65,7 +65,7 @@ Elements from the enumeration can be used as ordinary variables:
     axes['bar']    => ValueError: Enum(x,y,z) does not contain the value bar
     axes[foo.bar]  => ValueError: Enum(x,y,z) does not contain the value bar
 """
-from   six import with_metaclass
+from   six import with_metaclass, iteritems
 import operator, collections
 
 # Python 2.6 don't have OrderedDict in the collections module. Sigh.
@@ -86,7 +86,7 @@ except AttributeError:
                     continue
                 self.append( (k,v) )
                 self.seen.add( k )
-            for (k,v) in kwargs.iteritems():
+            for (k,v) in iteritems(kwargs):
                 if k in self.seen:
                     continue
                 self.append( (k,v) )
