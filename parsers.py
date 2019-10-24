@@ -2,7 +2,7 @@
 from   __future__ import print_function
 from   six        import iteritems
 from   functools  import reduce
-from   functional import filter_, range_, map_, drap, drain, List, Filter, Map, GetN, const, ylppa
+from   functional import * #filter_, range_, map_, drap, drain, List, Filter, Map, GetN, const, ylppa
 import re, hvutil, operator, math, itertools, inspect, plotiterator, copy, numpy, plotutil
 
 haveQuanta = False
@@ -26,20 +26,34 @@ class token_type(object):
     def __repr__(self):
         return str(self)
 
+def D(x):
+    print(x)
+    return x
+def DD(x):
+    def do_it(y):
+        print(x,y)
+        return y
+    return do_it
+
 def mk_tokenizer(tokens, **env):
+    # run all the token regexps against the text at postion p
+    # and return a list of those that matched with their converted value(s)
+    def get_matchobjects(txt, p):
+            return map_(lambda mo_tp: (mo_tp[0], mo_tp[1](mo_tp[0], position=p, **env)),
+                        filter(GetN(0),
+                               map(lambda rx_tp: (rx_tp[0].match(txt, p), rx_tp[1]), tokens)))
+    #sep = "\n -> "
     def do_tokenize(string):
         pos = 0
         while pos<len(string):
-            # Run all known regexps against the current string and filter out which one matched
-            moList = map_(lambda mo_tp: (mo_tp[0], tp(mo_tp[0], position=pos, **env)),
-                          filter(GetN(0), map(lambda rx_tp: (rx_tp[0].match(string, pos), rx_tp[1]), tokens)))
+            # Run all known regexps against the current string and filter out which one(s) matched
+            moList = get_matchobjects(string, pos)
             if len(moList)==0:
-                raise RuntimeError("\n{0}\n{1:>{2}s}^\n{3} tokens matched here".format(string, "", pos, len(moList)))
+                raise RuntimeError("\n{0}\n{1:>{2}s}^\n{3} tokens matched here".format(string, "", pos, len(moList)))# + ("" if not moList else sep.join([""]+map_(str, moList))))
             # extract match-object and the token from the result list
             (mo, tok) = moList[0]
             pos      += (mo.end() - mo.start())
             # Ignore tokens that say they are nothing (e.g. whitespace)
-            #print "TOKEN: ",tok
             if tok is not None:
                 yield tok
         yield token_type(None, None)
@@ -2717,7 +2731,7 @@ def parse_baseline_expr(qry, **kwargs):
         token_def(r"\b(\*|auto|cross)\b",                   operator_t('magic')),
         token_def(r"-|\+",                                  xform_t('add_or_rem', operator2set)),
         # values + regex
-        int_token,
+        int_token(),
         token_def(r"\S+",                                   value_t('text')),
         #token_def(r"[:@\#%!\.\*\+\-a-zA-Z0-9_?|]+",         value_t('text')),
         # and whitespace
