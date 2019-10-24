@@ -80,19 +80,24 @@ drap        = compose(drain, partial(map))
 # filter() in plain "list(...)", replace with this "List(...)".
 # The code will then run optimal under both Py2 and Py3
 # (see timing results below)
+
+# range_() will always yield an iterable, both under Py2 and Py3
+#  by using xrange() under Py2 and normal range() under Py3
 try:
     # Crude Py2 detection
-    r = raw_input
-    List = ensure_list = identity
+    r      = raw_input
+    List   = ensure_list = identity
+    range_ = xrange
 except NameError:
-    List = lambda x: list(x)
+    List        = lambda x: list(x)
     ensure_list = lambda f: (lambda *args, **kwargs: list(f(*args, **kwargs)))
+    range_      = range
 
 # The "_" versions evaluate to something that always yields a 
 # list and does that efficiently under both Py2 and Py3
 map_       = ensure_list(map)
 zip_       = ensure_list(zip)
-range_     = ensure_list(range)
+#range_     = ensure_list(range) 
 filter_    = ensure_list(filter)
 enumerate_ = compose(list, enumerate) # enumerate gives list() neither in 2 nor 3
 
