@@ -6,8 +6,20 @@
 ##       such that we can divide the "H" colour space in roughly even bits.
 ##       If you requested a low number of colours from the original code, they would be
 ##       rather close to each other
+from   __future__ import print_function
 import itertools, math, colorsys
-from fractions import Fraction
+from   fractions import Fraction
+
+# Py2/Py3 compatibility: make sure map_() returns a list
+#         *efficiently* on either system
+try:
+    # Crude Py2 detection
+    r           = raw_input
+    ensure_list = lambda x: x
+except NameError:
+    ensure_list = lambda f: (lambda *args, **kwargs: list(f(*args, **kwargs)))
+
+map_ = ensure_list(map)
 
 def getfracs(n):
     # we generate four variations / colour (=h)
@@ -34,13 +46,13 @@ def genhsv(n):
             for h in getfracs(n):
                 yield (h, s, bias(v))
 
-getflt  = lambda x: map(float, x)
-gethsvs = lambda n: map(getflt, genhsv(n))
+getflt  = lambda x: map_(float, x)
+gethsvs = lambda n: map_(getflt, genhsv(n))
 getrgb  = lambda x: colorsys.hsv_to_rgb(*x)
 getncol_hsv = lambda n: list(itertools.islice(gethsvs(n), n))
-getncol_rgb = lambda n: map(getrgb, getncol_hsv(n))
+getncol_rgb = lambda n: map_(getrgb, getncol_hsv(n))
 
 if __name__ == "__main__":
-    l = getncol(13)
-    print "Generated ",len(l)," colours"
-    print map(getrgb, l)
+    l = getncol_hsv(13)
+    print("Generated ",len(l)," colours")
+    print(map_(getrgb, l))
