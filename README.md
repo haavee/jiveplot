@@ -104,8 +104,15 @@ Even though all functionality is in the Docker image, we advise to run/install S
 
 ### Running the Singularity image
 
+*UPDATE* November 2019 - because of [Singularity security
+changes](https://singularityhub.github.io/singularityhub-docs/2019/security-release/#api-access)
+it is now recommended to use the following method of running the jiveplot
+container:
+
 ```bash
-$ singularity run --bind <local dir>:<container dir> shub://haavee/jiveplot
+$ singularity pull shub://haavee/jiveplot:latest
+# this will give you a local `path/to/*.simg` file
+$ singularity run --bind <local dir>:<container dir> path/to/*.simg
 ```
 
 where `<local dir>` is the/a directory on your host where your CASA
