@@ -1,0 +1,4 @@
+Bootstrap: docker
+From:kernsuite/base:4
+%post
+    docker-apt-install python-casacore pgplot5 ppgplot
