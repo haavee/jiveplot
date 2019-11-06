@@ -1,7 +1,9 @@
 # command line utility - abstracts handling of commands from defining/implementing them
 # A rewrite from the glish based version from jivegui.ms2
 from   __future__ import print_function
-import re, sys, copy, pydoc, fcntl, termios, struct, os, itertools, math, tempfile, traceback, functional, builtins
+try:               import builtins
+except ImportError:import __builtin__ as builtins
+import re, sys, copy, pydoc, fcntl, termios, struct, os, itertools, math, tempfile, traceback, functional
 import hvutil, glob
 from   six        import iteritems
 from   six.moves  import input as raw_input
@@ -155,6 +157,8 @@ class readkbd(newhistory):
             return None
         if quit:
             raise StopIteration
+
+    next = __next__
 
     def completer(self, text, state):
         if not haveReadline:
@@ -475,7 +479,7 @@ class CommandLineInterface:
         #     (for each macro, compile the list of 
         #      macro names that are found in the value)
         def reductor(acc, k_v):
-            acc[k] = filter_(lambda txt: re.search(wordmatch(txt), k_v[1]), nmacro.keys())
+            acc[k_v[0]] = filter_(lambda txt: re.search(wordmatch(txt), k_v[1]), nmacro.keys())
             return acc
         graph = reduce(reductor, iteritems(nmacro), {})
         # (3) detect cycles
