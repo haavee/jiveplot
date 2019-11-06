@@ -74,7 +74,7 @@ drain       = deque(maxlen=0).extend
 
 # Quite a few times I use map(...) for its sideeffects
 # So why not have a shortcut "drap()" drain(map(...))
-drap        = compose(drain, partial(map))
+drap        = lambda *args, **kwargs: drain(map(*args, **kwargs))
 
 # A dynamically constructed List wrapper. Whenever the 2to3 tool wants to wrap map() or
 # filter() in plain "list(...)", replace with this "List(...)".
@@ -85,13 +85,16 @@ drap        = compose(drain, partial(map))
 #  by using xrange() under Py2 and normal range() under Py3
 try:
     # Crude Py2 detection
-    r      = raw_input
-    List   = ensure_list = identity
-    range_ = xrange
+    r           = raw_input
+    List        = identity
+    ensure_list = lambda f: (lambda *args, **kwargs: f(*args, **kwargs))
+    range_      = xrange
+    reduce_     = functools.reduce
 except NameError:
-    List        = lambda x: list(x)
+    List        = list
     ensure_list = lambda f: (lambda *args, **kwargs: list(f(*args, **kwargs)))
     range_      = range
+    reduce_     = ensure_list(functools.reduce)
 
 # The "_" versions evaluate to something that always yields a 
 # list and does that efficiently under both Py2 and Py3
@@ -99,7 +102,10 @@ map_       = ensure_list(map)
 zip_       = ensure_list(zip)
 #range_     = ensure_list(range) 
 filter_    = ensure_list(filter)
-enumerate_ = compose(list, enumerate) # enumerate gives list() neither in 2 nor 3
+# enumerate takes a positional parameter and an optional keyword argument.
+# also it doesn't give a list() in neither Py2 nor Py3 so enumerate_()
+# can be identical on both flavours
+enumerate_ = lambda *args, **kwargs: list(enumerate(*args, **kwargs))
 
 # I've included a source listing of a file "tlist.py" which cleary illustrates this:
 #
