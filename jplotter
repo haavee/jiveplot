@@ -1,13 +1,15 @@
-#!/usr/bin/env python 
+#!/usr/bin/env python
+from   __future__ import print_function
 import sys, os, re, operator, functools
+from   functional import drap
 
 if '-v' in sys.argv:
-    print "$Id: jplotter,v 1.3 2014-08-08 15:38:40 jive_cc Exp $"
+    print("$Id: jplotter,v 1.3 2014-08-08 15:38:40 jive_cc Exp $")
     sys.exit( 0 )
 
 if '-h' in sys.argv:
-    print "Usage: {0} [-h] [-d] [-v] [-c <cmd>]".format(os.path.basename(sys.argv[0]))
-    print """
+    print("Usage: {0} [-h] [-d] [-v] [-c <cmd>]".format(os.path.basename(sys.argv[0])))
+    print("""
     where:
         -h       print this message and exit"
         -v       print version and exit
@@ -17,12 +19,14 @@ if '-h' in sys.argv:
         -d       turn on debug output [prints stack trace upon error]
         ppgplot=/path/to/home/of{/ppgplot/__init__.py}
             load ppgplot module from '/path/to/home/of' if that path exists
-"""
+""")
     sys.exit( 0 )
 
 # look for an entries "ppgplot=..." and insert them into the system path
-map(lambda mo: sys.path.insert(0, mo.group(1)) if os.path.isdir(mo.group(1)) else None,
-    filter(operator.truth, map(re.compile(r'^ppgplot=(.+)$').search, sys.argv[1:])))
+# this map() is used for its side-effect(s) so for Py3 we must drain the
+# iterable. functional.drap(...) combines drain() + map()
+drap(lambda mo: sys.path.insert(0, mo.group(1)) if os.path.isdir(mo.group(1)) else None,
+     filter(operator.truth, map(re.compile(r'^ppgplot=(.+)$').search, sys.argv[1:])))
 
 # gobble all '-c <cmd>' commands together
 def collect_cmds(acc, x):
@@ -38,7 +42,7 @@ def collect_cmds(acc, x):
         if x == '-c':
             acc.state = x
     return acc
-acc = reduce(collect_cmds, sys.argv[1:], type('',(),{'state':None, 'cmds':list()})())
+acc = functools.reduce(collect_cmds, sys.argv[1:], type('',(),{'state':None, 'cmds':list()})())
 if acc.state is not None:
     raise RuntimeError("-c option missing argument")
 
