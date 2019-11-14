@@ -878,12 +878,12 @@ def makeSpectralMap(nm, **kwargs):
                 sort_order = kwargs.get('spw_order', 'by_frequency').lower()
 
                 if sort_order=='by_frequency':
-                    sortfn = lambda x,y: cmp(x.frequency[0], y.frequency[0])
+                    sortfn = lambda x: x.frequency[0] #lambda x,y: cmp(x.frequency[0], y.frequency[0])
                 elif sort_order=='by_id':
-                    sortfn = lambda x,y: cmp(x.spWinId, y.spWinId)
+                    sortfn = lambda x: x.spWinId #lambda x,y: cmp(x.spWinId, y.spWinId)
                 else:
                     raise RuntimeError("The spectral window ordering function {0} is unknown".format( kwargs.get('spw_order') ))
-                return spectralmap( hvutil.dictmap( lambda kvpair : sorted(kvpair[1], sortfn), spmap) )
+                return spectralmap( hvutil.dictmap( lambda kvpair : sorted(kvpair[1], key=sortfn), spmap) )
 
 
 
