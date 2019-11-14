@@ -446,6 +446,7 @@ class jplotter:
         # finally, see if we were constructed with a ms argument
         if d['ms']:
             self.ms(d['ms'])
+
     def ms(self, *args):
         if args:
             rxYesNo = re.compile(r"^(?P<yes>t(rue)?)|f(alse)?$", re.I)
@@ -565,7 +566,7 @@ class jplotter:
             print(pfx,"No MS loaded yet")
             return None
         # baselineMap.antennas() = [ (id, name), ... ]
-        mk_output(prng(pfx+" "), map("{0[0]} ({[0]1: >2}) ".format,
+        mk_output(prng(pfx+" "), map_("{0[0]} ({0[1]: >2}) ".format,
                                  self.mappings.baselineMap.antennas()), 80)
 
     def listTimeRange(self):
