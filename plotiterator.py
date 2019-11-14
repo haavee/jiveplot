@@ -399,10 +399,10 @@ class plotbase(object):
                 (fq, sb, pid, l) = ddSel
                 ddId             = GETDDID(fq, sb, pid)
                 polStrings       = _pMap.getPolarizations(pid)
-                acc[0][ ddId ]   = (fq, sb, zip(l, ITEMGET(*l)(polStrings)))
+                acc[0][ ddId ]   = (fq, sb, functional.zip_(l, ITEMGET(*l)(polStrings)))
                 acc[1][ ddId ]   = GETF(fq, sb)/scale
                 return acc
-            (self.ddSelection, self.ddFreqs)   = reduce(ddIdAdder, selection.ddSelection, [{}, {}])
+            (self.ddSelection, self.ddFreqs)   = functional.reduce_(ddIdAdder, selection.ddSelection, [{}, {}])
         else:
             ddids     = _spwMap.datadescriptionIDs()
             UNMAPDDID = _spwMap.unmapDDId
@@ -412,7 +412,7 @@ class plotbase(object):
                 acc[0][ dd ] = (r.FREQID, r.SUBBAND, list(enumerate(_pMap.getPolarizations(r.POLID))))
                 acc[1][ dd ] = GETF(r.FREQID, r.SUBBAND)/scale
                 return acc
-            (self.ddSelection, self.ddFreqs)   = reduce(ddIdAdder, ddids, [{}, {}])
+            (self.ddSelection, self.ddFreqs)   = functional.reduce_(ddIdAdder, ddids, [{}, {}])
 
         ## Provide for a label unmapping function.
         ## After creating the plots we need to transform the labels - some
@@ -579,7 +579,7 @@ class dataset_fixed:
         return self
 
     def __str__(self):
-        return "DATASET<fixed>: {0}".format(zip(self.x, self.y))
+        return "DATASET<fixed>: {0}".format(functional.zip_(self.x, self.y))
 
     def __repr__(self):
         return str(self)
@@ -1092,11 +1092,11 @@ class fakems:
         rows = self.chunk[startrow]
 
         coldict = {
-                "ANTENNA1"    : (lambda x: map(lambda tm, a1_a2, dd, fl: a1_a2[0], x), numpy.int32),
-                "ANTENNA2"    : (lambda x: map(lambda tm, a1_a2, dd, fl: a1_a2[1], x), numpy.int32),
-                "TIME"        : (lambda x: map(lambda tm, a1_a2, dd, fl: tm, x), numpy.float64),
-                "DATA_DESC_ID": (lambda x: map(lambda tm, a1_a2, dd, fl: dd, x), numpy.int32),
-                "FIELD_ID"    : (lambda x: map(lambda tm, a1_a2, dd, fl: fl, x), numpy.int32)
+                "ANTENNA1"    : (lambda x: functional.map_(lambda tm, a1_a2, dd, fl: a1_a2[0], x), numpy.int32),
+                "ANTENNA2"    : (lambda x: functional.map_(lambda tm, a1_a2, dd, fl: a1_a2[1], x), numpy.int32),
+                "TIME"        : (lambda x: functional.map_(lambda tm, a1_a2, dd, fl: tm, x), numpy.float64),
+                "DATA_DESC_ID": (lambda x: functional.map_(lambda tm, a1_a2, dd, fl: dd, x), numpy.int32),
+                "FIELD_ID"    : (lambda x: functional.map_(lambda tm, a1_a2, dd, fl: fl, x), numpy.int32)
                 }
         (valfn, tp) = coldict.get(col, (None, None))
         #print("getcol[{0}]/var={1}".format(col, var))
@@ -1105,12 +1105,12 @@ class fakems:
         if col=="WEIGHT":
             # nrow x npol
             shp = (nrow, self.shp[1])
-            rv = numpy.ones( reduce(operator.mul, shp), dtype=numpy.float32 )
+            rv = numpy.ones( functional.reduce_(operator.mul, shp), dtype=numpy.float32 )
             rv.shape = shp
             return rv
         if col=="DATA" or col=="LAG_DATA":
             shp = (nrow, self.shp[0], self.shp[1])
-            rv = numpy.zeros( reduce(operator.mul, shp), dtype=numpy.complex64 )
+            rv = numpy.zeros( functional.reduce_(operator.mul, shp), dtype=numpy.complex64 )
             rv.shape = shp
             return rv
         raise RuntimeError("Unhandled column {0}".format(col))
@@ -1437,7 +1437,7 @@ class data_quantity_time(plotbase):
 
                 # It is important to KNOW that "selection.timeRange" (and thus our
                 # local copy 'timerng') is a list or sorted, non-overlapping time ranges
-                timerng = map(lambda s_e: (s_e[0], s_e[1], sum(s_e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
+                timerng = functional.map_(lambda s_e: (s_e[0], s_e[1], sum(s_e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
                 if len(timerng)==1:
                     print("WARNING: averaging all data into one point in time!")
                     print("         This is because no solint was set or no time")
@@ -1449,8 +1449,8 @@ class data_quantity_time(plotbase):
                 # replacing
                 def do_it(x):
                     mi,ma  = numpy.min(x), numpy.max(x)
-                    ranges = filter(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-                    return reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
+                    ranges = functional.filter_(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
+                    return functional.reduce_(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
                 self.timebin_fn = do_it
             else:
                 # Check if solint isn't too small
@@ -1628,7 +1628,7 @@ class data_quantity_time(plotbase):
                     # do some extra pre-processing for the simplistic approach
                     # it uses slice() indexing so we pre-create the slice objects for it
                     # for each range of channels to average we compute src and dst slice
-                    indices = map(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
+                    indices = functional.map_(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
                     slices  = [(slice(i, i+1), slice(rng[0], rng[1]+1)) for i, rng in enumerate(indices)]
                     # for display + loopindexing create list of (array_index, "CH label") tuples
                     self.chanidx = list()
@@ -1670,7 +1670,7 @@ class data_quantity_time(plotbase):
         if postpone:
             # create data sets based on the averaged data in a dataset
             org_quantities  = CP(self.quantities)
-            post_quantities = lambda _, x: map(lambda q: (q.quantity_name, q.quantity_fn(x)), org_quantities)
+            post_quantities = lambda _, x: functional.map_(lambda q: (q.quantity_name, q.quantity_fn(x)), org_quantities)
             self.quantities = [Quantity('raw', functional.identity)]
 
         if len(self.chanidx)==1:
@@ -1680,7 +1680,7 @@ class data_quantity_time(plotbase):
             # here the post_channel yields a list of extracted channels from the data 'x' coupled
             # with the assigned label from self.chanidx
             org_chanidx   = CP(self.chanidx)
-            post_channel  = lambda _, x: map(lambda chi: (chi[1], x[:,chi[0]]), org_chanidx)
+            post_channel  = lambda _, x: functional.map_(lambda chi: (chi[1], x[:,chi[0]]), org_chanidx)
             # replace self.chanidx with a single entry which captures all channels and sets the 
             # associated label to None - which we could use as a sentinel, if needed
             self.chanidx  = [(Ellipsis, None)]
@@ -1693,7 +1693,7 @@ class data_quantity_time(plotbase):
         else:
             # depending on wether we need to solint one or more channels in one go
             # loop over the current self.chanidx and count nr of channels
-            nChannel = reduce(lambda acc, chi: acc + ((n_chan if chansel is Ellipsis else len(chansel)) if chi[0] is Ellipsis else 1), self.chanidx, 0)
+            nChannel = functional.reduce_(lambda acc, chi: acc + ((n_chan if chansel is Ellipsis else len(chansel)) if chi[0] is Ellipsis else 1), self.chanidx, 0)
             dataset_proto = dataset_solint_array if nChannel>1 else dataset_solint_scalar
 
         ## Now we can start the reduction of the table
@@ -1742,7 +1742,7 @@ class data_quantity_time(plotbase):
         data      = self.vectorAvg(data)
         # Now create the quantity data - map the quantity functions over the (vector averaged)
         # data and, if needed, scalar average them
-        qd        = map(lambda q: (q.quantity_name, self.scalarAvg(q.quantity_fn(data))), self.quantities)
+        qd        = functional.map_(lambda q: (q.quantity_name, self.scalarAvg(q.quantity_fn(data))), self.quantities)
 
         # Transform the time stamps, if necessary
         tm        = self.timebin_fn(tm)
@@ -1888,15 +1888,15 @@ class data_quantity_chan(plotbase):
 
                 # It is important to KNOW that "selection.timeRange" (and thus our
                 # local copy 'timerng') is a list or sorted, non-overlapping time ranges
-                timerng = map(lambda s_e: (s_e[0], s_e[1], sum(s+e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
+                timerng = functional.map_(lambda s_e: (s_e[0], s_e[1], sum(s_e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
 
                 # try to be a bit optimized in time stamp replacement - filter the 
                 # list of time ranges to those applying to the time stamps we're 
                 # replacing
                 def do_it(x):
                     mi,ma  = numpy.min(x), numpy.max(x)
-                    ranges = filter(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-                    return reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
+                    ranges = functional.filter_(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
+                    return functional.reduce_(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
                 self.timebin_fn = do_it
             else:
                 # Check if solint isn't too small
@@ -2071,7 +2071,7 @@ class data_quantity_chan(plotbase):
                     # do some extra pre-processing for the simplistic approach
                     # it uses slice() indexing so we pre-create the slice objects for it
                     # for each range of channels to average we compute src and dst slice
-                    indices = map(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
+                    indices = functional.map_(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
                     slices  = [(slice(i, i+1), slice(rng[0], rng[1]+1)) for i, rng in enumerate(indices)]
                     # for display + loopindexing create list of (array_index, "CH label") tuples
                     self.chanidx = CP(bins) 
@@ -2089,7 +2089,7 @@ class data_quantity_chan(plotbase):
                     chbin_fn = use_dumbass_method
 
                 # transform all frequencies to an average frequency per bin
-                indices_l  = map(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
+                indices_l  = functional.map_(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
                 slices_l   = [(slice(i, i+1), slice(rng[0], rng[1]+1)) for i, rng in enumerate(indices_l)]
                 def mk_fbins(x):
                     result = numpy.empty((len(slices_l)))
@@ -2129,7 +2129,7 @@ class data_quantity_chan(plotbase):
         if postpone:
             # create data sets based on the averaged data in a dataset
             org_quantities  = CP(self.quantities)
-            post_quantities = lambda _, x: map(lambda q: (q.quantity_name, q.quantity_fn(x)), org_quantities)
+            post_quantities = lambda _, x: functional.map_(lambda q: (q.quantity_name, q.quantity_fn(x)), org_quantities)
             self.quantities = [Quantity('raw', functional.identity)]
 
         # Now that we've got an idea what our x-axis is going to be ('self.chanidx')
@@ -2202,7 +2202,7 @@ class data_quantity_chan(plotbase):
         data      = self.vectorAvg(data)
         # Now create the quantity data - map the quantity functions over the (vector averaged)
         # data and, if needed, scalar average them
-        qd        = map(lambda q: (q.quantity_name, self.scalarAvg(q.quantity_fn(data))), self.quantities)
+        qd        = functional.map_(lambda q: (q.quantity_name, self.scalarAvg(q.quantity_fn(data))), self.quantities)
 
         # Transform the time stamps, if necessary
         tm        = self.timebin_fn(tm)
@@ -2717,7 +2717,7 @@ class weight_time(plotbase):
 
                 # It is important to KNOW that "selection.timeRange" (and thus our
                 # local copy 'timerng') is a list or sorted, non-overlapping time ranges
-                timerng = map(lambda s_e: (s_e[0], s_e[1], sum(s_e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
+                timerng = functinoal.map_(lambda s_e: (s_e[0], s_e[1], sum(s_e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
                 if len(timerng)==1:
                     print("WARNING: averaging all data into one point in time!")
                     print("         This is because no solint was set or no time")
@@ -2729,8 +2729,8 @@ class weight_time(plotbase):
                 # replacing
                 def do_it(x):
                     mi,ma  = numpy.min(x), numpy.max(x)
-                    ranges = filter(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-                    return reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
+                    ranges = functional.filter_(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
+                    return functional.reduce_(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
                 self.timebin_fn = do_it
             else:
                 # Check if solint isn't too small
@@ -2899,7 +2899,7 @@ class weight_time(plotbase):
                     # do some extra pre-processing for the simplistic approach
                     # it uses slice() indexing so we pre-create the slice objects for it
                     # for each range of channels to average we compute src and dst slice
-                    indices = map(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
+                    indices = functional.map_(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
                     slices  = [(slice(i, i+1), slice(rng[0], rng[1]+1)) for i, rng in enumerate(indices)]
                     # for display + loopindexing create list of (array_index, "CH label") tuples
                     self.chanidx = list()
@@ -2940,7 +2940,7 @@ class weight_time(plotbase):
         if postpone:
             # create data sets based on the averaged data in a dataset
             org_quantities  = CP(self.quantities)
-            post_quantities = lambda _, x: map(lambda q: (q.quantity_name, q.quantity_fn(x)), org_quantities)
+            post_quantities = lambda _, x: functional.map_(lambda q: (q.quantity_name, q.quantity_fn(x)), org_quantities)
             self.quantities = [Quantity('raw', functional.identity)]
 
         if self.chanidx is None or len(self.chanidx)==1:
@@ -2950,7 +2950,7 @@ class weight_time(plotbase):
             # here the post_channel yields a list of extracted channels from the data 'x' coupled
             # with the assigned label from self.chanidx
             org_chanidx   = CP(self.chanidx)
-            post_channel  = lambda _, x: map(lambda chi: (chi[1], x[:,chi[0]]), org_chanidx)
+            post_channel  = lambda _, x: functional.map_(lambda chi: (chi[1], x[:,chi[0]]), org_chanidx)
             # replace self.chanidx with a single entry which captures all channels and sets the 
             # associated label to None - which we could use as a sentinel, if needed
             self.chanidx  = [(Ellipsis, None)]
@@ -2963,7 +2963,7 @@ class weight_time(plotbase):
             # depending on wether we need to solint one or more channels in one go
             # loop over the current self.chanidx and count nr of channels
             if self.chanidx:
-                nChannel = reduce(lambda acc, chi: acc + ((n_chan if chansel is Ellipsis else len(chansel)) if chi[0] is Ellipsis else 1), self.chanidx, 0)
+                nChannel = functional.reduce_(lambda acc, chi: acc + ((n_chan if chansel is Ellipsis else len(chansel)) if chi[0] is Ellipsis else 1), self.chanidx, 0)
             else:
                 nChannel = 1
             dataset_proto = dataset_solint_array if nChannel>1 else dataset_solint_scalar
@@ -3032,7 +3032,7 @@ class weight_time(plotbase):
         data      = self.vectorAvg(data)
         # Now create the quantity data - map the quantity functions over the (vector averaged)
         # data and, if needed, scalar average them
-        qd        = map(lambda q: (q.quantity_name, self.scalarAvg(q.quantity_fn(data))), self.quantities)
+        qd        = functional.map_(lambda q: (q.quantity_name, self.scalarAvg(q.quantity_fn(data))), self.quantities)
 
         # Transform the time stamps, if necessary
         tm        = self.timebin_fn(tm)
@@ -3065,7 +3065,7 @@ class weight_time(plotbase):
         data      = self.vectorAvg(data)
         # Now create the quantity data - map the quantity functions over the (vector averaged)
         # data and, if needed, scalar average them
-        qd        = map(lambda q: (q.quantity_name, self.scalarAvg(q.quantity_fn(data))), self.quantities)
+        qd        = functional.map_(lambda q: (q.quantity_name, self.scalarAvg(q.quantity_fn(data))), self.quantities)
 
         # Transform the time stamps, if necessary
         tm        = self.timebin_fn(tm)
@@ -3398,7 +3398,7 @@ class data_quantity_uvdist(plotbase):
                     # do some extra pre-processing for the simplistic approach
                     # it uses slice() indexing so we pre-create the slice objects for it
                     # for each range of channels to average we compute src and dst slice
-                    indices = map(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
+                    indices = functional.map_(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
                     slices  = [(slice(i, i+1), slice(rng[0], rng[1]+1)) for i, rng in enumerate(indices)]
                     # for display + loopindexing create list of (array_index, "CH label") tuples
                     self.chanidx = CP(bins) 
@@ -3416,7 +3416,7 @@ class data_quantity_uvdist(plotbase):
                     chbin_fn = use_dumbass_method
 
                 # transform all frequencies to an average frequency per bin
-                indices_l  = map(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
+                indices_l  = functional.map_(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
                 slices_l   = [(slice(i, i+1), slice(rng[0], rng[1]+1)) for i, rng in enumerate(indices_l)]
                 def mk_fbins(x):
                     result = numpy.empty((len(slices_l)))
@@ -3452,7 +3452,7 @@ class data_quantity_uvdist(plotbase):
         if postpone:
             # create data sets based on the averaged data in a dataset
             org_quantities  = CP(self.quantities)
-            post_quantities = lambda _, x: map(lambda q: (q.quantity_name, q.quantity_fn(x)), org_quantities)
+            post_quantities = lambda _, x: functional.map_(lambda q: (q.quantity_name, q.quantity_fn(x)), org_quantities)
             self.quantities = [Quantity('raw', functional.identity)]
 
         ## Now we can start the reduction of the table
@@ -3497,7 +3497,7 @@ class data_quantity_uvdist(plotbase):
         data      = self.vectorAvg(data)
         # Now create the quantity data - map the quantity functions over the (vector averaged)
         # data and, if needed, scalar average them
-        qd        = map(lambda q: (q.quantity_name, self.scalarAvg(q.quantity_fn(data))), self.quantities)
+        qd        = functional.map_(lambda q: (q.quantity_name, self.scalarAvg(q.quantity_fn(data))), self.quantities)
 
         # Transform uvw column into uvw distance. Apparently ...
         # older numpy's have a numpy.linalg.norm() that does NOT take an 'axis' argument
