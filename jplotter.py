@@ -1357,7 +1357,7 @@ class jplotter:
                 raise RuntimeError("averageTime() takes only one or no parameters")
             # 'scalar' => 'Scalar', 'vector' => 'Vector', 'none' => 'NoAveraging'
             s = args[0].capitalize()
-            s = _avgMapFn.get(s, identity)(s)
+            s = jplotter._avgMapFn.get(s, identity)(s)
             if s not in AVG:
                 raise RuntimeError("'{0}' is not a valid time averaging method".format(args[0]))
             self.selection.averageTime = AVG[s]
@@ -1370,7 +1370,7 @@ class jplotter:
                 raise RuntimeError("averageChannel() takes only one or no parameters")
             # 'scalar' => 'Scalar', 'vector' => 'Vector', 'none' => 'None'
             s = args[0].capitalize()
-            s = _avgMapFn.get(s, identity)(s)
+            s = jplotter._avgMapFn.get(s, identity)(s)
             if s not in AVG:
                 raise RuntimeError("'{0}' is not a valid channel averaging method".format( args[0] ))
             self.selection.averageChannel = AVG[s]
