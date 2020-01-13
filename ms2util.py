@@ -1003,7 +1003,7 @@ def makeBaselineMap(nm, **kwargs):
                 # Then we uniquefy those and translate them back to
                 # tuples with antenna indices
                 maxant    = max(ants)+1
-                make_tup  = lambda blcode: (blcode/maxant, blcode%maxant)
+                make_tup  = lambda blcode: (blcode // maxant, blcode%maxant)
                 baselines = map_(make_tup, numpy.unique(numpy.add(numpy.multiply(a1, maxant), a2)))
 
             names = antab.getcol('NAME')
@@ -1339,5 +1339,5 @@ def reducems2(function, ms, init, columns, **kwargs):
     slicers = kwargs.get('slicers', {})
     chunksz = kwargs.get('chunksize', 5000)
     fns     = map(lambda col: (col, slicers.get(col, lambda tab, c, s, n: tab.getcol(c, startrow=s, nrow=n))), columns)
-    return reduce(lambda acc, i_cs: function(acc, *map_(lambda c_f: f(ms, c_f[0], i_cs[0], i_cs[1]), fns)),
+    return reduce(lambda acc, i_cs: function(acc, *map_(lambda c_f: c_f[1](ms, c_f[0], i_cs[0], i_cs[1]), fns)),
                   chunkert(0, len(ms), chunksz, verbose=kwargs.get('verbose', False)), init)
