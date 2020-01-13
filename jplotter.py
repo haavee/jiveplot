@@ -1298,7 +1298,7 @@ class jplotter:
                 # selector function, execute the selector function and finally
                 # tally up the total selection
                 sel_.ddSelection = \
-                    reduce_(lambda acc, sel: sel(acc), map(mkselector, args), [])
+                    reduce(lambda acc, sel: sel(acc), map(mkselector, args), [])
 
                 # Now there's some normalization to be done: it could be that
                 # different expressions selected different products out of the same
@@ -1435,7 +1435,7 @@ class jplotter:
             def proc_pair( ax_val ):
                 (ax,val) = ax_val
                 # phase one: verify and accumulate (==expand 'all' to all axes) the axis part
-                ax2      = reduce_(verifyAccumulate, ax.split(','), [])
+                ax2      = reduce(verifyAccumulate, ax.split(','), [])
 
                 # check if the value can be made sense of
                 if val is None:
