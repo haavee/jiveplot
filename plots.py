@@ -608,9 +608,9 @@ class Page(object):
         pidx = self.plotIndex(pnum)
         # the viewport coords - take care of filling rows or columns first
         if self.layout.rows:
-            rv          = Viewport(pidx % self.layout.nx, pidx / self.layout.nx, self)
+            rv          = Viewport(pidx % self.layout.nx, pidx // self.layout.nx, self)
         else:
-            rv          = Viewport(pidx / self.layout.ny, pidx % self.layout.ny, self)
+            rv          = Viewport(pidx // self.layout.ny, pidx % self.layout.ny, self)
         rv.lastRow  = (rv.y+1)==self.layout.ny or (nplot - pnum)<=self.layout.nx
         rv.lastCol  = (self.layout.nx>1 and (rv.x+1)==self.layout.nx and not Scaling.auto_local in self.plotter.yScale) or (pnum == nplot)
         xl,yt       = (self.xl + self.rightShift + rv.x*self.dx, self.yt - rv.y * self.dy)
@@ -757,7 +757,7 @@ class Page(object):
             dy                         = 1.0/(nyleg+1)
             for (idx, cmap) in enumerate(coldict.iteritems()):
                 (label, col) = cmap
-                (ipos, jpos) = (idx % nxleg, idx / nxleg)
+                (ipos, jpos) = (idx % nxleg, idx // nxleg)
 
                 xpos[0] = xoff + (xsz+xline+xskip+xsep) * ipos
                 xpos[1] = xpos[0] + xline
