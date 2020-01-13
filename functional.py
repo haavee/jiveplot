@@ -89,12 +89,10 @@ try:
     List        = identity
     ensure_list = lambda f: (lambda *args, **kwargs: f(*args, **kwargs))
     range_      = xrange
-    reduce_     = reduce
 except NameError:
     List        = list
     ensure_list = lambda f: (lambda *args, **kwargs: list(f(*args, **kwargs)))
     range_      = range
-    reduce_     = ensure_list(reduce)
 
 # The "_" versions evaluate to something that always yields a 
 # list and does that efficiently under both Py2 and Py3
