@@ -87,11 +87,11 @@ try:
     # Crude Py2 detection
     r           = raw_input
     List        = identity
-    ensure_list = lambda f: (lambda *args, **kwargs: f(*args, **kwargs))
+    ensure_list = lambda f: lambda *args, **kwargs: f(*args, **kwargs)
     range_      = xrange
 except NameError:
     List        = list
-    ensure_list = lambda f: (lambda *args, **kwargs: list(f(*args, **kwargs)))
+    ensure_list = lambda f: lambda *args, **kwargs: list(f(*args, **kwargs))
     range_      = range
 
 # The "_" versions evaluate to something that always yields a 
