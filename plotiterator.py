@@ -402,7 +402,7 @@ class plotbase(object):
                 acc[0][ ddId ]   = (fq, sb, functional.zip_(l, ITEMGET(*l)(polStrings)))
                 acc[1][ ddId ]   = GETF(fq, sb)/scale
                 return acc
-            (self.ddSelection, self.ddFreqs)   = functional.reduce_(ddIdAdder, selection.ddSelection, [{}, {}])
+            (self.ddSelection, self.ddFreqs)   = functional.reduce(ddIdAdder, selection.ddSelection, [{}, {}])
         else:
             ddids     = _spwMap.datadescriptionIDs()
             UNMAPDDID = _spwMap.unmapDDId
@@ -412,7 +412,7 @@ class plotbase(object):
                 acc[0][ dd ] = (r.FREQID, r.SUBBAND, list(enumerate(_pMap.getPolarizations(r.POLID))))
                 acc[1][ dd ] = GETF(r.FREQID, r.SUBBAND)/scale
                 return acc
-            (self.ddSelection, self.ddFreqs)   = functional.reduce_(ddIdAdder, ddids, [{}, {}])
+            (self.ddSelection, self.ddFreqs)   = functional.reduce(ddIdAdder, ddids, [{}, {}])
 
         ## Provide for a label unmapping function.
         ## After creating the plots we need to transform the labels - some
@@ -1105,12 +1105,12 @@ class fakems:
         if col=="WEIGHT":
             # nrow x npol
             shp = (nrow, self.shp[1])
-            rv = numpy.ones( functional.reduce_(operator.mul, shp), dtype=numpy.float32 )
+            rv = numpy.ones( functional.reduce(operator.mul, shp), dtype=numpy.float32 )
             rv.shape = shp
             return rv
         if col=="DATA" or col=="LAG_DATA":
             shp = (nrow, self.shp[0], self.shp[1])
-            rv = numpy.zeros( functional.reduce_(operator.mul, shp), dtype=numpy.complex64 )
+            rv = numpy.zeros( functional.reduce(operator.mul, shp), dtype=numpy.complex64 )
             rv.shape = shp
             return rv
         raise RuntimeError("Unhandled column {0}".format(col))
@@ -1450,7 +1450,7 @@ class data_quantity_time(plotbase):
                 def do_it(x):
                     mi,ma  = numpy.min(x), numpy.max(x)
                     ranges = functional.filter_(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-                    return functional.reduce_(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
+                    return functional.reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
                 self.timebin_fn = do_it
             else:
                 # Check if solint isn't too small
@@ -1693,7 +1693,7 @@ class data_quantity_time(plotbase):
         else:
             # depending on wether we need to solint one or more channels in one go
             # loop over the current self.chanidx and count nr of channels
-            nChannel = functional.reduce_(lambda acc, chi: acc + ((n_chan if chansel is Ellipsis else len(chansel)) if chi[0] is Ellipsis else 1), self.chanidx, 0)
+            nChannel = functional.reduce(lambda acc, chi: acc + ((n_chan if chansel is Ellipsis else len(chansel)) if chi[0] is Ellipsis else 1), self.chanidx, 0)
             dataset_proto = dataset_solint_array if nChannel>1 else dataset_solint_scalar
 
         ## Now we can start the reduction of the table
@@ -1896,7 +1896,7 @@ class data_quantity_chan(plotbase):
                 def do_it(x):
                     mi,ma  = numpy.min(x), numpy.max(x)
                     ranges = functional.filter_(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-                    return functional.reduce_(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
+                    return functional.reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
                 self.timebin_fn = do_it
             else:
                 # Check if solint isn't too small
@@ -2731,7 +2731,7 @@ class weight_time(plotbase):
                 def do_it(x):
                     mi,ma  = numpy.min(x), numpy.max(x)
                     ranges = functional.filter_(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-                    return functional.reduce_(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
+                    return functional.reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
                 self.timebin_fn = do_it
             else:
                 # Check if solint isn't too small
@@ -2964,7 +2964,7 @@ class weight_time(plotbase):
             # depending on wether we need to solint one or more channels in one go
             # loop over the current self.chanidx and count nr of channels
             if self.chanidx:
-                nChannel = functional.reduce_(lambda acc, chi: acc + ((n_chan if chansel is Ellipsis else len(chansel)) if chi[0] is Ellipsis else 1), self.chanidx, 0)
+                nChannel = functional.reduce(lambda acc, chi: acc + ((n_chan if chansel is Ellipsis else len(chansel)) if chi[0] is Ellipsis else 1), self.chanidx, 0)
             else:
                 nChannel = 1
             dataset_proto = dataset_solint_array if nChannel>1 else dataset_solint_scalar
