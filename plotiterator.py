@@ -1007,7 +1007,7 @@ class partitioner:
         self.mod.xmax = numpy.max(x)
         self.mod.ymin = numpy.min(y)
         self.mod.ymax = numpy.max(y)
-        for i in xrange(len(x)):
+        for i in functional.range_(len(x)):
             if self.mod.f(x[i], y[i]):
                 ds_true.append(i)
         return ds_true
@@ -1409,7 +1409,7 @@ class data_quantity_time(plotbase):
             # if the user selected all channels (by selection
             # 'ch 0:<last>' in stead of 'ch none' we don't 
             # override the default channel selection (which is more efficient)
-            if channels!=list(range(n_chan)):
+            if channels!=functional.range_(n_chan):
                 chansel = channels
             # ignore channel averaging if only one channel specified
             if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.NoAveraging:
@@ -1860,7 +1860,7 @@ class data_quantity_chan(plotbase):
             # if the user selected all channels (by selection
             # 'ch 0:<last>' in stead of 'ch none' we don't 
             # override the default channel selection (which is more efficient)
-            if channels!=list(range_(n_chan)):
+            if channels!=functional.range_(n_chan):
                 chansel = channels
             # ignore channel averaging if only one channel specified
             if (n_chan if chansel is Ellipsis else len(chansel))==1 and avgChannel != AVG.NoAveraging:
@@ -1919,7 +1919,7 @@ class data_quantity_chan(plotbase):
 
         if avgChannel==AVG.NoAveraging:
             # No channel averaging - the new x-axis will be the indices of the selected channels
-            self.chanidx = list(range(n_chan)) if chansel is Ellipsis else chansel #list(enumerate(range(n_chan) if chansel is Ellipsis else chansel))
+            self.chanidx = functional.range_(n_chan) if chansel is Ellipsis else chansel #list(enumerate(range(n_chan) if chansel is Ellipsis else chansel))
             # The vector average step will be misused to just apply the channel selection such that all selected channels
             # are mapped to 0..n-1. This is only necessary in case not all channels were selected
             if chansel is not Ellipsis:
@@ -2464,7 +2464,7 @@ class data_quantity_chan(plotbase):
 #
 #        # compute weight mask
 #        w3d  = numpy.zeros(shp, dtype=numpy.float)
-#        for i in xrange(shp[0]):
+#        for i in range_(shp[0]):
 #            # we have weights per polzarization but we must
 #            # expand them to per channel ...
 #            cw = numpy.vstack( shp[1]*[weight[i]] )
@@ -3712,7 +3712,7 @@ class data_quantity_uvdist(plotbase):
 #        flg  = unflagged() if not flag else flag[0]
 #        # compute weight mask
 #        w3d  = numpy.zeros(shp, dtype=numpy.float)
-#        for i in xrange(shp[0]):
+#        for i in range_(shp[0]):
 #            # we have weights per polzarization but we must
 #            # expand them to per channel ...
 #            cw = numpy.vstack( shp[1]*[weight[i]] )
