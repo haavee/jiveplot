@@ -120,9 +120,9 @@
 from   __future__ import print_function
 from   functional import map_, filter_, zip_, enumerate_
 from   six        import iteritems
+from   functools  import reduce
 import itertools, operator, math, re, jenums, hvutil, numpy, pyrap.tables, pyrap.quanta, sys
 import datetime, copy, collections
-from functools import reduce
 
 # Return a nicely human readable string representation
 # of a MS::TIME column value
@@ -363,7 +363,7 @@ class polarizationmap():
     @staticmethod
     def string2CorrelationId(s):
         lows = s.lower()
-        cs   = map(lambda x: polarizationmap.polcode(id=x.code, name=x.name.lower()), polarizationmap.CorrelationStrings)
+        cs   = map_(lambda x: polarizationmap.polcode(id=x.code, name=x.name.lower()), polarizationmap.CorrelationStrings)
         def findid(nm):
             try:
                 [x] = filter_(lambda y: y.name.lower()==nm.lower(), cs)
@@ -1247,7 +1247,8 @@ def mk_slicer(blc, trc, fn=None):
     # interpreted as an array index, `arr[np.array(seq)]`, which will result
     # either in an error or a different result.
     # return lambda tab, col, s, n: tab.getcol(col, startrow=s, nrow=n)[indarr]
-    indarr = tuple([Ellipsis]+list(map(lambda st_en: slice(st_en[0], st_en[1]), zip(blc, trc))))
+    #indarr = tuple([Ellipsis]+map_(lambda st_en: slice(st_en[0], st_en[1]), zip(blc, trc)))
+    indarr = tuple([Ellipsis]+map_(slice, blc, trc))
 
     if fn:
         return lambda tab, col, s, n: fn(tab.getcol(col, startrow=s, nrow=n))[indarr]
@@ -1287,7 +1288,7 @@ def reducems(function, ms, init, columns, **kwargs):
     # default column getter
     # allow user to override for specific column (pass function/4 in via kwargs)
     fn    = mk_processor()
-    fns   = map(lambda col: (col, slicers.setdefault(col, fn)), columns)
+    fns   = map_(lambda col: (col, slicers.setdefault(col, fn)), columns)
     def log(msg):
         sys.stdout.write(msg+" "*10+"\r")
         sys.stdout.flush()
@@ -1325,7 +1326,7 @@ def reducems_raw(function, ms, init, columns, **kwargs):
     # allow user to override for specific column (pass function/4 in via 'slicer' kwarg)
     slicers = kwargs.get('slicers', {})
     chunksz = kwargs.get('chunksize', 5000)
-    fns     = map(lambda col: (col, slicers.get(col, lambda tab, c, s, n: tab.getcol(c, startrow=s, nrow=n))), columns)
+    fns     = map_(lambda col: (col, slicers.get(col, lambda tab, c, s, n: tab.getcol(c, startrow=s, nrow=n))), columns)
     return reduce(lambda acc, i_cs:\
                     reduce(function, itertools.izip( *map_(lambda c_f: f(ms, c_f[0], i_cs[0], i_cs[1]), fns)), acc),
                   chunkert(0, len(ms), chunksz), init)
@@ -1338,6 +1339,6 @@ def reducems2(function, ms, init, columns, **kwargs):
     # allow user to override for specific column (pass function/4 in via 'slicer' kwarg)
     slicers = kwargs.get('slicers', {})
     chunksz = kwargs.get('chunksize', 5000)
-    fns     = map(lambda col: (col, slicers.get(col, lambda tab, c, s, n: tab.getcol(c, startrow=s, nrow=n))), columns)
+    fns     = map_(lambda col: (col, slicers.get(col, lambda tab, c, s, n: tab.getcol(c, startrow=s, nrow=n))), columns)
     return reduce(lambda acc, i_cs: function(acc, *map_(lambda c_f: c_f[1](ms, c_f[0], i_cs[0], i_cs[1]), fns)),
                   chunkert(0, len(ms), chunksz, verbose=kwargs.get('verbose', False)), init)
