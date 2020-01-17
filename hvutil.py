@@ -231,10 +231,10 @@ def find_consecutive_ranges(seq):
         # undo the enumeration we added to allow
         # identification of consecutive elements
         l = map_(operator.itemgetter(1), key_seq[1])
-        if l:
-            return (l[0], l[-1])
-        return None
-    return filter_(is_not_none, map(maker, itertools.groupby(enumerate(sorted(key_seq[1])), lambda i_x:i_x[0]-i_x[1])))
+        return (l[0], l[-1]) if l else None
+    return filter_(is_not_none,
+                   map(maker,
+                       itertools.groupby(enumerate(sorted(seq)), lambda i_x:i_x[0]-i_x[1])))
 
 ## After having found consecutive ranges, you might want a string representation
 ##  [(start, end), ...] =>
