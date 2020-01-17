@@ -138,7 +138,7 @@ def contains(a, b):
 ## enumerate the items in iterable and
 ## yield the slice of [first, last]
 def enumerateslice(iterable, first, last):
-    return itertools.takewhile(lambda i_v: i_v[0]<last, itertools.dropwhile(lambda i_v: i_v[1]<first, enumerate(iterable)))
+    return itertools.takewhile(lambda i_v: i_v[0]<last, itertools.dropwhile(lambda i_v: i_v[0]<first, enumerate(iterable)))
 
 ## Convert fractional day into datetime.time
 def fractionalDayToTime(frac):

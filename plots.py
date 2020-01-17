@@ -1,7 +1,10 @@
 # the possible plottypes are defined here,
 from   __future__ import print_function
-import enumerations, jenums, ms2util, hvutil, parsers, copy, re, inspect, math, numpy, operator, os, types, functional, functools
-from plotutil   import *
+from six          import iteritems
+from functional   import zip_, map_, drap, reduce, range_
+from plotutil     import *
+import enumerations, jenums, ms2util, hvutil, parsers, copy, re
+import inspect, math, numpy, operator, os, types, functional, functools
 
 AX       = jenums.Axes
 FLAG     = jenums.Flagstuff
@@ -65,7 +68,7 @@ def ckey_builtin(label, keycoldict, **opts):
         return 1
     # Never seen this label before - must allocate new colour!
     # find values in the keycoldict and choose one that isn't there already
-    colours = sorted([v for (k,v) in keycoldict.iteritems()])
+    colours = sorted([v for (k,v) in iteritems(keycoldict)])
     # skip colour 0 and 1 (black & white)
     ck      = 2
     if colours:
@@ -121,13 +124,13 @@ def mk_offset(datasets, attribute):
             sbOffset      = (curMax - sbMin)
             # generate a function which transforms the x-axis for the current subband
             offsetmap[sb] = lambda xarr: xarr+sbOffset if isinstance(xarr, numpy.ndarray) \
-                                                       else map(lambda z:z+sbOffset, xarr)
+                                                       else map_(lambda z:z+sbOffset, xarr)
         # the new x-axis length is the (transformed) maximum x value of this subband
         return (offsetmap, sbMax+sbOffset)
 
     # we automatically get the new x-axis max value out of this
     return reduce(offset_per_sb,
-                  sorted(reduce(range_per_sb, datasets, {}).iteritems(),
+                  sorted(iteritems(reduce(range_per_sb, datasets, {})),
                          key=operator.itemgetter(0)),
                   ({}, None))
 
@@ -205,7 +208,7 @@ class Viewport(object):
     def set_viewport(self, vp):
         if len(vp)!=4:
             raise RuntimeError("Viewport must be length 4")
-        if filter(Viewport._is_not_ok, vp):
+        if functional.filter_(Viewport._is_not_ok, vp):
             raise RuntimeError("Attempt to set invalid viewport {0}".format(vp))
         self.viewport_ = vp
     viewport = property(get_viewport, set_viewport)
@@ -489,11 +492,14 @@ class Page(object):
         # if we need to do x/y labels we just shift the xleft and ybottom accordingly
         # zip the panel heights with their labels and filter those who are not empty
         # set the property on the page in units of the normal character height
-        self.labelCharSz = [h/n for (h,n) in zip(map(lambda fraction: self.dy * fraction, self.plotter.yHeights), map(len,self.plotter.yLabel))+[(self.dx, len(self.plotter.xLabel))] if n>0]
+        self.labelCharSz = [h/n for (h,n) in 
+                zip_(map(lambda fraction: self.dy * fraction, self.plotter.yHeights),
+                     map(len, self.plotter.yLabel))+
+                [(self.dx, len(self.plotter.xLabel))] if n>0]
         self.labelCharSz = min(0.8*Page.charSize, 0 if not self.labelCharSz else min(self.labelCharSz)) / Page.charSize
 
         # already compute the tickCharSz with the same current settings for consistency
-        self.tickCharSz = map(lambda fraction: (self.dy * fraction)/len(Page.tickString), self.plotter.yHeights) + [ self.dx/len(Page.tickString) ]
+        self.tickCharSz = map_(lambda fraction: (self.dy * fraction)/len(Page.tickString), self.plotter.yHeights) + [ self.dx/len(Page.tickString) ]
         self.tickCharSz = min(0.6*Page.charSize, min(self.tickCharSz)) / Page.charSize
 
         # the important values to keep are: tickwitdh (measured string length) and label x/y height and tick char height
@@ -502,7 +508,7 @@ class Page(object):
             (self.lXCH, self.lYCH) = device.pgqcs( 0 )
             device.pgsch( self.tickCharSz )
             (self.tXCH, self.tYCH) = device.pgqcs( 0 )
-            (self.tickWidth, _   ) = map(lambda l: 1.2*l, device.pglen(Page.tickString, 0))
+            (self.tickWidth, _   ) = map_(lambda l: 1.2*l, device.pglen(Page.tickString, 0))
             self.tickHeight        = 2 * self.tYCH
 
         if self.labelCharSz>0:
@@ -735,7 +741,8 @@ class Page(object):
         # label section or they're in the per-plot label but none reside
         # in the per-dataset section]. So there's no need to draw the legend
         # because there isn't any
-        coldict = dict(filter(functional.compose(operator.truth, operator.itemgetter(0)), self.plotter.coldict().iteritems()))
+        coldict = dict(filter(functional.compose(operator.truth, operator.itemgetter(0)),
+                       iteritems(self.plotter.coldict())))
         if not coldict or not self.plotter.showLegend:
             return
         with pgenv(device):
@@ -755,7 +762,7 @@ class Page(object):
             ypos                       = 0.0
             nyleg                      = int(math.ceil(float(len(coldict))/nxleg))
             dy                         = 1.0/(nyleg+1)
-            for (idx, cmap) in enumerate(coldict.iteritems()):
+            for (idx, cmap) in enumerate(iteritems(coldict)):
                 (label, col) = cmap
                 (ipos, jpos) = (idx % nxleg, idx // nxleg)
 
@@ -795,7 +802,7 @@ class Page(object):
             device.pgsch( 0.8 )
 
             # compute y position of succesive lines
-            ypos      = map(lambda lineno: 1.0 - (lineno+1.5)/(nline+1), xrange(nline))
+            ypos      = map_(lambda lineno: 1.0 - (lineno+1.5)/(nline+1), range_(nline))
 
             # plot the left lines
             for (txt, pos) in zip(self.pageLabel.left, ypos):
@@ -1015,7 +1022,7 @@ class Plotter(object):
         opts    = slice(2,None) if len(args)>2 else None
         if nxy:
             old_rows    = self.layOut.rows
-            self.layOut = layout(*map(int, args[nxy]))
+            self.layOut = layout(*map_(int, args[nxy]))
             # New layout object so copy over the existing setting
             # If there is an option overwriting it, that will be
             # handled below
@@ -1077,7 +1084,7 @@ class Plotter(object):
             self.sortOrder    = CP(self.defaultsortOrder)
             self.sortOrderStr = CP(self.defaultsortOrderStr)
         else:
-            self.sortOrder    = hvutil.attrgetter( *map(str.upper, args) )
+            self.sortOrder    = hvutil.attrgetter( *map_(str.upper, args) )
             self.sortOrderStr = CP(" ".join(args))
         return self.sortOrderStr
 
@@ -1185,7 +1192,7 @@ class Plotter(object):
     def haveXLabel(self):
         return self.xLabel
     def haveYLabel(self):
-        return filter(operator.truth, self.yLabel)
+        return functional.filter_(operator.truth, self.yLabel)
 
     def setLabel(self, *args):
         if args:
@@ -1196,7 +1203,8 @@ class Plotter(object):
             # if there are arguments given extract "<axis>:'<label text>'" entries
             # "label x:channel  y1: 'Phase (deg)' amplitude:'Flux (Jy)' y:'Oh (noes/fortnight)'"
             # the rxLabel will yield (<axis>, detected quote, <label text>)
-            for axis, text in dict(map(FU.m_itemgetter(0, 2), reduce(operator.add, map(rxLabel.findall, args)))).iteritems():
+            for axis, text in iteritems(dict(map(FU.m_itemgetter(0, 2),
+                                                 reduce(operator.add, map(rxLabel.findall, args))))):
                 # need to find which axis this is: 'x', 'y[n]' or '<quantity>'
                 xyAxis = rxXYAxis(axis.lower())
                 if xyAxis:
@@ -1212,11 +1220,11 @@ class Plotter(object):
                         self.yLabel[ yNumber ] = CP(text)
                 else:
                     # ok not simple x/y[n] but actual quantity
-                    if axis == str(self.xAxis).lower():
+                    if axis.lower() == str(self.xAxis).lower():
                         self.xLabel = CP(text)
                     else:
                         # test if quantity is one of the defined y-axes?
-                        lyax = map(FU.compose(str.lower, str), self.yAxis)
+                        lyax = map_(FU.compose(str.lower, str), self.yAxis)
                         if axis not in lyax:
                             raise RuntimeError("The indicated y-axis {0} does not apply to this plot".format(axis))
                         self.yLabel[ lyax.index(axis) ] = CP(text)
@@ -1298,7 +1306,8 @@ class Quant2TimePlotter(Plotter):
                 for (subplot, ytype) in enumerate(self.yAxis):
                     # filter the data sets with current y-axis type
                     # Keep the indices because we need them twice
-                    datasets = filter(lambda kv: kv[0].TYPE == ytype and self.filter_fun[subplot](kv[0]), pref.iteritems())
+                    datasets = functional.filter_(lambda kv: kv[0].TYPE == ytype and self.filter_fun[subplot](kv[0]),
+                                                  iteritems(pref))
 
                     # the type may have been removed due to an expression/selection
                     if not datasets:
@@ -1311,7 +1320,7 @@ class Quant2TimePlotter(Plotter):
 
                     # we subtract day0hr from all x-axis values so we must do that with
                     # the x-axis limits too
-                    xlims = map(xform_x, xlims)
+                    xlims = map_(xform_x, xlims)
 
                     # tell viewport to draw a framed box - initializes the world coordinates 
                     # and based on the current plot's x-axis type we get time or normal x-axis
@@ -1328,11 +1337,11 @@ class Quant2TimePlotter(Plotter):
                             (mu, mf) = (None, None)
                             # Any unflagged data to display?
                             if data.xval is not None:
-                                map(functional.ylppa(device, xform_x(data.xval), data.yval, -2), self.drawers[subplot])
+                                drap(functional.ylppa(device, xform_x(data.xval), data.yval, -2), self.drawers[subplot])
                                 mu = self.markedPointsForYAxis(subplot, data.xval, data.yval)
                             # Any flagged data to display?
                             if data.xval_f is not None:
-                                map(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, 5), self.drawers[subplot])
+                                drap(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, 5), self.drawers[subplot])
                                 mf = self.markedPointsForYAxis(subplot, data.xval_f, data.yval_f)
                             # draw markers if necessary, temporarily changing line width(markersize)
                             lw = device.pgqlw()
@@ -1410,14 +1419,15 @@ class GenXvsYPlotter(Plotter):
 
                 # filter the data sets with current y-axis type
                 # Keep the indices because we need them twice
-                datasets = filter(lambda kv: kv[0].TYPE == self.yAxis[0] and self.filter_fun[0](kv[0]), pref.iteritems())
+                datasets = functional.filter_(lambda kv: kv[0].TYPE == self.yAxis[0] and self.filter_fun[0](kv[0]),
+                                              iteritems(pref))
 
                 # the type may have been removed due to an expression/selection
                 if not datasets:
                     continue
                 # get the limits of the plots in world coordinates
                 (xlims, ylims) = getXYlims(plotar, self.yAxis[0], plotlabel, self.xScale, self.yScale[0])
-                xlims          = map(xform_x, xlims)
+                xlims          = map_(xform_x, xlims)
 
                 # get the viewport for this particular subplot
                 vp = cvp.subplot(0)
@@ -1437,11 +1447,11 @@ class GenXvsYPlotter(Plotter):
                         (mu, mf) = (None, None)
                         # Any unflagged data to display?
                         if data.xval is not None:
-                            map(functional.ylppa(device, xform_x(data.xval), data.yval, -2), self.drawers[0])
+                            drap(functional.ylppa(device, xform_x(data.xval), data.yval, -2), self.drawers[0])
                             mu = self.markedPointsForYAxis(0, data.xval, data.yval)
                         # Any flagged data to display?
                         if data.xval_f is not None:
-                            map(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, 5), self.drawers[0])
+                            drap(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, 5), self.drawers[0])
                             mf = self.markedPointsForYAxis(0, data.xval_f, data.yval_f)
                         # draw markers if necessary, temporarily changing line width(markersize)
                         lw = device.pgqlw()
@@ -1522,7 +1532,8 @@ class Quant2ChanPlotter(Plotter):
                 for (subplot, ytype) in enumerate(self.yAxis):
                     # filter the data sets with current y-axis type
                     # Keep the indices because we need them twice
-                    datasets = filter(lambda kv: kv[0].TYPE == ytype and self.filter_fun[subplot](kv[0]), pref.iteritems())
+                    datasets = functional.filter_(lambda kv: kv[0].TYPE == ytype and self.filter_fun[subplot](kv[0]),
+                                                  iteritems(pref))
 
                     # the type may have been removed due to an expression/selection
                     if not datasets:
@@ -1566,11 +1577,11 @@ class Quant2ChanPlotter(Plotter):
                             (mu, mf) = (None, None)
                             # Any unflagged data to display?
                             if data.xval is not None:
-                                map(functional.ylppa(device, xform_x(data.xval), data.yval, -2), self.drawers[subplot])
+                                drap(functional.ylppa(device, xform_x(data.xval), data.yval, -2), self.drawers[subplot])
                                 mu = self.markedPointsForYAxis(subplot, data.xval, data.yval)
                             # Any flagged data to display?
                             if data.xval_f is not None:
-                                map(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, 5), self.drawers[subplot])
+                                drap(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, 5), self.drawers[subplot])
                                 mf = self.markedPointsForYAxis(subplot, data.xval_f, data.yval_f)
                             # draw markers if necessary, temporarily changing line width(markersize)
                             lw = device.pgqlw()

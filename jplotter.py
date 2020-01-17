@@ -397,7 +397,7 @@ from   __future__ import print_function
 from   six        import iteritems
 import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, imp, time
 import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors, functools
-from   functional import compose, const, identity, map_, filter_, drap, range_
+from   functional import compose, const, identity, map_, filter_, drap, range_, reduce
 
 if '-d' in sys.argv:
     print("PPGPLOT=",repr(ppgplot))
@@ -1213,7 +1213,7 @@ class jplotter:
                         # (or at least, that's how we treat them).
                         # Substitute aliases with their corresponding regexes and compile
                         # them into a list of regexes
-                        pols = map(lambda x:re.compile("^"+x+"$", re.I), \
+                        pols = map_(lambda x:re.compile("^"+x+"$", re.I), \
                                  map(lambda x: \
                                      hvutil.sub(x, [("\*", ".*"), (re.compile("P", re.I), r"(.)\\1"), \
                                                     (re.compile("X", re.I), r"(.)(?!\\1).")]), \
