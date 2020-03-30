@@ -1,6 +1,8 @@
 #!/usr/bin/env python
-import sys, os, re, jplotter, command, functools
-from   operator import methodcaller
+from   __future__ import print_function
+from   operator   import methodcaller
+from   functools  import reduce, partial
+import sys, os, re, jplotter, command
 
 # program default(s)
 NoWgt   = True    # do not produce weight plots
@@ -11,13 +13,13 @@ Version = "$Id: standardplots,v 1.1 2014-08-08 15:38:41 jive_cc Exp $"
 PolCMap = "ckey p[rr]=2 p[ll]=3 p[rl]=4 p[lr]=5 p[none]=1"
 
 # One-liner to split a list of things into two lists, one satisfying the predicate, the other not
-partition = lambda p, l: reduce(lambda (y,n), x: (y+[x], n) if p(x) else (y, n+[x]), l, ([], []))
+partition = lambda p, l: reduce(lambda y_n, x: (y_n[0]+[x], y_n[1]) if p(x) else (y_n[0], y_n[1]+[x]), l, ([], []))
 # function composition is really great
 compose   = lambda *fns: lambda x: reduce(lambda a, f: f(a), reversed(fns), x)
-Map       = lambda fn  : functools.partial(map, fn)
+Map       = lambda fn  : partial(map, fn)
 
 # full MS path to plot base name transformation
-mk_basenm = compose(functools.partial(re.sub, r'\.ms', ''), os.path.basename, functools.partial(re.sub, r'/*$', ''))
+mk_basenm = compose(partial(re.sub, r'\.ms', ''), os.path.basename, partial(re.sub, r'/*$', ''))
 # CalSrc must be transformed such that it can be fed into "/{0}/i" regex,
 # even if CalSrc is comma-separated list of sources. 
 # So: split CalSrc by ',', escape the individual source names and transform
@@ -28,7 +30,7 @@ mk_calsrc = compose("({0})".format, "|".join, Map(re.escape), methodcaller('spli
 # replace the errorfunction from hvutil with one that terminates
 def mkerrf(pfx):
     def actualerrf(msg):
-        print "{0} {1}".format(pfx, msg)
+        print("{0} {1}".format(pfx, msg))
         sys.exit(-1)
     return actualerrf
 jplotter.hvutil.mkerrf = mkerrf
@@ -45,7 +47,7 @@ def get_val(arg, tp=str):
 
         # Check it doesn't start with a '-'!
         if aval[0]=='-':
-            raise RuntimeError, "Option %s expects argument, got another option '%s'" % (arg, aval)
+            raise RuntimeError("Option {0} expects argument, got another option '{1}'" .format(arg, aval))
 
         # remove those arguments
         del sys.argv[aidx]; del sys.argv[aidx]
@@ -62,13 +64,13 @@ def get_val(arg, tp=str):
         return None
     except IndexError:
         # Mission option value to option
-        raise RuntimeError, "Mission optionvalue to {0}".format(arg)
+        raise RuntimeError("Mission optionvalue to {0}".format(arg))
 
 
 def Usage(prog, full):
-    print "Usage: {0} [-h] [-v] [-d] [-weight] [-scan #] <MS> <Refant> <CalSrc>".format(prog)
+    print("Usage: {0} [-h] [-v] [-d] [-weight] [-scan #] <MS> <Refant> <CalSrc>".format(prog))
     if full:
-        print """
+        print("""
     where:
     -h      print this message and exit
     -v      print current version and exit
@@ -94,7 +96,7 @@ def Usage(prog, full):
     *  weight versus time for each station, although since disk recording
        this plot has become mostly useless and it is not produced by
        default. Use '-weight' option to include it.
-""".format(prog, not NoWgt)
+""".format(prog, not NoWgt))
     sys.exit( 0 if longhelp else 1 )
 
 
@@ -128,7 +130,7 @@ if len(args)!=3 or longhelp:
 
 ## Maybe print version?
 if '-v' in opts:
-    print Version
+    print(Version)
     sys.exit( 0 )
 
 if '-weight' in opts:
@@ -147,7 +149,7 @@ def open_ms(settings):
     yield "refile {0}".format( settings.tempFileName )
 
 def mk_anp_chan_cross_plot(settings, scansel, num):
-    print "generating cross plots [anp/channel] calibrator scan [{0}]".format( num )
+    print("generating cross plots [anp/channel] calibrator scan [{0}]".format( num ))
     # all cross baselines to refant
     yield "bl {0}* -auto".format( settings.refant )
     yield "fq *;ch none"
@@ -163,10 +165,10 @@ def mk_anp_chan_cross_plot(settings, scansel, num):
     yield "nxy 2 4"
     yield "refile {0}-cross-{1}.ps/cps".format( settings.myBasename, num )
     yield "pl"
-    print "done cross plots on calibrator scan"
+    print("done cross plots on calibrator scan")
 
 def mk_amp_chan_auto_plot(settings, scansel, num):
-    print "generating auto plots [amp/channel] calibrator scan [{0}]".format( num )
+    print("generating auto plots [amp/channel] calibrator scan [{0}]".format( num ))
     yield "bl auto"
     yield "fq */p;ch none"
     yield "avt scalar;avc none"
@@ -182,10 +184,10 @@ def mk_amp_chan_auto_plot(settings, scansel, num):
     yield "nxy 2 4"
     yield "refile {0}-auto-{1}.ps/cps".format( settings.myBasename, num )
     yield "pl"
-    print "done auto plots on calibrator scan"
+    print("done auto plots on calibrator scan")
 
 def mk_amp_time_auto_plot(settings, scansel, num):
-    print "generating auto plots [amp/time] calibrator scan"
+    print("generating auto plots [amp/time] calibrator scan")
     yield "bl auto"
     # select inner 90% of the channels
     yield "fq *;ch 0.1*last:0.9*last"
@@ -199,10 +201,10 @@ def mk_amp_time_auto_plot(settings, scansel, num):
     yield "sort bl"
     yield "refile {0}-amptime-{1}.ps/cps".format( settings.myBasename, num )
     yield "pl"
-    print "done auto plots on calibrator scan"
+    print("done auto plots on calibrator scan")
 
 def mk_anp_time_cross_plot(settings, timesel, num):
-    print "generating cross plots [anp/time] all scans"
+    print("generating cross plots [anp/time] all scans")
     yield "bl {0}* -auto".format( settings.refant )
     # select inner 90% of the channels
     yield "fq 3:6/p;ch 0.1*last:0.9*last"
@@ -219,13 +221,13 @@ def mk_anp_time_cross_plot(settings, timesel, num):
     yield "ptsz 2"
     yield "refile {0}-ampphase-{1}.ps/cps".format( settings.myBasename, num )
     yield "pl"
-    print "done auto plots on calibrator scan"
+    print("done auto plots on calibrator scan")
 
 def mk_weight_plot(settings):
     # the weight plot is only auto baselines, max four subbands x 2 pols
     # for the whole time range of the experiment
     # no need to set the channel selection, it is ignored
-    print "generating weight plot"
+    print("generating weight plot")
     yield "ms {0}".format( settings.measurementset )
     yield "bl auto; fq */p"
     yield "src none"
@@ -238,7 +240,7 @@ def mk_weight_plot(settings):
     yield "refile {0}-weight.ps/cps".format( settings.myBasename )
     yield "wt 0.1"
     yield "pl"
-    print "done weight plot"
+    print("done weight plot")
 
 
 #####################################################################
