@@ -1919,7 +1919,7 @@ class data_quantity_chan(plotbase):
 
         if avgChannel==AVG.NoAveraging:
             # No channel averaging - the new x-axis will be the indices of the selected channels
-            self.chanidx = functional.range_(n_chan) if chansel is Ellipsis else chansel #list(enumerate(range(n_chan) if chansel is Ellipsis else chansel))
+            self.chanidx = list(functional.range_(n_chan) if chansel is Ellipsis else chansel)
             # The vector average step will be misused to just apply the channel selection such that all selected channels
             # are mapped to 0..n-1. This is only necessary in case not all channels were selected
             if chansel is not Ellipsis:

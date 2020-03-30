@@ -1013,7 +1013,7 @@ class jplotter:
                 else:
                     # Now that we've selected the baselines, we must generate the TaQL to go with it
                     sel_.baselinesTaql = "((1000*ANTENNA1+ANTENNA2) IN {0})".format( \
-                        map(lambda x_y: 1000*x_y[0] + x_y[1], \
+                        map_(lambda x_y: 1000*x_y[0] + x_y[1], \
                             map(blmap_.baselineMap.baselineIndex, sel_.baselines)))
             self.dirty = self.dirty or (oldTaql != sel_.baselinesTaql)
         blstr = ["No baselines selected yet"]
@@ -1256,7 +1256,7 @@ class jplotter:
                                 # these map()'s are done for their sideeffect
                                 # so it's safe to use "drap()" - and a single
                                 # call to that is enough to drain all iterables
-                                drap(lambda z: map(lambda y: acc.append(y), z), x)
+                                drap(lambda z: drap(lambda y: acc.append(y), z), x)
 
                         for fq in fqs:
                             # Dynamically expand the "all subbands for this freqid"
@@ -1283,9 +1283,10 @@ class jplotter:
                                             filter(operator.itemgetter(1), \
                                               map(lambda i_p: \
                                                     ((fq,sb,pid,i_p[0]), rx.match(i_p[1])), plist))), rxs))
+                                    return rv
                                 # Now run the pol id processor over all feasable polids
                                 # and add the succesfull polid(s), if anything
-                                map(adder, \
+                                drap(adder, \
                                      map(lambda x: dopolid(x), \
                                          filter(idfilter, spMap.polarizationIdsOfFREQ_SB(fq, sb))))
                         if len(acc)==olen:
@@ -1318,8 +1319,8 @@ class jplotter:
                 # Must update the TaQL to select the current DDIds
                 # fspl = (f, s, p, l)
                 sel_.ddSelectionTaql = "(DATA_DESC_ID in {0})".format( \
-                        map(lambda fspl: spMap.datadescriptionIdOfFREQ_SB_POL(fspl[0], fspl[1], fspl[2]), \
-                            sel_.ddSelection))
+                        map_(lambda fspl: spMap.datadescriptionIdOfFREQ_SB_POL(fspl[0], fspl[1], fspl[2]), \
+                             sel_.ddSelection))
                 #print "ddSelectionTaql:",sel_.ddSelectionTaql
 
             self.dirty = True
