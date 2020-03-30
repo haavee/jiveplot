@@ -41,7 +41,7 @@
 #
 from   six        import iteritems
 from   functools  import reduce
-from   functional import compose, is_not_none
+from   functional import compose, is_not_none, map_
 import jenums, hvutil, copy, operator
 
 # how to format a time range "(start, end)" as TaQL
@@ -113,8 +113,8 @@ class selection:
         ((ss, p, ps), v) = ss_p_ps_v
         return (list(v), eval(ss), p, eval(ps))
     @classmethod
-    def fmter( pmap ):
-        def do_it(f_s_p_l ):
+    def fmter(cls, pMap):
+        def do_it(f_s_p_l):
             (f,s,p,l) = f_s_p_l
             pols      = ",".join(hvutil.itemgetter(*l)(pMap.getPolarizations(p)))
             return fmt_dd_select(range_repr(f), range_repr(s), p, pols)
