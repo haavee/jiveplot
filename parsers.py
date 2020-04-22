@@ -2,8 +2,8 @@
 from   __future__ import print_function
 from   six        import iteritems
 from   functools  import reduce
-from   functional import * #filter_, range_, map_, drap, drain, List, Filter, Map, GetN, const, ylppa
-import re, hvutil, operator, math, itertools, inspect, plotiterator, copy, numpy, plotutil
+from   functional import * 
+import re, hvutil, operator, math, itertools, inspect, plotiterator, copy, numpy, plotutil, collections
 
 haveQuanta = False
 try:
@@ -49,7 +49,7 @@ def mk_tokenizer(tokens, **env):
             # Run all known regexps against the current string and filter out which one(s) matched
             moList = get_matchobjects(string, pos)
             if len(moList)==0:
-                raise RuntimeError("\n{0}\n{1:>{2}s}^\n{3} tokens matched here".format(string, "", pos, len(moList)))# + ("" if not moList else sep.join([""]+map_(str, moList))))
+                raise RuntimeError("\n{0}\n{1:>{2}s}^\n{3} tokens matched here".format(string, "", pos, len(moList)))
             # extract match-object and the token from the result list
             (mo, tok) = moList[0]
             pos      += (mo.end() - mo.start())
@@ -2681,6 +2681,7 @@ def parse_animate_expr(qry, **kwargs):
         def __init__(self, tokstream):
             self.tokenstream = tokstream
             self.depth       = 0
+            self.inquote     = False
             self.lookAhead   = []
             next(self)
 
@@ -2690,8 +2691,7 @@ def parse_animate_expr(qry, **kwargs):
 
         def __next__(self):
             if self.lookAhead:
-                self.token     = self.lookAhead.pop(0) #self.lookAhead[0]
-                #self.lookAhead = None
+                self.token     = self.lookAhead.pop(0)
             else:
                 self.token     = next(self.tokenstream)
             return self
@@ -2714,36 +2714,335 @@ def parse_animate_expr(qry, **kwargs):
 #    match      = <ant><ant>
 #    ant        = '*' | <expression>
 #    expression = <part> | '(' <part> ['|' <part>] ')'
-#    part       = [a-zA-Z0-9]+
+#    part       = [a-zA-Z0-9_%]+ | <quote> <part> <quote>
+#    quote      = '"' | '''
 
-setoperatormap  = {'+': set.union, '-':set.difference}
-def parse_baseline_expr(qry, **kwargs):
-    # Helper functions
-    operator2set = lambda op: setoperatormap.get(op, None)
+# The selection function is a function which, when passed the baselineMap
+# returns a list of selected baselines and the accompanying TaQL
+#
+# We're going to take 'selection.baselineMap' ("blmap_") and transform
+#   blmap_.baselineList # which is [ ((x_ant, y_ant), "XAntYAnt"), ... ]
+# into:
+#   blmap_' = [ (x_ant, y_ant, "XAnt", "YAnt", "XAntYAnt", "YAntXAnt"), ... ]
+# for easier matching on individual components
+#
+# In both forms:
+#   x_ant, y_ant: antenna numbers
+#   XAnt, YAnt  : antenna name
 
+# The parsing results in an object with two properties:
+# * the selected baselines (strings)
+# * the accompanying TaQL
+class ParseResult:
+    __slots__ = ['baselines', 'taql', 'nExpr']
+
+    def __init__(self):
+        self.baselines = set()
+        self.taql      = ''
+        self.nExpr     = 0
+
+    __str__ = __repr__ = method("ParseResult[baselines={0.baselines}, taql='{0.taql}']".format)
+
+#######################################################################
+#    We support these binary operations:
+#    * add to current selection
+#    * remove from current selection
+#######################################################################
+
+# transform subselector function f into a function
+# that adds or removes to the current selection and updates the TaQL expression
+# op     = set.union | set.difference
+# taqlop = 'OR' | 'AND NOT'
+def mk_select_action(expression, f, op, taqlop):
+    # pr_acc = ParseResult accumulator
+    def do_it(pr_acc, blm):
+        print("DOING_IT!\n\tpr_acc(in)=",pr_acc)
+        # first, run the selection function on the total set of
+        # baselines to figure out which baselines to add
+        (selected, taql) = f(blm)
+        # the only valid selector that gives an empty set is the one
+        # with no taql 
+        if not selected and taql:
+            print("WARN: your expression '{0}' did not match anything".format(expression))
+        print("\tselected=",selected,"\n\ttaql=",taql)
+        pr_acc.baselines = op(pr_acc.baselines, selected)
+        # only modify taql if
+        # 1) if this expression selected anything at all, and
+        # 2) if any taql associated with the expression
+        if selected and taql:
+            # only combine taql if we had a previous taql expr
+            pr_acc.taql = pr_acc.taql + " {0} ({1})".format(taqlop, taql) if pr_acc.taql else taql
+        return pr_acc
+    return do_it
+
+setoperatormap = {'+': set.union, '-': set.difference}
+taqlmap        = {'+': 'OR',      '-': 'AND NOT'}
+operator2set   = lambda op: setoperatormap.get(op, set.union)
+
+# cooked selectors
+cookmap = { 
+    # 'all' and 'none' are sort of synonyms but not quite
+     'all':  lambda i: (set(i), ''),
+    'none':  lambda i: (set(), ''),
+    'auto':  lambda i: (set(filter(lambda tup: tup[0]==tup[1], i)), "ANTENNA1==ANTENNA2"),
+    'cross': lambda i: (set(filter(lambda tup: tup[0]!=tup[1], i)), "ANTENNA1!=ANTENNA2")
+    }
+
+cooked2fn    = lambda cooked: mk_select_action(cooked, cookmap.get(cooked), setoperatormap.get('+'), taqlmap.get('+'))
+
+
+
+# anything not cooked should look like:
+#  [+-]?<ant1><ant2>
+class p_state_type:
+    def __init__(self, tokstream, **kwargs):
+        # do this first
+        for (a, v) in kwargs.items():
+            setattr(self, a, v)
+        # now we set the attributes that
+        # have special meaning to *us*
+        # i.e. possibly overwriting what the user put in
+        self.tokenstream = tokstream
+        self.depth       = 0
+        self.inquote     = False
+        self.lookAhead   = []
+        next(self)
+
+    def peek(self):
+        self.lookAhead.append( next(self.tokenstream) )
+        return self.lookAhead[-1]
+
+    def __next__(self):
+        if self.lookAhead:
+            self.token     = self.lookAhead.pop(0) #self.lookAhead[0]
+            #self.lookAhead = None
+        else:
+            self.token     = next(self.tokenstream)
+        return self
+    next = __next__
+
+p_tok     = lambda s: s.token
+#p_tok_tp  = lambda s: s.token.type
+#p_tok_val = lambda s: s.token.value
+
+xtract_f   = Map_(GetN(1))
+mk_field_f = compose(Map_(lambda t: (t[0], xtract_f(t[1]))), GroupBy(GetN(0)), Sorted(GetN(0)), set,
+                     Reduce(operator.__add__), Map(lambda t: [(i, t[1]) for i in t[0]]))
+get_ant_n  = lambda n: compose(list, set, Map(GetN(n)))
+get_ant_1  = get_ant_n(0)
+get_ant_2  = get_ant_n(1)
+
+field_xform= {0:identity, 1:identity}
+
+# conds = [ (field-index, [matchf0, matchf1, ...]), (field-index, [matchf3, matchf4, ...]), ... ]
+def mk_match(conds):
+    # we must return the set of selected baselines
+    # as well as generate the TaQL
+    # pre-process conds: extract the field indices and transform to a functions that
+    # extract-and-xform
+    field_extract = dict((idx, compose(field_xform.get(idx, str.lower), GetN(idx))) for idx in map(GetN(0), conds))
+
+    def do_it(blmap):
+        to_add = set()
+        # for every ntry in conds, loop over blmap, extracting the field and run it against all match functions
+        for (idx, mfs) in conds:
+            xf     = field_extract[idx]
+            to_add = to_add | set(filter(lambda bl: any(map_(ylppa(xf(bl)), mfs)), blmap))
+        # now generate the TaQl for it
+        if len(to_add) == len(blmap):
+            # this means all baselines selected ...
+            return (blmap, '')
+        # grmpf
+        return (to_add, "ANTENNA1 IN {0} AND ANTENNA2 IN {1}".format(get_ant_1(to_add), get_ant_2(to_add)))
+    return do_it
+
+
+class selector_parser:
+    def __init__(self):
+        self.tokens = [
+            #token_def(r"-|\+",                      xform_t('action', operator2set)),
+            token_def(r"-|\+|\*",                   keyword_t()),
+            token_def(r"\(",                        simple_t('lparen')),
+            token_def(r"\)",                        simple_t('rparen')),
+            token_def(r"\|",                        simple_t('or')),
+            token_def(r"'",                         simple_t('quote')),
+            int_token(),
+            #token_def(r"\b(all|auto|cross|none)\b", xform_t('cooked', cooked2fn)),
+            token_def(r"\b(all|auto|cross|none)\b", keyword_t()),
+            token_def(r"[A-Za-z0-9_%#@\$]+",        value_t('text'))
+        ]
+        self.tokenizer = mk_tokenizer( self.tokens )
+
+    # parse the expression
+    def __call__(self, expr, blmap):
+        s      = p_state_type(self.tokenizer(expr), expression=expr)
+        result = self.parse_expr(s, blmap)
+        # the only token left should be 'eof' AND, after consuming it,
+        # the stream should be empty. Anything else is a syntax error
+        try:
+            if p_tok(s).type is None:
+                next(s)
+        except StopIteration:
+            print("selector_parser/returning value:",result)
+            return result
+        raise SyntaxError("(at least one)token left after parsing selector: {0}".format(p_tok(s)))
+
+
+    # entry point
+    def parse_expr(self, s, blmap):
+        # default action is to add to the current set
+        action = '+'
+        # if the user specified a specific action, save it and eat the token
+        if p_tok(s).type in "+-":
+            action = p_tok(s).type
+            next(s)
+        # we now expect ant1 selector
+        # if we see a cooked entry, no ant2 possible
+        if p_tok(s).type in ['all', 'none', 'auto', 'cross']:
+            cooked = p_tok(s).type
+            next(s)
+            rv =  mk_select_action(s.expression, cookmap.get(cooked), setoperatormap.get(action), taqlmap.get(action))
+            return rv
+            #return mk_select_action(cookmap.get(cooked), setoperatormap.get(action), taqlmap.get(action))
+        # Now we get to 'normal' ant1 selection
+        ant1cond = self.parse_selector(s, blmap, True)
+        if not ant1cond:
+            raise SyntaxError("At least one antenna selection criterion required")
+        ant2cond = self.parse_selector(s, blmap, False)
+        if not ant2cond:
+            # this could mean 
+            # bl ... -ef
+            # bl ... -efwb
+            # which means it could be just one antenna or a full baseline
+            # so for text based searches (fields >= 2) we expand the match
+            # to XAntYAnt and YAntXAnt
+            toadd  = set([4,5])
+            blsrch = set([2,3])
+            def xform(tup):
+                (fields, match_f) = tup
+                return (fields | toadd, match_f) if blsrch <= fields else tup
+            ant1cond = map_(xform, ant1cond)
+
+        # now we can apse all conditions into one big list
+        # we explode all (set(), match_f) tuples to:
+        #   (set_element, atch_f)
+        # such that we can sort- and groupby set_element
+        # that way we can collect all match functions per field "mk_field_f(...)"
+        # after that we can generate a function that actually tests all the conditions -
+        # the "mk_match(...)"
+        return mk_select_action(s.expression, mk_match(mk_field_f(ant1cond+ant2cond)), setoperatormap.get(action), taqlmap.get(action))
+
+    def parse_selector(self, s, blmap, require_item):
+        options = list()
+        # do we see lparen?
+        if p_tok(s).type is 'lparen':
+            s.depth = s.depth + 1
+            next(s)
+        # now we start collecting selections, they may be quoted
+        #require_item = False
+        while True:
+            item = self.parse_item(s, blmap)
+            if item is None:
+                if require_item:
+                    raise SyntaxError("Expected a baseline selection item")
+                #break
+            else:
+                options.append( item )
+            # typically we only parse one item, unless
+            # someone used parens
+            tp = p_tok(s).type
+            # by just breaking from the loop on ")" it can be either
+            # correct or incorrect but that is easily checked outside the loop
+            if tp is 'rparen':
+                s.depth = s.depth - 1
+                next(s)
+                break
+            # If we don't see "|" we break (again, if we opened parens but
+            # no closing one then that's caught outside the loop
+            if tp is not 'or':
+                break
+            # eat the "|"
+            next(s)
+            require_item = True
+        # if s.depth != 0 we have unbalanced parentheses
+        if s.depth != 0:
+            raise SyntaxError("Unbalanced parentheses")
+        return options
+
+    def parse_item(self, s, blmap):
+        # we may see a quote now
+        if p_tok(s).type is 'quote':
+            s.inquote = not s.inquote
+            next(s)
+        # now we accept 'text' or number or '*'
+        # for the matching it is important to know if we're matching on
+        # antenna number or on antenna name 
+        tp = p_tok(s).type
+        rv = None 
+        if tp is 'text' or s.inquote:
+            # text match for all types on BLMapEntry fields #2 and #3 (XAnt, YAnt)
+            match_f = partial(eq, str(p_tok(s).value if tp in ['text', 'int'] else p_tok(s).type).lower())
+            rv = (set([2,3]), match_f)
+            next(s)
+        else:
+            # numeric if number, "*" without quotes is anything
+            # Note: only consume the token if we've handled it
+            if tp is 'int':
+                # numerical match on field xant, yant
+                rv = (set([0, 1]), partial(eq, p_tok(s).value))
+                next(s)
+            elif tp is '*':
+                # matches anything!
+                rv = (set([0]), const(True))
+                next(s)
+        # if we're looking at a quote, eat it up
+        if p_tok(s).type is 'quote':
+            s.inquote = not s.inquote
+            next(s)
+        # mismatched quotes?
+        if s.inquote:
+            raise SyntaxError("Unbalanced quotes")
+        return rv
+            
+
+ALLOWED    = r"A-Za-z0-9\(\)#|@%_\*'"
+BLMapEntry = collections.namedtuple('BLMapEntry', ['xant', 'yant', 'XAnt', 'YAnt', 'BL', 'LB'])
+
+def parse_baseline_expr(qry, blmap, **kwargs):
     # basic lexical elements
     # These are the tokens for the tokenizer
     tokens = [
-        token_def(r"\bbl\b",                                keyword_t()),
+        token_def(r"\b(bl|\*)\b",                           keyword_t()),
+        #token_def(r"\b(all|auto|cross|none)\b",             xform_t('cooked', cooked2fn)),
+        #token_def(r"[-+]?[A-Za-z0-9'\(\)#@%_]+",            value_t('selector')),
+        #token_def(r"'([-+]?[ "+ALLOWED+r"]+)'",             extract_t('selector', 1)),
+        token_def(r"[-+]?["+ALLOWED+r"]+",                  value_t('selector')),
         # parens + list stuff
-        token_def(r"\(",                                    simple_t('lparen')),
-        token_def(r"\)",                                    simple_t('rparen')),
-        token_def(r"\b(\*|auto|cross)\b",                   operator_t('magic')),
-        token_def(r"-|\+",                                  xform_t('add_or_rem', operator2set)),
+#        token_def(r"\(",                                    simple_t('lparen')),
+#        token_def(r"\)",                                    simple_t('rparen')),
+#        token_def(r"-|\+",                                  xform_t('add_or_rem', operator2set)),
         # values + regex
-        int_token(),
-        token_def(r"\S+",                                   value_t('text')),
+#        int_token(),
+#        token_def(r"(['\"])([A-Za-z0-9_%#@\$]+)\1",          extract_t('text', 2)),
+#        token_def(r"[A-Za-z0-9_%#@\$]+",                     value_t('text')),
+        #token_def(r"\S+",                                   value_t('text')),
         #token_def(r"[:@\#%!\.\*\+\-a-zA-Z0-9_?|]+",         value_t('text')),
         # and whitespace
         token_def(r"\s+",                                   ignore_t())
     ]
 
-    tokenizer  = mk_tokenizer(tokens, **kwargs)
+    # Transform blmap -> blmap_
+    ANAME = blmap.antennaName
+    def xform(bli):
+        a1, a2 = bli
+        A1, A2 = ANAME(a1), ANAME(a2)
+        return BLMapEntry(a1, a2, A1, A2, A1+A2, A2+A1)
+    blmap_ = map_(xform, blmap.baselineIndices())
 
-    # The output of the parsing is a filter function that returns
-    # True or False given a dataset object
+    # a subparser for the selector
+    selector_p =  selector_parser()
 
-    #next    = lambda s: s.next()
+    #next    = bda s: s.next()
     tok     = lambda s: s.token
     tok_tp  = lambda s: s.token.type
     tok_val = lambda s: s.token.value
@@ -2751,337 +3050,44 @@ def parse_baseline_expr(qry, **kwargs):
     ######  Our grammar
 
     # animate      = 'animate' [<selection>] 'by' <attributes> <eof>
-    def parse_animate(s):
-        if tok(s).type != 'animate':
-            raise SyntaxError("The animate expression does not start with the keyword 'animate' but with {0}".format(tok(s)))
+    def parse_baseline(s):
+        if tok(s).type != 'bl':
+            raise SyntaxError("The baseline expression does not start with the keyword 'bl' but with {0}".format(tok(s)))
         # skip that one
         next(s)
-        # now we may see a selection
-        selection_f = parse_selection(s)
+        # now we may see one or more selections
+        selections = parse_selection(s)
         # check mismatched parentheses in the expression(s)
         if s.depth!=0:
             raise SyntaxError("Mismatched parentheses")
-        # now we MUST see the 'by' keyword
-        if tok(s).type!='by':
-            raise SyntaxError("Unexpected token {0}, expected the 'by' keyword".format(tok(s)))
-        # and skip that one
-        next(s)
-        # now we must parse the <attributes>
-        groupby_f = parse_attributes(s)
         # the only token left should be 'eof' AND, after consuming it,
         # the stream should be empty. Anything else is a syntax error
         try:
             if tok(s).type is None:
                 next(s)
         except StopIteration:
-            return (selection_f, groupby_f)
+            # the selections are a list of functions which 
+            # update the current selection
+            return reduce(lambda acc, f: f(acc, blmap_), selections, ParseResult())
         raise SyntaxError("(at least one)token left after parsing: {0}".format(tok(s)))
     
-    #    <selection>  = "" | <dataset>
+    #    <selection>  = <selector> { <selector> }
     def parse_selection(s):
-        # try to parse the dataset identifier, if it is None then there was none
-        # and we default to "_"
-        dataset_id = parse_dataset_id(s)
-        #if dataset_id is None:
-        #    dataset_id = '_'
-        # now we may see an expression
-        filter_f = parse_expression(s)
-        # build a filtering function on the indicated dataset
-        return (dataset_id, filter_f)
+        selectors = list()
+        print("parse_selection: current token =", tok(s))
+#        # Check for shortcut selections like "bl all|cross|auto|none"
+#        if tok(s).type is 'cooked' and s.peek().type is None:
+#            selectors.append( tok(s).value )
+#            next(s)
+#            return selectors
 
-    #    <dataset>    = {<identifier> ':'} <expression>
-    #    Note: let's allow 'attribute' here as well - the ':' following
-    #          the dataset_id would be the disambiguator between
-    #          data set identifier and attribute name?
-    def parse_dataset_id(s):
-        # if we don't see an identifier that means there's no identifier at all
-        dataset_id = tok(s)
-        if dataset_id.type not in[ 'identifier', 'attribute']:
-            return None
-        # if we see attribute we need to peek ahead to see if the disambiguating ':' is there
-        if dataset_id.type == 'attribute' and s.peek().type!='colon':
-            # rite, not a data set id
-            return None
-        dataset_id = dataset_id.value
-        # eat it up and then we MUST see ':'
-        next(s)
-        if tok(s).type != 'colon':
-            raise SyntaxError("Expected ':' following data set identifier")
-        # consume and return the actual identifier
-        next(s)
-        return dataset_id
-
-    #    <expression> = <expr> { 'and' <expression> | 'or' <expression> }
-    #    <expr>       = <condition> | 'not' <expression> | '(' <expression> ')'
-    #    <condition>  = <attrname> <relop> <number> |
-    def parse_expression(s):
-        left = parse_expr(s)
-        if left is None:
-            return None
-        # OK. We have a left hand side
-        # if we're looking at a relop we may have to parse a right hand side
-        if tok(s).type != 'relop':
-            return left
-        # ok looking at relop, save it for later use and move on
-        relop = tok(s).value
-        # now we MUST see a right hand side
-        right = parse_expression( next(s) )
-        if right is None:
-            raise SyntaxError("Missing right hand side to logical operator and or or")
-        def mk_f(l, op, r):
-            def do_it(ds):
-                return op(l(ds), r(ds))
-            return do_it
-        return mk_f(left, relop, right)
-
-    def parse_expr(s):
-        # depending on what token we're looking at choose the appropriate action
-        tp = tok(s).type
-        if tp == 'attribute':
-            # depending on the type of the attribute ...
-            return parse_cond_expr(s)
-            #return parse_cond_expr(s)
-        if tp == 'not':
-            # consume the 'not' and return whatever is following
-            f = parse_expression( next(s) )
-            return lambda ds: not f(ds)
-        if tp == 'lparen':
-            # remove the '('
-            s.depth = s.depth + 1
-            expr = parse_expression( next(s) )
-            # now we MUST see ')' [and if we do skip it]
-            if tok(s).type != 'rparen':
-                raise SyntaxError("Mismatched parenthesis")
-            s.depth = s.depth - 1
+        # we expect type 'selector' now!
+        while tok(s).type is 'selector':
+            selectors.append( selector_p( tok(s).value, blmap_ ) )
             next(s)
-            if expr is None:
-                raise SyntaxError("An empty expression is not an expression")
-            return expr
-        return None
-
-    # term     = duration | number | external
-    def parse_time_term(s):
-        term = tok(s)
-        # The easy bits first
-        if term.type in ['number', 'external', 'duration', 'datetime']:
-            # all's well - eat this term
-            next(s)
-            return term.value
-        return None
-    # support datetime or an expression involving datetime?
-    # expr     = term | expr '+' expr | expr '-' expr | expr '*' expr | expr '/' expr | '(' expr ')' | '-' expr
-    def parse_time_cond(s, unary=False):
-        t = tok(s)
-        depth = s.depth
-
-        print("parse_time_cond/tok=", t, " depth=", depth)
-        if t.type == 'lparen':
-            s.depth = s.depth + 1
-            lterm   = parse_time_cond( next(s) )
-            # now we MUST see ')' [and if we do skip it]
-            if tok(s).type != 'rparen':
-                raise SyntaxError("Mismatched parenthesis")
-            s.depth = s.depth - 1
-            next(s)
-            if lterm is None:
-                raise SyntaxError("An empty expression is not an expression")
-            return lterm
-        elif t.type=='operator' and t.value is mk_operator('-'):
-            # unary '-'
-            tmpexpr = parse_time_cond(next(s), unary=True)
-            lterm   = operator.neg( tmpexpr )
-        else:
-            print("parsing time term?")
-            lterm = parse_time_term(s)
-            print("  yields: ",lterm)
-
-        # If we see an operator, we must parse the right-hand-side
-        # (our argument is the left-hand-side
-        # Well ... not if we're doing unary parsing!
-        # if we saw unary '-' then we should parse parens and terms up until
-        # the next operator
-        oper = tok(s)
-        if oper.type=='operator':
-            if unary:
-                return lterm
-            if lterm is None:
-                raise SyntaxError("No left-hand-side to operator {0}".format(oper))
-            rterm = parse_time_cond(next(s))
-            if rterm is None:
-                raise SyntaxError("No right-hand-side to operator {0}".format(oper))
-            return oper.value(lterm, rterm)
-        elif oper.type in ['int', 'float', 'duration', 'datetime']:
-            # negative numbers as right hand side are not negative numbers
-            # but are operator '-'!
-            # so, subtracting a number means adding the negative value (which we already
-            # have god)
-            # Consume the number and return the operator add
-            next(s)
-            return operator.add(lterm, oper.value)
-        # neither parens, terms, operators?
-        return lterm
-
-    # condexpr   = attribute '~' (regex|text) | attribute compare number | attribute 'in' list
-    # compare    = '=' | '>' | '>=' | '<' | '<=' ;
-    def parse_cond_expr(s):
-        attribute = tok(s)
-        # No matter what, we have a left and a right hand side
-        # separated by an operator
-        if not (attribute.type == 'attribute'):
-            raise SyntaxError("Unexpected token {0}, expected attribute name".format( attribute.type ))
-        # consume the attribute value
-        next(s)
-        # Now we must see a comparator
-        # for the time attribute 'regexmatch' and 'in' don't make sense
-        compare = tok(s)
-        if not compare.type in (['compare'] if attribute.value == 'TIME' else ['compare', 'regexmatch', 'in']):
-            raise SyntaxError("Invalid comparison operator {0} for attribute {1}".format( compare, attribute.value ))
-        # consume the comparison
-        next(s)
-        # do some processing based on the type of operator
-        if compare.type=='in':
-            rterm  = parse_list(s)
-        elif compare.type=='compare':
-            # we must compare to a value
-            # take care of when attribute is 'time'
-            if attribute.value == 'TIME':
-                rterm = parse_time_cond(s)
-            else:
-                rterm = parse_value(s)
-        else:
-            # must've been regexmatch
-            rterm = parse_rx(s)
-        # it better exist
-        if rterm is None:
-            raise SyntaxError("Failed to parse right-hand-term of cond_expr (%s)" % tok(s))
-        return lambda ds: compare.value(mk_attribute_getter(attribute.value)(ds), rterm)
-
-    #    <value>      = <number> | <text> 
-    def parse_value(s):
-        value = tok(s)
-        if value.type not in ['int', 'text', 'identifier']:
-            raise SyntaxError("Unsupported value type - only int or text allowed here, not {0}".format( value ))
-        # consume the value and return it
-        next(s)
-        return value.value
-
-    def parse_rx(s):
-        # we accept string, literal, identifier and regex and return an rx object
-        rx = tok(s)
-        if not rx.type in ['regex', 'text', 'literal']:
-            raise SyntaxError("Failed to parse string matching regex (not regex, text or literal but %s)" % rx)
-        # consume the token
-        next(s)
-        if rx.type in ['text', 'literal']:
-           rx.value = pattern2regex(rx.value) 
-        return rx.value
-
-    #    <list>       = '[' <values> ']' | <intrange>
-    def parse_list(s):
-        # could be actual list or int range
-        if tok(s).type == 'lbracket':
-            return parse_list_list(s)
-        elif tok(s).type == 'int':
-            return parse_int_range(s)
-        # unexpected token
-        raise SyntaxError("Unexpected token {0} - not a list or int range".format(tok(s)))
-
-    def parse_int_range(s):
-        # we *must* be looking at 'int'
-        start = tok(s)
-        if start.type != 'int':
-            raise SyntaxError("Expected an integer here, not a {0}".format(start))
-        next(s)
-        # now we must see colon
-        if tok(s).type != 'colon':
-            raise SyntaxError("Expected ':' to form integer range")
-        # eat up
-        next(s)
-        end = tok(s)
-        if start.type != 'int':
-            raise SyntaxError("Expected an integer here, not a {0}".format(end))
-        # don't forget to consume the number
-        next(s)
-        return range_(start.value, end.value+1)
-
-    def parse_list_list(s):
-        bracket = tok(s)
-        if bracket.type != 'lbracket':
-            raise SyntaxError("Expected list-open bracket ('[') but found %s" % bracket)
-        rv = []
-        # keep eating text + ',' until we read 'rbracket'
-        next(s)
-        while tok(s).type!='rbracket':
-            # if we end up here we KNOW we have a non-empty list because
-            # the next token after '[' was NOT ']'
-            # Thus if we need a comma, we could also be seeing ']'
-            needcomma        = len(rv)>0
-            #print " ... needcomma=",needcomma," current token=",tok(s)
-            if needcomma:
-                if tok(s).type=='rbracket':
-                    continue
-                if tok(s).type!='comma':
-                    raise SyntaxError("Badly formed list at {0}".format(tok(s)))
-                # and eat the comma
-                next(s)
-            # now we need a value. 'identifier' is also an acceptable blob of text
-            rv.extend( parse_list_item(s) )
-            #print "parse_list: ",rv
-        # and consume the rbracket (if not rbracket a syntax error is raised above)
-        next(s)
-        return rv
-
-    # always returns a list-of-items; suppose the list item was an irange
-    def parse_list_item(s):
-        t = tok(s)
-        # current token must be 'text' or 'irange'
-        if not t.type in ['text', 'irange', 'int', 'float', 'literal']:
-            raise SyntaxError("Failure to parse list-item {0}".format(t))
-        next(s)
-        return t.value if t.type == 'irange' else [t.value]
-
-    
-    #    <attributes> = <attribute> { ',' <attribute> }
-    #    <attribute>  = <attrname> { <sortorder> }
-    #    <attrname>   = 'time' | 'src' | 'bl' | 'p' | 'sb' | 'ch' | 'type'
-    #    <sortorder>  = 'asc' | 'desc'
-    def parse_attributes(s):
-        groupby = set()
-        sortfns = []
-        while True:
-            item = tok(s)
-            if item.type!='attribute':
-                raise SyntaxError("Unexpected token {0}, expected an attribute".format(item))
-            # check that the same attribute does not get mentioned twice
-            if item.value in groupby:
-                raise RuntimeError("The attribute type {0} is mentioned more than once".format(item.value))
-            groupby.add( item.value )
-            # Peek at the next token. If it's asc/desc take that into account
-            next(s)
-            order = tok(s)
-            if order.type in ['asc', 'desc']:
-                order = order.type
-                # consume it
-                next(s)
-            else:
-                # default to asc
-                order = 'asc'
-            # create a sorting function
-            def mk_sf(attr, order):
-                def do_it(x):
-                    return sorted(x, key=operator.attrgetter(attr), reverse=(order=='desc'))
-                return do_it
-            sortfns.append( mk_sf(item.value, order) )
-
-            #if we don't see a comma next, we break
-            if tok(s).type!='comma':
-                break
-            # consume the comma
-            next(s)
-        # primary sort key is now first in list but for the sorting to work in steps
-        # (see https://wiki.python.org/moin/HowTo/Sorting ) we must apply the sorting
-        # functions in reverse order
-        return (operator.attrgetter(*groupby), lambda x: reduce(lambda acc, sortfn: sortfn(acc), reversed(sortfns), x))
+        #raise SyntaxError("Expected a baseline expression, not this: {0}".format(tok(s)))
+        print("parse_selection/selectors=",selectors)
+        return selectors
 
 
     class state_type:
@@ -3105,7 +3111,7 @@ def parse_baseline_expr(qry, **kwargs):
         next = __next__
 
     tokenizer  = mk_tokenizer(tokens, **kwargs)
-    return parse_animate(state_type(tokenizer(qry)))
+    return parse_baseline(state_type(tokenizer(qry)))
 
 
 
