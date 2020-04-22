@@ -894,19 +894,21 @@ class baselinemap:
     # baselineleList = [(baselineId, baselineName),...]
     def __init__(self, antennalist, **kwargs):
         # keep a sorted list ourselves
-        self.antennaList  = sorted(antennalist, key=operator.itemgetter(1))
+        self.antennaDict  = dict( (al[1], al[0]) for al in antennalist )
 
         # Check if the 'baselines' were explicitly given. If not, we form
         # the baselines ourselves out of all antenna pairs
         # The baselines can be passed in as keyword-arg:
         #  ..., baselines=[(x,y), ...], ...
         # a list of antenna pairs
-        bls = kwargs['baselines'] if 'baselines' in kwargs else None
-        if not bls:
-            # the entries in 'antennaList' are ('<name>', AntennaId) tuples!
-            bls = [(x[1],y[1]) for (idx, x) in enumerate(self.antennaList) for y in self.antennaList[idx:]]
-        # Now transform the list of indices into a list of names + codes
-        self.baselineList = map_(lambda x_y: (x_y, "{0}{1}".format(self.antennaName(x_y[0]), self.antennaName(x_y[1]))), bls)
+        bls = kwargs.get('baselines', None)
+        if bls is None:
+            # Make local list to make sure we can iterate over it > once (on Py3 it's a view)
+            aidx = list(enumerate(self.antennaDict.keys()))
+            bls  = [(x, y[1]) for (idx, x) in aidx for y in aidx[idx:]]
+        # Now transform the list of indices into a list of codes + names
+        ANAME = self.antennaDict.get
+        self.baselineList = map_(lambda x_y: (x_y, "{0}{1}".format(ANAME(x_y[0]), ANAME(x_y[1]))), bls)
 
     def baselineNames(self):
         return map_(operator.itemgetter(1), self.baselineList)
@@ -929,24 +931,29 @@ class baselinemap:
             raise InvalidBaselineId(blname)
 
     def antennaNames(self):
-        return map_(operator.itemgetter(0), self.antennaList)
+        return list( self.antennaDict.values() )
+        #return map_(operator.itemgetter(0), self.antennaList)
 
     # return the list of (antenna, id) tuples, sorted by id
     def antennas(self):
-        return sorted(self.antennaList, key=operator.itemgetter(1))
+        return sorted(self.antennaDict.items(), key=operator.itemgetter(0))
+        #return sorted(self.antennaList, key=operator.itemgetter(1))
 
-    def antennaName(self, id):
+    def antennaName(self, aid):
         try:
-            [(nm, i)] = filter_(lambda ant_antid: ant_antid[1]==id, self.antennaList)
-            return nm
-        except ValueError:
-            raise InvalidAntenna(id)
+            return self.antennaDict[aid]
+            #[(nm, i)] = filter_(lambda ant_antid: ant_antid[1]==aid, self.antennaList)
+            #return nm
+        #except ValueError:
+        except KeyError:
+            raise InvalidAntenna(aid)
 
     def antennaId(self, name):
         try:
             namelower = name.lower()
-            [(nm, id)] = filter_(lambda ant_antid: ant_antid[0].lower()==namelower, self.antennaList)
-            return id
+            #[(nm, aid)] = filter_(lambda ant_antid: ant_antid[0].lower()==namelower, self.antennaList)
+            [(nm, aid)] = filter_(lambda ant_antid: ant_antid[1].lower()==namelower, self.antennaDict.items())
+            return aid
         except ValueError:
             raise InvalidAntenna(name)
 
