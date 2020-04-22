@@ -1,7 +1,7 @@
 from __future__  import print_function
 from six         import iteritems
 from functools   import partial, reduce
-from itertools   import product, repeat
+from itertools   import product, repeat, groupby
 from operator    import truth, contains, eq, is_not, attrgetter, itemgetter, methodcaller, __add__, is_
 from collections import deque
 
@@ -21,6 +21,11 @@ between     = lambda a, b   : (lambda x: a<=x<b)                  # missing from
 m_itemgetter= lambda *idx   : (lambda x: map(x.__getitem__, idx)) # _ALWAYS_ returns [...], irrespective of #-of-indices
                                                                   #   for laughs, look up 'operator.itemgetter()' => 3 (three!)
                                                                   #   different types of return type depending on arguments! FFS!
+# allows very short definition of instance method like:
+# class Example:
+#   __str__ = method("ATTRIBUTE={0.attribute}".format)
+method      = lambda f      : (lambda *args, **kwargs: f(*args, **kwargs))
+
 # reorder_args: call f with the arguments indicated by idx:
 # call f with args[idx[n]] for 0 <= n < len(idx)
 # f will be called with len(idx) arguments. can also be used to select/repeat arguments
@@ -55,7 +60,10 @@ truth_tbl   = lambda *args: tuple(map(truth, args))
 GetA        = attrgetter
 GetN        = itemgetter
 Map         = lambda f: partial(map, f)
+Reduce      = lambda f: partial(reduce, f)
+Sorted      = lambda f: partial(sorted, key=f)
 Filter      = lambda f: partial(filter, f)
+GroupBy     = lambda f: partial(groupby, key=f)
 
 # In Py3 one must sometimes drain an iterable for its side-effect (thx guys).
 # Py2:
@@ -105,6 +113,7 @@ filter_    = ensure_list(filter)
 # also it doesn't give a list() in neither Py2 nor Py3 so enumerate_()
 # can be identical on both flavours
 enumerate_ = lambda *args, **kwargs: list(enumerate(*args, **kwargs))
+Map_       = lambda f: partial(map_, f)
 
 # I've included a source listing of a file "tlist.py" which cleary illustrates this:
 #
