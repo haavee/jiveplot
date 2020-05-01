@@ -74,6 +74,14 @@ def DBG(pfx=None):
     return do_it
 
 
+def DBG(pfx=None):
+    fmt = str if pfx is None else "{0}: {{0}}".format(pfx).format
+    def do_it(x):
+        print(fmt(x))
+        return x
+    return do_it
+
+
 # In Py3 one must sometimes drain an iterable for its side-effect (thx guys).
 # Py2:
 #     # no print function
