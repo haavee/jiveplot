@@ -397,7 +397,7 @@ from   __future__ import print_function
 from   six        import iteritems
 import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, imp, time
 import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors, functools
-from   functional import compose, const, identity, map_, filter_, drap, range_, reduce, partial
+from   functional import compose, const, identity, map_, filter_, drap, range_, reduce, partial, GetA
 
 if '-d' in sys.argv:
     print("PPGPLOT=",repr(ppgplot))
@@ -850,176 +850,25 @@ class jplotter:
             return errf("No MS loaded yet")
 
         sel_   = self.selection
-        blmap_ = self.mappings
         if args:
             # remember current TaQL for the baselines so we can detect if the
             # selection changed
             oldTaql = copy.deepcopy(sel_.baselinesTaql)
-
-            # regex 'code' for the specials 'auto' and 'cross'
-            #  so we can reuse them
-            auto   = r"^(\w+)(\1)$"
-            cross  = r"^(((.{2})(?!\3)(.{2}))|((.{3})(?!\6)(.{3})))$"
-            simple = len(args)==1
-
-            # process settings of just "auto" and "cross" independantly because then
-            # we can really easily set the taql and selection
-            if args[0]=="none" and simple:
-                sel_.baselines     = None
-                sel_.baselinesTaql = ''
-            elif args[0]=="all" and simple:
-                sel_.baselines     = copy.deepcopy(blmap_.baselineMap.baselineNames())
-                sel_.baselinesTaql = ''
-            elif args[0]=="auto" and simple:
-                sel_.baselines     = filter_(lambda x: re.match(auto, x), blmap_.baselineMap.baselineNames())
-                sel_.baselinesTaql = "(ANTENNA1==ANTENNA2)"
-            elif args[0]=="cross" and simple:
-                sel_.baselines     = filter_(lambda x: not re.match(auto, x), blmap_.baselineMap.baselineNames())
-                sel_.baselinesTaql = "(ANTENNA1!=ANTENNA2)"
-            else:
-                # have to bloody do them all!
-                # what do we support?
-                #   aliases:  'all' 'auto' 'cross'
-                #   literals: [:alpha:]+    (no wildcards or ()'s)
-                #   regex like:
-                #       baseline = name* | *name | (name)name | name(name) | (name)(name)
-                #       name     = namestr | name "|" name
-                #       namestr  = [a-zA-Z0-9]+
-                filterer = lambda tuplst, filters: \
-                        [bl for (bl, flag) in reduce(lambda acc, filt: map(filt, acc), filters, tuplst) if flag]
-
-                # pre-compile the used regexes
-                rxp0  = re.compile(r"[\(\)]")
-                rxp1  = re.compile(r"^(\([^\)]+\))([^(]+)$")
-                rxp2  = re.compile(r"^(\([^\)]+\))(\([^\)]+\))$")
-                rxp3  = re.compile(r"^([^\(]+)(\([^\)]+\))$")
-                rxwc0 = re.compile(r"\*")
-                # note: grouping here has an effect on reversing the baselines below!
-                rxwc1 = re.compile(r"^\^?(\*|(\*)(\w+)|(\w+)(\*$))\$?$")
-                subst =  [(re.compile(x), y) for (x,y) in \
-                                [("\s+", ""), ("\*+", "*"), ("^all$", "*"), \
-                                  ("^auto$", r"^(\w+)(\\1)$"), \
-                                  ] \
-                                  #("^cross$", r"^(((.{2})(?!\\3)(.{2}))|((.{3})(?!\\6)(.{3})))$") \
-                                ]
-
-                def mkfilter(bl):
-                    #print "mkfilter === ",bl
-                    org = copy.deepcopy(bl)
-                    # Before any extra processing, replace the word 'cross' by '!auto'
-                    bls = re.sub(r"cross", r"!auto", copy.deepcopy(bl))
-                    #print "bls=",bls
-                    add = True
-                    # a) was an explicit add/subtract given?
-                    mo  = re.match("^\s*(?P<add>[-+])(?P<expr>.*)", bls)
-                    if mo:
-                        add = (mo.group('add')=='+')
-                        bls = mo.group('expr')
-                    # b) was a negation given? If so, strip the negation character but remember it
-                    neg    = re.match(r"^\s*(?P<neg>!+)(?P<expr>.+)$", bls)
-                    if neg:
-                        bls = neg.group('expr')
-                        neg = (len(neg.group('neg')) % 2)==1 # odd number of negations
-                    #print neg,bls
-                    # a) remove whitespace and replace multiple wildcards by a single one
-                    #    and substitute aliases
-                    bls   = hvutil.sub(bls, subst)
-                    #print bls
-
-                    # see if we have a parenthesized expression
-                    # p0 => any parenthesis at all? if so either
-                    #       p1, p2 or p3 must match otherwise syntax error
-                    p0 = rxp0.search(bls)
-                    p1 = rxp1.match(bls)
-                    p2 = rxp2.match(bls)
-                    p3 = rxp3.match(bls)
-                    #def p(x):
-                    #    print x
-                    #map(lambda (x,y): p("p{0}:{1}".format(x,y)), zip(range(4), [p0,p1,p2,p3]))
-
-                    if not (bls==auto) and not (bls==cross) and p0 and not (p1 or p2 or p3):
-                        raise SyntaxError("the parenthesised baseline expression {0} is invalid".format(bl))
-
-                    # Do we have "chars*" or "*chars"?
-                    # note: we only really need to look at these if
-                    #       no parenthesisation was found: if the baseline
-                    #       expression was properly parenthesised the
-                    #       wildcard stuff is irrelevant; we can already
-                    #       properly reverse the expression
-                    wc0 = rxwc0.search(bls)
-                    #print bls,wc0
-                    # if no wildcard we add one at the end
-                    if not ((bls==auto) or (bls==cross) or wc0):
-                        bls = bls+"*"
-                        wc0 = rxwc0.search(bls)
-                    #print bls,wc0
-                    wc1 = rxwc1.match(bls)
-                    #print bls,wc0,wc1
-
-                    # If we are (1) parenthesized or (2) have a wildcard + non-wildcard
-                    # and (3) are NOT equal to the 'auto' definition
-                    # we must 'reverse' the expression since sometimes baselines are mentioned
-                    # B->A rather than A->B
-                    revbls = None
-
-                    if not (bls==auto) and not (bls==cross):
-                        # no parenthesis but wildcards?
-                        if not p0 and wc0:
-                            # then it'd better be a valid wildcardexpression
-                            if not wc1:
-                                raise SyntaxError("the wildcarded baseline expression {0} is invalid".format(bl))
-                            # now only need to reverse if it was "*chars" or "chars*"
-                            fstgrp = 4 if wc1.group(4) else 2
-                            revbls = "{1}{0}".format(wc1.group(fstgrp), wc1.group(fstgrp+1))
-                        # Ok parenthesized expression. find out which one matched
-                        elif p0:
-                            if p1:
-                                mg = p1
-                            elif p2:
-                                mg = p2
-                            elif p3:
-                                mg = p3
-                            revbls = "{1}{0}".format(mg.group(1), mg.group(2))
-
-                    # d) replace wildcards (*) by (.*)
-                    bls = hvutil.sub(bls, [("\*", ".*")])
-                    if revbls:
-                        revbls = hvutil.sub(revbls, [("\*", ".*")])
-                    #print "compiling: bls={0}  revbls={1}".format(bls, revbls)
-
-                    # e) now we can make a regex
-                    rx  = re.compile(bls, re.I)
-                    rxr = rx
-                    if revbls:
-                        rxr = re.compile(revbls, re.I)
-
-                    # and filter only the matching sources
-                    def f( bl_flag ):
-                        (bl,flag) = bl_flag
-                        # only perform reverse match if it is a (physically)
-                        # different rx object
-                        m  = rx.match(bl)
-                        mr = rxr.match(bl) if rxr is not rx else False
-                        return (bl, (flag if neg else add) if (m or mr) else (add if neg else flag))
-                    return f
-                # now build the list of filters, based on comma-separated source selections
-                # and run all of them against the sourcelist
-                sel_.baselines  = filterer([(x, False) for x in blmap_.baselineMap.baselineNames()], map(mkfilter, args))
-
-                if not sel_.baselines:
-                    print("No baselines matched your selection")
-                    sel_.baselines     = None
-                    sel_.baselinesTaql = ''
-                else:
-                    # Now that we've selected the baselines, we must generate the TaQL to go with it
-                    sel_.baselinesTaql = "((1000*ANTENNA1+ANTENNA2) IN {0})".format( \
-                        map_(lambda x_y: 1000*x_y[0] + x_y[1], \
-                            map(blmap_.baselineMap.baselineIndex, sel_.baselines)))
-            self.dirty = self.dirty or (oldTaql != sel_.baselinesTaql)
+            pr      = parsers.parse_baseline_expr(args[0], self.mappings.baselineMap)
+            if pr.baselines is not None:
+                # the only acceptable empty set of baselines selected is when there is
+                # also no taql returned (the result of parsing "bl none")
+                if not pr.baselines and pr.taql:
+                    raise RuntimeError("Your baseline selection yielded no matches!")
+                # extract the baseline names (field 'BL')
+                sel_.baselines     = map_(GetA('BL'), pr.baselines)
+                sel_.baselinesTaql = copy.deepcopy(pr.taql)
+                self.dirty = self.dirty or oldTaql!=sel_.baselinesTaql
         blstr = ["No baselines selected yet"]
         if sel_.baselines:
             blstr = sel_.baselines
         mk_output(ppfx(pfx), blstr, 80)
+
 
     ##
     ## print/set the timerange(s)
@@ -2977,8 +2826,8 @@ def run_plotter(cmdsrc, **kwargs):
 
     # The baseline selection "bl"
     c.addCommand( \
-        mkcmd(rx=re.compile(r"^bl(\s+[0-9a-zA-Z|()*+\-!]+)*$"), hlp=Help["bl"], \
-              args=lambda x : re.sub(r"^bl\s*", "", x).split(), \
+        mkcmd(rx=re.compile(r"^bl\b.*$"), hlp=Help["bl"], \
+              args=lambda x : x, \
               cb=lambda *args: j().baselines(*args), id="bl") )
 
     # The source selection "src"
