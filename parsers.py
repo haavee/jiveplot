@@ -2993,7 +2993,7 @@ class selector_parser:
                                 setoperatormap.get(action), taqlmap.get(action))
 
     def parse_selector(self, s, blmap, antmap, require_item):
-        options = list()
+       options = list()
         # do we see lparen?
         if p_tok(s).type is 'lparen':
             s.depth = s.depth + 1

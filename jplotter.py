@@ -398,6 +398,7 @@ from   six        import iteritems
 import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, imp, time
 import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors, functools
 from   functional import compose, const, identity, map_, filter_, drap, range_, reduce, partial, GetA
+>>>>>>> a231cce (Working baseline parser!)
 
 if '-d' in sys.argv:
     print("PPGPLOT=",repr(ppgplot))
