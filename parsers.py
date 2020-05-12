@@ -2821,11 +2821,10 @@ class p_state_type:
         return self
     next = __next__
 
-p_tok     = lambda s: s.token
-#p_tok_tp  = lambda s: s.token.type
-#p_tok_val = lambda s: s.token.value
+p_tok      = lambda s: s.token
 
 
+# Deal with extracting stuff from a list of (xant, yant, "XAnt", "YAnt", ...) tuples
 get_ant_n  = lambda n: compose(list, set, Map(GetN(n)))
 get_ant_1  = get_ant_n(0)
 get_ant_2  = get_ant_n(1)
@@ -2833,42 +2832,44 @@ get_ant_2  = get_ant_n(1)
 field_xform_ = {0:identity, 1:identity}
 field_xform  = lambda n: compose(field_xform_.get(n, str.lower), GetN(n))
 
+# TaQL building blocks for ANTENNA1 and ANTENNA2, automatically
+# using "ANTENNAx == number" or "ANTENNAx IN [list, of, numbers]" depending on how many conditions must be matched
 def ant_taql(n, ants):
-    return "ANTENNA{0}=={1}".format(n, ants.pop()) if len(ants)==1 else "ANTENNA{0} IN {1}".format(n, ants)
-ant1_taql  = partial(ant_taql, 1)
-ant2_taql  = partial(ant_taql, 2)
-by_xant    = compose(GroupBy(GetN(0)), Sorted(GetN(0)))
-qry_format = "(ANTENNA1=={0} AND {1})".format
+    return "ANTENNA{0}=={1}".format(n, ants[0]) if len(ants)==1 else "ANTENNA{0} IN {1}".format(n, ants)
+ant1_taql   = partial(ant_taql, 1)
+ant2_taql   = partial(ant_taql, 2)
 
-def reduce_grp(acc, item):
-    (a1, grp) = item
-    a2 = get_ant_2(grp)
-    acc.append( qry_format(a1, ant2_taql(a2)) )
-    return acc
+# This matches either end of a baseline (e.g. only conditions given for one end of the baseline
+# you have to remember that the condition can apply to either ANTENNA1 or ANTENNA2
+bl_taql1ant = combine("{0} OR {1}".format, ant1_taql, ant2_taql)
+# Single condition for baseline with constraints on both ends
+bl_taql2ant = lambda a1, a2: "{0} AND {1}".format(ant1_taql(a1), ant2_taql(a2))
+# and now the full fledged baseline with constraints on both ends
+# (which means that it could also be reversed)
+bl_taql     = lambda a1, a2: "(({0}) OR ({1}))".format(bl_taql2ant(a1, a2), bl_taql2ant(a2, a1))
 
-# conds = list of [match-fn, match-fn, ..]
-# each match-fn must accept a baseline tuple (xant, yant, "XAnt", "YAnt", "XAntYAnt", "YAntXAnt")
+# blmatch = (suggested_taql, list-of-match_fns)
+# each entry match-fn in list-of-match_fns must accept a baseline tuple (xant, yant, "XAnt", "YAnt", "XAntYAnt", "YAntXAnt")
 # and return True/False wether to include this baseline in the set of matched baselines
-def mk_match(conds):
+def mk_match(blmatch):
     # we must return the set of selected baselines
     # as well as generate the TaQL
-
+    (taql, conds) = blmatch
     def do_it(blmap):
         # run all conditions on the baselines, generating
         # to total set of matches for this list-of-conditions
         to_add = reduce(set.union, map(lambda c: set(filter(c, blmap)), conds))
         # now generate the TaQl for it
+        # if the expression seems to select all baselines we shortcircuit
+        # and ignore the TaQL that the blmatch input suggested
         if len(to_add) == len(blmap):
             # this means all baselines selected ...
             return (blmap, '')
-        # grmpf
-        # group the tuples by XAnt, and for each group make the taql expression
-        # (ANTENNA1=nnn AND ANTENNA2 IN [m, n, o,...])
-        return (to_add, "(" + " OR ".join(reduce(reduce_grp, by_xant(to_add), list())) + ")")
+        return (to_add, taql)
     return do_it
 
-# mk_field_f takes a list of tuples
-#   [ (set(field-ids), match-fn), (set(field-ids), match-fn), ...]
+# mk_field_f_ takes a list of tuples
+#   [ (set{field-ids}, match-fn, antid), (set(field-ids), match-fn, antid), ...]
 # where each tuple describes a match function and on which baseline tuple fields to 
 # run this function
 #  
@@ -2877,6 +2878,7 @@ def mk_match(conds):
 # i.e. groups the match functions by individual field index such that after extracting
 # a specific field from a baseline tuple, all match functions can be run against it in one go
 xtract_f   = Map_(GetN(1))
+
 # tup = (field-idx, [(field-idx, match-fn), (field-idx, match-fn), ...])
 def mk_match_fn(tup):
     get_f     = field_xform(tup[0])
@@ -2888,32 +2890,46 @@ def mk_match_fn(tup):
 mk_field_f_= compose(Map_(mk_match_fn), GroupBy(GetN(0)), Sorted(GetN(0)), set,
                      Reduce(operator.__add__), Map(lambda t: [(i, t[1]) for i in t[0]]))
 
-dont_care  = compose(truth, list, Filter(partial(is_, None)), Map(GetN(1)))
+# Given list of [ (set{field_ids}, match_fn, antid), (set{field_ids}, match_fn, antid), ... ]
+# return boolean True or False depending on there being a match_fn equal to None in there
+dont_care  = compose(truth, Call('count', None), Map_(GetN(1)))
+
+# Given same list, return the set of antenna ids
+get_ant_ids= compose(list, set, Map(GetN(2)))
+
 
 # given conditions for ant1 and possibly ant2, generate filter function which
 # will, well, filter baselines matching both (if appropriate)
 def mk_field_f(ant1, ant2):
-    a1f = None if not ant1 or dont_care(ant1) else mk_field_f_(ant1)
-    a2f = None if not ant2 or dont_care(ant2) else mk_field_f_(ant2)
+    (a1, a1f) = (None, None) if not ant1 or dont_care(ant1) else (get_ant_ids(ant1), mk_field_f_(ant1))
+    (a2, a2f) = (None, None) if not ant2 or dont_care(ant2) else (get_ant_ids(ant2), mk_field_f_(ant2))
     if a1f is None and a2f is None:
-        return [const(True)]
+        # match function is simple, no TaQL
+        return ("", [const(True)])
     if a2f is None:
         # there have to be conditions on ant1
-        return a1f
+        # generate the TaQL based on ant1 conditions
+        return (bl_taql1ant(a1), a1f)
     if a1f is None:
         # there have to be conditions on ant2
-        return a2f
+        return (bl_taql1ant(a2), a2f)
     # bugger, need to find all combinations!
     # we need to come up with a list of functions
     def do_it(bl):
         m_bl = Map(ylppa(bl))
         return any(m_bl(a1f)) and any(m_bl(a2f))
-    return [do_it]
+    # The taql is ((antenna1 in a1 AND antenna2 in a2) OR (antenna1 in a2 and antenna2 in a1))
+    taql = "(({0}) OR ({1}))".format(bl_taql2ant(a1, a2), bl_taql2ant(a2, a1))
+    return (taql, [do_it])
 
+# given dict of "XAnt" (name) -> xant (nr) entries, 
+# transform into case insensitive tokens. The reverse length sort is to have the longer names
+# before the shorter ones to handle the case of shorter name being prefix of longer name
+ant_tokens = compose(Map_(lambda ant: (re.compile(r""+ant, re.I), value_t('antenna'))),
+                     Sorted(len, reverse=True), Call('keys'))
 
 class selector_parser:
-    def __init__(self):
-        self.tokens = [
+    _tokens_ = [
             token_def(r"-|\+|\*",                   keyword_t()),
             token_def(r"\(",                        simple_t('lparen')),
             token_def(r"\)",                        simple_t('rparen')),
@@ -2921,27 +2937,29 @@ class selector_parser:
             token_def(r"'",                         simple_t('quote')),
             int_token(),
             token_def(r"\b(all|auto|cross|none)\b", keyword_t()),
-            token_def(r"[A-Za-z0-9_%#@\$]+",        value_t('text'))
         ]
-        self.tokenizer = mk_tokenizer( self.tokens )
 
     # parse the expression
-    def __call__(self, expr, blmap):
-        s      = p_state_type(self.tokenizer(expr), expression=expr)
-        result = self.parse_expr(s, blmap)
+    def __call__(self, expr, blmap, antmap):
+        # add the individual antenna names as tokens!
+        # remember: blmap = [(xant, yant, "XAnt", "YAnt", "XAntYAnt", "YAntXAnt"), ....]
+        # so extract all unique "XAnt"/"YAnt"s and transform those into tokens
+        tokenizer = mk_tokenizer(selector_parser._tokens_ + ant_tokens(antmap))
+        state     = p_state_type(tokenizer(expr), expression=expr)
+        result    = self.parse_expr(state, blmap, antmap)
         # the only token left should be 'eof' AND, after consuming it,
         # the stream should be empty. Anything else is a syntax error
         try:
-            if p_tok(s).type is None:
-                next(s)
+            if p_tok(state).type is None:
+                next(state)
         except StopIteration:
             #print("selector_parser/returning value:",result)
             return result
-        raise SyntaxError("(at least one)token left after parsing selector: {0}".format(p_tok(s)))
+        raise SyntaxError("(at least one)token left after parsing selector: {0}".format(p_tok(state)))
 
 
     # entry point
-    def parse_expr(self, s, blmap):
+    def parse_expr(self, s, blmap, antmap):
         # default action is to add to the current set
         action = '+'
         # if the user specified a specific action, save it and eat the token
@@ -2953,41 +2971,18 @@ class selector_parser:
         if p_tok(s).type in ['all', 'none', 'auto', 'cross']:
             cooked = p_tok(s).type
             next(s)
-            rv =  mk_select_action(s.expression, cookmap.get(cooked), setoperatormap.get(action), taqlmap.get(action))
-            return rv
-            #return mk_select_action(cookmap.get(cooked), setoperatormap.get(action), taqlmap.get(action))
+            return mk_select_action(s.expression, cookmap.get(cooked), setoperatormap.get(action), taqlmap.get(action))
         # Now we get to 'normal' ant1 selection
-        ant1cond = self.parse_selector(s, blmap, True)
+        ant1cond = self.parse_selector(s, blmap, antmap, True)
         if not ant1cond:
             raise SyntaxError("At least one antenna selection criterion required")
-        ant2cond = self.parse_selector(s, blmap, False)
-        if not ant2cond:
-            # this could mean 
-            # bl ... -ef
-            # bl ... -efwb
-            # which means it could be just one antenna or a full baseline
-            # so for text based searches (fields >= 2) we expand the match
-            # to XAntYAnt and YAntXAnt. If the match was on antenna id
-            # there is no ambiguity
-            toadd  = set([4,5])
-            blsrch = set([2,3])
-            def xform(tup):
-                (fields, match_f) = tup
-                return (fields | toadd, match_f) if blsrch <= fields else tup
-            ant1cond = map_(xform, ant1cond)
+        ant2cond = self.parse_selector(s, blmap, antmap, False)
         #print("Got ant1cond=", ant1cond)
         #print("    ant2cond=", ant2cond)
-        # now we can apse all conditions into one big list
-        # we explode all (set(), match_f) tuples to:
-        #   (set_element, atch_f)
-        # such that we can sort- and groupby set_element
-        # that way we can collect all match functions per field "mk_field_f(...)"
-        # after that we can generate a function that actually tests all the conditions -
-        # the "mk_match(...)"
         return mk_select_action(s.expression, mk_match(mk_field_f(ant1cond, ant2cond)),
                                 setoperatormap.get(action), taqlmap.get(action))
 
-    def parse_selector(self, s, blmap, require_item):
+    def parse_selector(self, s, blmap, antmap, require_item):
         options = list()
         # do we see lparen?
         if p_tok(s).type is 'lparen':
@@ -2996,7 +2991,7 @@ class selector_parser:
         # now we start collecting selections, they may be quoted
         #require_item = False
         while True:
-            item = self.parse_item(s, blmap)
+            item = self.parse_item(s, blmap, antmap)
             if item is None:
                 if require_item:
                     raise SyntaxError("Expected a baseline selection item")
@@ -3024,42 +3019,51 @@ class selector_parser:
             raise SyntaxError("Unbalanced parentheses")
         return options
 
-    def parse_item(self, s, blmap):
+    # return tuple (set{}, match_f, antenna_id)
+    #     or None, in case not a valid token
+    # set{} is the set of field numbers that match_f should operate on.
+    # Note: field_numbers as in the named tuple BLMapEntry 
+    #       (xant, yant, "XAnt", "YAnt", "XAntYAnt", "YAntXAnt")
+    #        0     1     2       3       4           5
+    def parse_item(self, s, blmap, antmap):
         # we may see a quote now
         if p_tok(s).type is 'quote':
             s.inquote = not s.inquote
             next(s)
-        # now we accept 'text' or number or '*'
+        # now we accept 'text', 'antenna', number or '*'
         # for the matching it is important to know if we're matching on
         # antenna number or on antenna name 
         tp = p_tok(s).type
         rv = None 
-        if tp is 'text' or s.inquote:
+        if tp in ['text', 'antenna'] or s.inquote:
             # text match for all types on BLMapEntry fields #2 and #3 (XAnt, YAnt)
-            match_f = partial(eq, str(p_tok(s).value if tp in ['text', 'int'] else p_tok(s).type).lower())
-            rv = (set([2,3]), match_f)
+            aname   = str(p_tok(s).value if tp in ['text', 'int', 'antenna'] else p_tok(s).type).lower()
+            if aname not in antmap:
+                print("WARNING: There seems to be no antenna by the name of ", aname)
+            match_f = partial(eq, aname)
+            rv = (set([2,3]), match_f, antmap.get(aname, -42))
             next(s)
         else:
             # numeric if number, "*" without quotes is anything
             # Note: only consume the token if we've handled it
             if tp is 'int':
                 # numerical match on field xant, yant
-                rv = (set([0, 1]), partial(eq, p_tok(s).value))
+                anum = p_tok(s).value
+                rv   = (set([0, 1]), partial(eq, anum), anum)
                 next(s)
             elif tp is '*':
                 # matches anything!
-                #rv = (set([0]), const(True))
-                rv = (set(), None)
+                rv = (set(), None, -1)
                 next(s)
-        # if we're looking at a quote, eat it up
-        if p_tok(s).type is 'quote':
+        # only eat the quote if we're expecting one
+        if s.inquote and p_tok(s).type is 'quote':
             s.inquote = not s.inquote
             next(s)
         # mismatched quotes?
         if s.inquote:
             raise SyntaxError("Unbalanced quotes")
         return rv
-            
+
 
 ALLOWED    = r"A-Za-z0-9\(\)#|@%_\*'"
 BLMapEntry = collections.namedtuple('BLMapEntry', ['xant', 'yant', 'XAnt', 'YAnt', 'BL', 'LB'])
@@ -3084,17 +3088,23 @@ def parse_baseline_expr(qry, blmap, **kwargs):
         return BLMapEntry(a1, a2, A1, A2, A1+A2, A2+A1)
     blmap_ = map_(xform, blmap.baselineIndices())
 
+    def reductor(acc, bli):
+        a1, a2 = bli
+        A1, A2 = ANAME(a1).lower(), ANAME(a2).lower()
+        acc.extend( [(A1, a1), (A2, a2)] )
+        return acc
+    antmap_ = dict(reduce(reductor, blmap.baselineIndices(), list()))
+
     # a subparser for the selector
     selector_p =  selector_parser()
 
-    #next    = bda s: s.next()
     tok     = lambda s: s.token
     tok_tp  = lambda s: s.token.type
     tok_val = lambda s: s.token.value
 
     ######  Our grammar
 
-    # animate      = 'animate' [<selection>] 'by' <attributes> <eof>
+    # selection      = 'bl' [<selector>]*  <eof>
     def parse_baseline(s):
         if tok(s).type != 'bl':
             raise SyntaxError("The baseline expression does not start with the keyword 'bl' but with {0}".format(tok(s)))
@@ -3119,13 +3129,11 @@ def parse_baseline_expr(qry, blmap, **kwargs):
     #    <selection>  = <selector> { <selector> }
     def parse_selection(s):
         selectors = list()
-        #print("parse_selection: current token =", tok(s))
 
         # we expect type 'selector' now!
         while tok(s).type is 'selector':
-            selectors.append( selector_p( tok(s).value, blmap_ ) )
+            selectors.append( selector_p( tok(s).value, blmap_, antmap_ ) )
             next(s)
-        #print("parse_selection/selectors=",selectors)
         return selectors
 
     class state_type:

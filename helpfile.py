@@ -726,42 +726,56 @@ Without arguments displays the current baseline selection and returns.
 The special selection 'none' empties the baseline selection.
 
 Each "bl" command first clears the selection. Then, the arguments ('selectors')
-are processed from left-to-right, each selector modifying the current selection
-as indicated by the selector:
+are processed from left-to-right, each selector modifying the selection up to
+that point as indicated by the selector:
 
-    <blcode>      => +<blcode> (no "+-" specified defaults to "+")
-    !<blcode>     => +!<blcode>
-    +<blcode>     = add baselines matching <blcode> to selection
-    -<blcode>     = subtract  ,,      ,,        ,, from   ,,
-    [+-]!<blcode> = add or subtract baselines NOT matching <blcode>
+    <blcode>      => +<blcode> (no leading "+" or "-" defaults to "+")
+    +<blcode>     = add baseline(s) matching <blcode> to selection
+    -<blcode>     = remove  ..      ..        ..      from   ..
      
+<blcode> is a specification of which baseline(s) to in- or exclude and can
+take several forms:
 
-   <blcode> is the name of the baseline; the combination of the two-letter
-   antennacodes, e.g. "wbjb" for the baseline between Westerbork and Jodrell
-   Bank.
+    <blcode>    the concatenation of two antenna names; also the reverse
+                combination will be matched; e.g. "+wbef" will add the baseline
+                Effelsberg to Westerbork, whether it is present as "WbEf" or
+                "EfWb"
+    <antenna name>
+                shorthand for "<antenna name>*" (wildcard '*' is valid but
+                superfluous) This form matches all baselines to <antenna>, e.g.
+                "-wb" means "remove all baselines to wb". The system looks for
+                baselines where "wb" is either the first or the second component
+                of the baseline
+    <antenna number> 
+                an integer; select baseline(s) where either component is the
+                antenna with the ID <antenna number> from the ANTENNA subtable.
+    '<identifier>'
+                force 'identifier to be interpreted as string. Especially helpful in
+                case e.g. 'importfitsidi' has given the antennas names that
+                consists of numbers. E.g. "+'1'*" means "add baselines to the
+                antenna with the name "1" in stead of the id of 1.
+    (id1|id2|...|idN)
+                This is the 'alternatives' specification. Matches baselines
+                where either component matches id1 or id2 or ... or idN.
+                E.g. "-(wb|'12'|2)" removes baselines to antennas with names
+                "Wb", "12" and id 2.
+    auto|cross|none
+                Useful aliases that do what it sais on the tin. Irrespective of
+                the current data set they always select either the auto, cross
+                baselines present or no baselines at all (clear the selection).
 
-But there's more! Wildcards (= '*') are allowed as well as regular-expression
-type specifications:
+Examples:
 
-examples:
+    bl cross -wb +efwb
+                    = select all cross baselines, remove all baselines to "Wb"
+                      but add WbEf (or EfWb) back in to the selection
+
      wb*            = match all baselines to westerbork ("wb")
                       including baselines like "efwb"
      jb(wb|ef)      = match baselines "jbwb" and "jbef"
      (jb|mc)(wb|nt) = matches four baselines
-
-The system assumes two- or three-letter station codes. Should you need to select
-stations with different number of character then use parenthesis to help the
-system in finding the station name(s):
-
-     (foobar)*
-     (foobar|bazbar)ef
-
-For your pleasure the following special names have been defined: 
-
-    [auto|cross|all]
-
-which will dynamically evaluate to the appropriate subset of baselines in the
-current MS
+     ('12'|12)*     = match baselines to antennas with name "12" as well with
+                      antenna id 12
 
 """,
 
