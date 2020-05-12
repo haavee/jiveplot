@@ -57,13 +57,14 @@ mk_list     = lambda *args: list(args)
 mk_tuple    = lambda *args: args
 truth_tbl   = lambda *args: tuple(map(truth, args))
 # shorter
+Call        = methodcaller
 GetA        = attrgetter
 GetN        = itemgetter
 Map         = lambda f: partial(map, f)
 Reduce      = lambda f: partial(reduce, f)
-Sorted      = lambda f: partial(sorted, key=f)
 Filter      = lambda f: partial(filter, f)
 GroupBy     = lambda f: partial(groupby, key=f)
+Sorted      = lambda f, **k: partial(sorted, key=f, **k)
 
 def DBG(pfx=None):
     fmt = str if pfx is None else "{0}: {{0}}".format(pfx).format
