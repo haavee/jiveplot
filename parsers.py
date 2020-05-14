@@ -2761,11 +2761,17 @@ def mk_select_action(expression, f, op, taqlop):
         # baselines to figure out which baselines to add
         (selected, taql) = f(blm)
         # the only valid selector that gives an empty set is the one
-        # with no taql 
-        if not selected and taql:
+        # with taql == 'FALSE' (the result of parsing the 'none' token)
+        if not selected and taql is not 'FALSE':
             print("WARN: your expression '{0}' did not match anything".format(expression))
         #print("\tselected=",selected,"\n\ttaql=",taql)
         pr_acc.baselines = op(set() if pr_acc.baselines is None else pr_acc.baselines, selected)
+
+        # if by now all baselines are selected, there's really no point
+        # in adding more to the TaQL, we might as well remove it
+        if pr_acc.baselines >= set(blm):
+            pr_acc.taql = ''
+            return pr_acc
         # only modify taql if
         # 1) if this expression selected anything at all, and
         # 2) if any taql associated with the expression
@@ -2782,8 +2788,10 @@ operator2set   = lambda op: setoperatormap.get(op, set.union)
 # cooked selectors
 cookmap = { 
     # 'all' and 'none' are sort of synonyms but not quite
-     'all':  lambda i: (set(i), ''),
-    'none':  lambda i: (set(), ''),
+    # By giving 'all' a bit of TaQL this becomes valid: "bl all -wb"
+    # "bl none +wb" would be valid and equal
+     'all':  lambda i: (set(i), 'TRUE'),
+    'none':  lambda i: (set(), 'FALSE'),
     'auto':  lambda i: (set(filter(lambda tup: tup[0]==tup[1], i)), "ANTENNA1==ANTENNA2"),
     'cross': lambda i: (set(filter(lambda tup: tup[0]!=tup[1], i)), "ANTENNA1!=ANTENNA2")
     }
@@ -2941,6 +2949,7 @@ class selector_parser:
 
     # parse the expression
     def __call__(self, expr, blmap, antmap):
+        #print("START PARSING EXPR=", expr)
         # add the individual antenna names as tokens!
         # remember: blmap = [(xant, yant, "XAnt", "YAnt", "XAntYAnt", "YAntXAnt"), ....]
         # so extract all unique "XAnt"/"YAnt"s and transform those into tokens
@@ -2970,6 +2979,7 @@ class selector_parser:
         # if we see a cooked entry, no ant2 possible
         if p_tok(s).type in ['all', 'none', 'auto', 'cross']:
             cooked = p_tok(s).type
+            #print("Got cooked=", cooked)
             next(s)
             return mk_select_action(s.expression, cookmap.get(cooked), setoperatormap.get(action), taqlmap.get(action))
         # Now we get to 'normal' ant1 selection
