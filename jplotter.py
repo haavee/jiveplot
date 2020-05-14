@@ -1526,6 +1526,24 @@ class jplotter:
         #print "taqlStr: ",self.selection.taqlString
         print "taqlStr: ",self.selection.selectionTaQL()
 
+    def runTaQL(self):
+        pfx  = "runTaQL"
+        errf = hvutil.mkerrf("{0} ".format(pfx, self.msname))
+        if not self.msname:
+            return errf("No MS loaded yet")
+        taql = CP(self.selection.selectionTaQL())
+        if not taql:
+            return errf("No actual selection so running query would be no-op")
+        tab  = list()
+        ## run the query
+        with ms2util.opentable(self.msname) as tbl:
+            print("Running query:", taql)
+            s   = NOW()
+            tab = tbl.query( taql )
+            e   = NOW()
+            print("Querying took\t{0:.3f}s".format( e-s ))
+        print("runTaQL: selection has", len(tab), "rows")
+
     def plotType(self, *args):
         if args:
             if len(args)>1:
@@ -2530,6 +2548,11 @@ def run_plotter(cmdsrc, **kwargs):
             mkcmd(rx=re.compile(r"^pl$"), hlp="pl:\n\tplot current selection with current plot properties", \
             cb=lambda : do_plot(env()), id="pl") )
 
+    # dry-run the current TaQL
+    c.addCommand( \
+            mkcmd(rx=re.compile(r"^run_taql$"), hlp="run_query:\n\tAttempt to selectthe current selection without plotting",\
+                  cb=lambda: j().runTaQL(), id="run_taql")
+            )
 
     # control what to show: flagged, unflagged, both
     c.addCommand( \
