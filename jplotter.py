@@ -818,8 +818,7 @@ class jplotter:
                     # Now we can make a regex
                     rx = re.compile("^"+srcs+"$", re.I)
 
-                    # and select only the matching sources
-                    return lambda src_flag: (src_flag[0], (src_flag[1] if neg else add) if rx.match(src) else (add if neg else src_flag[1]))
+                    return lambda src_flag: (src_flag[0], (src_flag[1] if neg else add) if rx.match(src_flag[0]) else (add if neg else src_flag[1]))
 
                 # now build the list of selectors, based on comma-separated source selections
                 # and run all of them against the sourcelist
