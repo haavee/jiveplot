@@ -123,7 +123,7 @@ _inside_ the container.
 
 Allegedly, running Docker like this:
 ```bash
-$ docker run -it --init --network=host -v /tmp/.X11-unix:/tmp/.X11-unix:ro -e DISPLAY="$DISPLAY" -v <local dir>:<container dir> jiveplot
+$ docker run -it --init --network=host -v /tmp/.X11-unix:/tmp/.X11-unix:ro -e DISPLAY="$DISPLAY" -v <local dir>:<container dir> haavee/jiveplot
 ```
 does X11 forwarding but yours truly has seen it also *not* work. YMMV.
 
