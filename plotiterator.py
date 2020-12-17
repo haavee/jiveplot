@@ -1935,7 +1935,8 @@ class data_quantity_chan(plotbase):
                 #self.chbin_fn = lambda x: normalize_ch(1)(numpy.ma.mean(x[:,avg_over,:], axis=1, keepdims=True))
                 # average the selected channels according the requested averaging method
                 chbin_fn      = lambda x: avgchan_fn(1)(x[:,chansel,:])
-                self.chanidx  = [numpy.mean(chansel)] # compute average channel number #[(0, '*')]
+                # compute average channel number - honouring Ellipsis if necessary #[(0, '*')]
+                self.chanidx  = [numpy.mean(list(functional.range_(n_chan) if chansel is Ellipsis else chansel))] 
                 # transform all frequencies to an average frequency
                 for dd in self.freq_of_dd.keys():
                     self.freq_of_dd[dd] = [numpy.mean(self.freq_of_dd[dd][chansel])]
