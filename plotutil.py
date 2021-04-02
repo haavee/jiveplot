@@ -2,9 +2,9 @@
 # leading to undefined module attribute(s).
 # Extract all the info from plots.py that parsers.py also needs
 # and put in here such that both modules can just import this one
-import numpy, jenums, copy, enumerations
+import numpy, jenums, copy, enumerations, operator
 from   label_v6   import label
-from   functional import filter_
+from   functional import filter_, reduce
 
 CP       = copy.deepcopy
 FLAG     = jenums.Flagstuff
