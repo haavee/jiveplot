@@ -170,6 +170,7 @@ class readstring:
 
     def handle(self, exception):
         print exception
+        sys.exit( -1 )
 
     def __enter__(self):
         return self
