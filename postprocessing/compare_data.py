@@ -47,8 +47,6 @@ def compare_data(plotar, ms2mappings):
                 nds = new_dataset[ k ]
                 dx  = numpy.add(numpy.abs( ods.xval - nds.xval ), dx)
                 dy  = numpy.add(numpy.abs( ods.yval - nds.yval ), dy)
-            print("dx=", dx)
-            print("dy=", dy)
             if numpy.any( dx>abs(tolerance) ):
                 print(">>> compare_data: total diffs in x exceed tolerance")
                 print("    tolerance=", tolerance)
