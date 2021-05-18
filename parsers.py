@@ -2652,7 +2652,7 @@ def parse_animate_expr(qry, **kwargs):
             # so break from the loop and let the next step check validity
             # of input
             next(s)
-            if tok(s).type is not 'comma':
+            if tok(s).type != 'comma':
                 break
         return options
    
