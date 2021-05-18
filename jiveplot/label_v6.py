@@ -1,5 +1,6 @@
-from   functional  import range_
-import collections, jenums
+import collections
+from jiveplot import jenums
+from jiveplot.functional  import range_
 
 AX        = jenums.Axes
 

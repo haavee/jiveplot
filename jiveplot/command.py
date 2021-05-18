@@ -3,11 +3,11 @@
 from   __future__ import print_function
 try:               import builtins
 except ImportError:import __builtin__ as builtins
-import re, sys, copy, pydoc, fcntl, termios, struct, os, itertools, math, tempfile, traceback, functional
-import hvutil, glob
+import re, sys, copy, pydoc, fcntl, termios, struct, os, itertools, math, tempfile, traceback, glob
+from jiveplot import functional, hvutil
 from   six        import iteritems
 from   six.moves  import input as raw_input
-from   functional import List, drain, drap, map_, filter_, GetA, GetN
+from   jiveplot.functional import List, drain, drap, map_, filter_, GetA, GetN
 from   functools  import reduce
 
 # if we have readline, go on, use it then!

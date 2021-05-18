@@ -41,8 +41,9 @@
 #
 from   six        import iteritems
 from   functools  import reduce
-from   functional import compose, is_not_none, map_
-import jenums, hvutil, copy, operator
+from   jiveplot.functional import compose, is_not_none, map_
+from jiveplot import jenums, hvutil
+import copy, operator
 
 # how to format a time range "(start, end)" as TaQL
 fmt_time_cond = "(TIME>={0[0]:.7f} && TIME<={0[1]:.7f})".format

@@ -2,8 +2,9 @@
 from   __future__ import print_function
 from   six        import iteritems
 from   functools  import reduce
-from   functional import * #filter_, range_, map_, drap, drain, List, Filter, Map, GetN, const, ylppa
-import re, hvutil, operator, math, itertools, inspect, plotiterator, copy, numpy, plotutil
+from   jiveplot.functional import * #filter_, range_, map_, drap, drain, List, Filter, Map, GetN, const, ylppa
+from jiveplot import hvutil, plotutil, plotiterator
+import re, operator, math, itertools, inspect, copy, numpy
 
 haveQuanta = False
 try:

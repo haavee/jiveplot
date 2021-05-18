@@ -1,10 +1,10 @@
 # the possible plottypes are defined here,
 from   __future__ import print_function
 from six          import iteritems
-from functional   import zip_, map_, drap, reduce, range_
-from plotutil     import *
-import enumerations, jenums, ms2util, hvutil, parsers, copy, re
-import inspect, math, numpy, operator, os, types, functional, functools
+from jiveplot.functional   import zip_, map_, drap, reduce, range_
+from jiveplot.plotutil     import *
+from jiveplot import enumerations, jenums, ms2util, hvutil, functional, parsers
+import inspect, math, numpy, operator, os, types, functools, copy, re
 
 AX       = jenums.Axes
 FLAG     = jenums.Flagstuff
@@ -18,7 +18,7 @@ CP       = copy.deepcopy
 # we seem to have had a circular dependency here - plots.py (this module) imports plotiterator
 # but plotiterator uses plots.YTypes ... Just 'import plots' wouldn't work unless the import of
 # plotiterator was deferred until here
-import plotiterator
+from jiveplot import plotiterator
 
 ## Sometimes a plot annotation is None ...
 M        = lambda x: '*' if x is None else x   # M is for M(aybe)

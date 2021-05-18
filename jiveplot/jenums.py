@@ -22,7 +22,7 @@
 # they're like enums only infinitely better
 
 # http://stackoverflow.com/questions/36932/whats-the-best-way-to-implement-an-enum-in-python
-import enumerations
+from jiveplot import enumerations
 
 Type      = enumerations.Enum('Unknown', 'Lag', 'Spectral')
 Axes      = enumerations.Enum('P', 'CH', 'SB', 'FQ', 'BL', 'SRC', 'TIME', 'TYPE')

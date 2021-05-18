@@ -395,9 +395,10 @@
 #
 from   __future__ import print_function
 from   six        import iteritems
-import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, imp, time
-import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors, functools
-from   functional import compose, const, identity, map_, filter_, drap, range_, reduce
+import copy, re, math, operator, itertools, ppgplot, datetime, os, subprocess, numpy, imp, time
+import pyrap.quanta, sys, pydoc, collections, functools
+from   jiveplot.functional import compose, const, identity, map_, filter_, drap, range_, reduce
+from jiveplot import hvutil, plotiterator, parsers, jenums, selection, selection, ms2mappings, plots, ms2util, gencolors
 
 if '-d' in sys.argv:
     print("PPGPLOT=",repr(ppgplot))
@@ -1995,9 +1996,9 @@ def run_plotter(cmdsrc, **kwargs):
     defaults.update(kwargs)
     # borrow the "mkcmd" function and only make it visible
     # in this scope
-    import command
-    from command import mkcmd
-    from helpfile import Help
+    from jiveplot import command
+    from jiveplot.command import mkcmd
+    from jiveplot.helpfile import Help
 
     # These objectes we certainly need
     app = "jcli"

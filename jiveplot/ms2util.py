@@ -118,11 +118,12 @@
 #  Revision 1.1.1.1  2001/04/06 13:34:34  verkout
 #  Files, new + from jivegui/MS1
 from   __future__ import print_function
-from   functional import map_, filter_, zip_, enumerate_
+from   jiveplot.functional import map_, filter_, zip_, enumerate_
 from   six        import iteritems
 from   functools  import reduce
-import itertools, operator, math, re, jenums, hvutil, numpy, pyrap.tables, pyrap.quanta, sys
+import itertools, operator, math, re, numpy, pyrap.tables, pyrap.quanta, sys
 import datetime, copy, collections
+from jiveplot import jenums, hvutil
 
 # Return a nicely human readable string representation
 # of a MS::TIME column value

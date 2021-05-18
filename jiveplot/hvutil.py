@@ -83,7 +83,7 @@
 # HV: * time to commit - added some more basic stuff
 #
 from   __future__ import print_function
-from   functional import map_, filter_, zip_, enumerate_, range_, is_not_none, drap
+from   jiveplot.functional import map_, filter_, zip_, enumerate_, range_, is_not_none, drap
 from   six        import iteritems
 from   functools  import reduce, partial
 import itertools, operator, re, string, copy, math, datetime

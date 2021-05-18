@@ -149,8 +149,9 @@
 ##
 from   __future__ import print_function
 from six          import iteritems
-import ms2util, hvutil, jenums, itertools, copy, operator, numpy, math, imp, time, collections, functional, plotutil
+import itertools, copy, operator, numpy, math, imp, time, collections
 import pyrap.quanta
+from jiveplot import ms2util, hvutil, jenums, functional, plotutil
 
 # Auto-detect of pycasa
 havePyCasa = True
