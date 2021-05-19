@@ -1,3 +1,0 @@
-python-casacore
-git+https://github.com/haavee/ppgplot.git#egg=ppgplot
-
