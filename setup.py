@@ -7,11 +7,10 @@ build_root = os.path.dirname(__file__)
 
 requirements = [
         'python-casacore',
-        'ppgplot @ git+git://github.com/haavee/ppgplot.git#egg=ppgplot',
+        'ppgplot @ git+https://github.com/haavee/ppgplot.git#egg=ppgplot',
         #ppgplot'
         ]
 
-#      dependency_links=['ppgplot @ git+git://github.com/haavee/ppgplot.git#egg=ppgplot'],
 def readme():
     """Get readme content for package long description"""
     with open(os.path.join(build_root, 'README.md')) as f:
@@ -33,6 +32,6 @@ setup(name=pkg,
       keywords="ms dataset statistics models plots",
       platforms=["OS Independent"],
       install_requires=requirements,
-      python_requires='>=3.6',
+#      python_requires='>=3.6',
       include_package_data=True,
       scripts=['jiveplot/bin/' + i for i in os.listdir('jiveplot/bin')])
