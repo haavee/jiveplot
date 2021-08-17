@@ -248,6 +248,8 @@ class readfile:
             print("readfile[{0}]: {1}".format(self.filename, e))
             raise StopIteration
 
+    next = __next__
+
 class scripted:
     ## each script arg is supposed to be
     ## an iterable, producing commands to be interpreted
