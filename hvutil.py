@@ -112,8 +112,7 @@ def dictfold(f, a, d):
 
 def mkerrf(pfx):
     def actualerrf(msg):
-        print("{0} {1}".format(pfx, msg))
-        return None
+        raise RuntimeError("{0} {1}".format(pfx, msg))
     return actualerrf
 
 ## Return the minimum + maximum of a sequence in one go.
