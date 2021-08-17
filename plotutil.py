@@ -11,7 +11,7 @@ FLAG     = jenums.Flagstuff
 YTypes   = enumerations.Enum("amplitude", "phase", "real", "imag", "weight")
 
 class minidataset(object):
-    __slots__ = ('xval', 'yval', 'xlims', 'ylims', 'xval_f', 'yval_f')
+    __slots__ = ('xval', 'yval', 'xlims', 'ylims', 'xval_f', 'yval_f', 'extra')
     def __init__(self, xv, yv, xf, yf, xl, yl):
         self.xval   = xv
         self.yval   = yv
@@ -33,7 +33,7 @@ class Dict(dict):
 
 
 class plt_dataset(object):
-    __slots__ = ('_xval', '_yval', '_xlims', '_ylims', 'isSorted', 'prevFlag', 'n', 'n_nan', '__xval', '__yval', '_m_flagged','_m_unflagged', '_m_nan', '_m_useless')
+    __slots__ = ('_xval', '_yval', '_xlims', '_ylims', 'isSorted', 'prevFlag', 'n', 'n_nan', '__xval', '__yval', '_m_flagged','_m_unflagged', '_m_nan', '_m_useless', 'extra')
     _xformMap = { list:                      lambda a, m: numpy.ma.MaskedArray(numpy.array(a), mask=m),
                   numpy.ndarray:             lambda a, m: numpy.ma.MaskedArray(a, mask=m),
                   numpy.ma.core.MaskedArray: lambda a, m: numpy.ma.MaskedArray(a, mask=numpy.logical_or(a.mask, False if m is None else m))}
