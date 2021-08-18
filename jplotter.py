@@ -397,7 +397,7 @@ from   __future__ import print_function
 from   six        import iteritems
 import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, imp, time
 import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors, functools
-from   functional import compose, const, identity, map_, filter_, drap, range_, reduce
+from   functional import compose, const, identity, map_, filter_, drap, range_, reduce, partial
 
 if '-d' in sys.argv:
     print("PPGPLOT=",repr(ppgplot))
@@ -1951,20 +1951,51 @@ class environment(object):
                 if not m_fn:
                     raise RuntimeError("Invalid MODULE.FUNCTION specification")
                 # strip the "." from ".FUNCTION"
-                m_fn = m_fn[1:]
-                f  = None
+                m_fn  = m_fn[1:]
+                f     = None
+                opath = CP(sys.path)
                 try:
-                    # compute module path - if it starts with "/" it's absolute
-                    # otherwise use sys.path[0]+m_path
-                    (f, p, d) = imp.find_module(m_name, [m_path if m_path[0]=='/' else os.path.join(sys.path[0], m_path)])
+                    # We must support loading from ourselves so we add copies
+                    # of directories in sys.path that have a jiveplot
+                    # subdirectory to sys.path
+                    drap(partial(sys.path.insert, 0),
+                                 filter(os.path.isdir,
+                                        map_(lambda p: os.path.join(p, 'jiveplot'), sys.path)))
+                    # Now we add another level - go over all the paths _again_
+                    # but now adding m_path and see if that path exists, but only if m_path seems
+                    # to be a relative path
+                    if not m_path:
+                        # no path at all, just MODULE.FUNCTION - add os.getcwd() to search
+                        # where we are executing from too
+                        # No need to go over sys.path because there is no m_path to add ;-)
+                        sys.path.insert(0, os.getcwd())
+                    elif m_path[0]!='/':
+                        # relative path
+                        drap(partial(sys.path.insert, 0),
+                                     filter(os.path.isdir,
+                                            map_(lambda p: os.path.join(p, m_path), sys.path)))
+                        # since it's a relative path, should look in current working dir as well
+                        p = os.path.join(os.getcwd(), m_path)
+                        if os.path.isdir(p):
+                            sys.path.insert(0, p)
+                    else:
+                        # m_path is an absolute path, add it
+                        if os.path.isdir(m_path):
+                            sys.path.insert(0, m_path)
+
+                    (f, p, d) = imp.find_module(m_name)
                     mod = imp.load_module(m_name, f, p, d)
                     self.post_processing_fn  = mod.__dict__[m_fn]
                     self.post_processing_mod = args[0]
+                except ImportError:
+                    print("Failed to locate module {0}".format(m_name))
                 except KeyError:
-                    raise RuntimeError("Function '{0}' not found in module {1}".format(m_fn, m_name))
+                    print("Function {0} not found in module {1}".format(m_fn, m_name))
                 finally:
                     if f:
                         f.close()
+                    sys.path = opath
+
         print("postProcessing: {0}".format( self.post_processing_mod ))
 
 
