@@ -4,10 +4,10 @@ from   __future__ import print_function
 try:               import builtins
 except ImportError:import __builtin__ as builtins
 import re, sys, copy, pydoc, fcntl, termios, struct, os, itertools, math, tempfile, traceback, glob
-from jiveplot import functional, hvutil
+from   jiveplot   import functional, hvutil
 from   six        import iteritems
 from   six.moves  import input as raw_input
-from   jiveplot.functional import List, drain, drap, map_, filter_, GetA, GetN
+from   jiveplot.functional import List, drain, drap, map_, filter_, GetA, GetN, compose
 from   functools  import reduce
 
 # if we have readline, go on, use it then!
@@ -467,7 +467,8 @@ class CommandLineInterface:
         self.commands.append(cmd)
 
     # attempt to add macro, which is tuple(name, value)
-    def addMacro(self, macro):
+    def addMacro(self, macro, **kwargs):
+        store     = kwargs.get('store', True)
         n, v      = macro
         # We need to do cycle detection - 
         # (1) create an updated macro definition set, including the
@@ -488,7 +489,8 @@ class CommandLineInterface:
         #      ...
         # (5) Profit!
         self.macros = nmacro
-        self.storeMacros()
+        if store:
+            self.storeMacros()
 
     def delMacro(self, x):
         if x in self.macros:
@@ -567,6 +569,7 @@ class CommandLineInterface:
 
     def macro(self, args, **kwargs):
         verbose = kwargs.get('verbose', True)
+        store   = kwargs.get('store'  , True)
         # args is the string following the macro command, if any
         # we use the escape split on it - honouring quotation
         # three cases: len(args)==0 => just the 'macro' command, list all macros
@@ -588,9 +591,9 @@ class CommandLineInterface:
             for cmd in self.commands:
                 if cmd.rx.match(parts[0]):
                     raise RuntimeError("'{0}' already exists as command".format(parts[0]))
-            self.addMacro( (parts[0], parts[1]) )
+            self.addMacro( (parts[0], parts[1]), store=store )
             if verbose:
-                p(parts[0]+" => "+parts[1])
+                print(parts[0]+" => "+parts[1])
         return None
 
     def runShell(self, s):
@@ -629,7 +632,7 @@ class CommandLineInterface:
         mfn = os.path.join( os.getenv('HOME'), ".{0}.macros".format(self.app))
         try:
             with open(mfn, 'r') as mf:
-                reduce(lambda acc, line: self.macro(line, verbose=False) or acc, mf, None)
+                reduce(lambda acc, line: self.macro(line, verbose=False, store=False) or acc, mf, None)
         except IOError:
             # no macro file yet 
             pass
