@@ -740,10 +740,10 @@ class jplotter:
 
                 # Now we know we can safely replace strings -> values (and remove whitespace)
                 if nchan:
-                    replacer = lambda x : hvutil.sub(x, [("\s+", ""), (re.compile(r"all"), "first:last"), \
-                                                         ("first", "0"), ("mid", repr(nchan//2)), ("last", repr(nchan-1))])
+                    replacer = lambda x : hvutil.sub(x, [(r"\s+", r""), (re.compile(r"all"), r"first:last"), \
+                                                         (r"first", r"0"), (r"mid", repr(nchan/2)), (r"last", repr(nchan-1))])
                 else:
-                    replacer = lambda x : hvutil.sub(x, [("\s+", "")])
+                    replacer = lambda x : hvutil.sub(x, [(r"\s+", r"")])
                 expander = lambda x : hvutil.expand_string_range(replacer(x))
 
                 # Reduce and build the actual channelselection - we gather all the sub-selections (the comma separated
@@ -800,7 +800,7 @@ class jplotter:
                         srcs = mo.group('expr')
 
                     # a) remove whitespace and replace multiple wildcards by a single one
-                    srcs   = hvutil.sub(srcs, [("\s+", ""), ("\*+", "*"), ("^all$", "*")])
+                    srcs   = hvutil.sub(srcs, [(r"\s+", r""), (r"\*+", r"*"), (r"^all$", r"*")])
 
                     # b) was a negation given? If so, strip the negation character but remember it
                     neg    = re.match("^!", srcs)
@@ -812,13 +812,13 @@ class jplotter:
                     #    wont to appear in source names
                     #    Also replace the question mark by "." - do this _after_ the
                     #    literal dots have been escaped ...
-                    srcs = hvutil.sub(srcs, [("\+", "\+"), ("\.", "\."), ("\?",".")])
+                    srcs = hvutil.sub(srcs, [(r"\+", r"\+"), (r"\.", r"\."), (r"\?", r".")])
 
-                    # d) replace wildcards (*) by (.*)
-                    srcs = hvutil.sub(srcs, [("\*", ".*")])
+                    # d) replace wildcards (*) by (.*) 
+                    srcs = hvutil.sub(srcs, [(r"\*", r".*")])
 
                     # Now we can make a regex
-                    rx = re.compile("^"+srcs+"$", re.I)
+                    rx = re.compile(r"^"+srcs+"$", re.I)
 
                     return lambda src_flag: (src_flag[0], (src_flag[1] if neg else add) if rx.match(src_flag[0]) else (add if neg else src_flag[1]))
 
@@ -1063,10 +1063,10 @@ class jplotter:
                         # (or at least, that's how we treat them).
                         # Substitute aliases with their corresponding regexes and compile
                         # them into a list of regexes
-                        pols = map_(lambda x:re.compile("^"+x+"$", re.I), \
+                        pols = map_(lambda x:re.compile(r"^"+x+"$", re.I), \
                                  map(lambda x: \
-                                     hvutil.sub(x, [("\*", ".*"), (re.compile("P", re.I), r"(.)\\1"), \
-                                                    (re.compile("X", re.I), r"(.)(?!\\1).")]), \
+                                     hvutil.sub(x, [(r"\*", r".*"), (re.compile(r"P", re.I), r"(.)\\1"), \
+                                                    (re.compile(r"X", re.I), r"(.)(?!\\1).")]), \
                                      pols.split(",")))
                         # and hoopla!
                         pols = (pid, pols)
@@ -1794,7 +1794,7 @@ class environment(object):
         if len(args)>1:
             raise RuntimeError("This command only supports 0 or 1 arguments")
         # support '~' expansion at the start of the path
-        os.chdir( re.sub(r"^~", os.environ['HOME'], ("~" if not args else args[0])) )
+        os.chdir( re.sub(r"^~", os.environ['HOME'], (r"~" if not args else args[0])) )
         self.wd = os.getcwd()
 
     def close(self):
@@ -1946,7 +1946,7 @@ def run_plotter(cmdsrc, **kwargs):
     # 'listr' is the 'task' to display the scanlist
     c.addCommand(
         mkcmd(rx=re.compile(r"^listr\b.*$"), id="listr",
-              args=lambda x: re.sub("^listr\s*", "", x).split(),
+              args=lambda x: re.sub(r"^listr\s*", "", x).split(),
               cb=lambda *args: j().listScans(*args),
               hlp="listr\n\tDisplay list of scans found by 'indexr'") )
 
@@ -2003,7 +2003,7 @@ def run_plotter(cmdsrc, **kwargs):
     c.addCommand( \
         mkcmd(rx=re.compile(r"^nxy(\s+[0-9]+\s+[0-9]+)?(\s+(fixed|flexible|rows|columns))*$", re.I), \
               # don't convert to integers just yet - leave that up to the actual layout function
-              args=lambda x: re.sub("^nxy\s*", "", x).split(), \
+              args=lambda x: re.sub(r"^nxy\s*", "", x).split(), \
               cb=layout_f, id="nxy", \
               hlp="nxy [nx ny] [fixed|flexible] [rows|columns]\n\tprint or set the current plot layout\n\nThe layout can be marked as fixed or flexible. In the latter case jplotter might re-arrange the layout to fit all plots on one page when this seems feasible. By default plot layouts are 'flexible' and 'rows' are filled first") )
 
@@ -2112,7 +2112,7 @@ def run_plotter(cmdsrc, **kwargs):
         print("sort order [{0}]: {1}".format(pt, plots.Plotters[pt].sortby(*args)))
     c.addCommand( \
         mkcmd(rx=re.compile(r"^sort\b.*$"), \
-              args=lambda x: re.sub("^sort\s*", "", x).split(), \
+              args=lambda x: re.sub(r"^sort\s*", "", x).split(), \
               cb=sort_fn, id="sort", \
               hlp=Help["sort"]) )
 
@@ -2127,7 +2127,7 @@ def run_plotter(cmdsrc, **kwargs):
 
     c.addCommand( \
         mkcmd(rx=re.compile(r"^linew(idth)?(\s+[0-9]+)?$"), \
-              args=lambda x: map_(int, re.sub("^linew(idth)?\s*", "", x).split()),
+              args=lambda x: map_(int, re.sub(r"^linew(idth)?\s*", "", x).split()),
               cb=set_lw, id="linew", \
               hlp="linew(idth) [<number>]\n\tset/display line width when drawing line plots"))
 
@@ -2140,8 +2140,8 @@ def run_plotter(cmdsrc, **kwargs):
         print("pointsize[{0}]: {1}".format(pt, ps))
 
     c.addCommand( \
-        mkcmd(rx=re.compile(r"^ptsz(\s+([0-9]*\.[0-9]+|[0-9]+(\.[0-9]*)?))?$"), \
-              args=lambda x: map_(float, re.sub("^ptsz\s*", "", x).split()),
+        mkcmd(rx=re.compile(r"^ptsz(\s+[0-9]+)?$"), \
+              args=lambda x: map_(int, re.sub(r"^ptsz\s*", "", x).split()),
               cb=set_ps, id="ptsz", \
               hlp="ptsz [<number>]\n\tset/display point size when drawing point plots"))
 
@@ -2163,7 +2163,7 @@ def run_plotter(cmdsrc, **kwargs):
 
     c.addCommand( \
         mkcmd(rx=re.compile(r"^marksz(\s+[0-9]+)?$"), \
-              args=lambda x: map_(int, re.sub("^marksz\s*", "", x).split()),
+              args=lambda x: map_(int, re.sub(r"^marksz\s*", "", x).split()),
               cb=set_ms, id="marksz", \
               hlp="marksz [<number>]\n\tset/display marker size for marking marked points"))
 
@@ -2185,7 +2185,7 @@ def run_plotter(cmdsrc, **kwargs):
 
     c.addCommand(
         mkcmd(rx=re.compile(r"^draw\b.*$"), id="draw",
-              args=lambda x: re.sub("^draw\s*", "", x).split(), cb=draw_fn, hlp=Help["draw"]) )
+              args=lambda x: re.sub(r"^draw\s*", "", x).split(), cb=draw_fn, hlp=Help["draw"]) )
 
     # colour-key related functions
     def ckey_f(*args):
@@ -2199,7 +2199,7 @@ def run_plotter(cmdsrc, **kwargs):
     c.addCommand( \
         mkcmd(rx=re.compile(r"^ckey\b.*$"), id="ckey",
               hlp=Help["ckey"],
-              args=lambda x: all_or_nothing(re.sub("^ckey\s*", "", x)), cb=ckey_f) )
+              args=lambda x: all_or_nothing(re.sub(r"^ckey\s*", "", x)), cb=ckey_f) )
 
     # post-reading pre-plotting filtering
     # this allows the user to filter data sets before plotting
@@ -2515,7 +2515,7 @@ def run_plotter(cmdsrc, **kwargs):
     # control what to show: flagged, unflagged, both
     c.addCommand( \
             mkcmd(rx=re.compile(r"^show(\s\S+)*$"), hlp=Help["show"], \
-            args=lambda x: re.sub("^show\s*", "", x).split(), \
+            args=lambda x: re.sub(r"^show\s*", "", x).split(), \
             cb=lambda *args: j().showSetting(*args), id="show") )
 
     # produce a hardcopy postscript file
@@ -2534,13 +2534,13 @@ def run_plotter(cmdsrc, **kwargs):
         if mo:
             # yes, remember it + strip it
             tp   = mo.group(1)
-            pgfn = rxType.sub("", pgfn)
+            pgfn = rxType.sub(r"", pgfn)
         # id. for extension
         mo = rxExt.search(pgfn)
         if mo:
             # yarrrs. remember + strip
             ext  = mo.group(1)
-            pgfn = rxExt.sub("", pgfn)
+            pgfn = rxExt.sub(r"", pgfn)
         # if there was a type but not extension, use that for extension
         # if there was an extension but no type don't change that
         # if there were none, use defaults
@@ -2574,8 +2574,8 @@ def run_plotter(cmdsrc, **kwargs):
         print("Plots saved to [{0}]".format(fn))
 
     c.addCommand( \
-        mkcmd(rx=re.compile("^save(\s+\S+)?$"), id="save",
-              args=lambda x: re.sub("^save\s*", "", x),
+        mkcmd(rx=re.compile(r"^save(\s+\S+)?$"), id="save",
+              args=lambda x: re.sub(r"^save\s*", "", x),
               cb=lambda x: mk_postscript(env(), x),
               hlp="save <filename>\n\tsave current plots to file <filename> in PostScript format.\nThe extension .ps and default lands cape '/cps' orientation will be added automatically if not given") )
 
@@ -2864,44 +2864,44 @@ def run_plotter(cmdsrc, **kwargs):
     # The source selection "src"
     c.addCommand( \
         mkcmd(rx=re.compile(r"^src(\s+\S+)*$"), hlp=Help["src"], \
-              args=lambda x: re.sub("^src\s*", "", x).split(), \
+              args=lambda x: re.sub(r"^src\s*", "", x).split(), \
               cb=lambda *args: j().sources(*args), id="src") )
 
     # Average in time or frequency, set solution interval (time averaging buckets)
     c.addCommand( \
         mkcmd(rx=re.compile(r"^avt\b.*$"), hlp=Help["avt"], \
-              args=lambda x: re.sub("^avt\s*", "", x).split(), \
+              args=lambda x: re.sub(r"^avt\s*", "", x).split(), \
               cb=lambda *args: j().averageTime(*args), id="avt") )
     c.addCommand( \
         mkcmd(rx=re.compile(r"^avc\b.*$"), hlp=Help["avc"], \
-              args=lambda x: re.sub("^avc\s*", "", x).split(), \
+              args=lambda x: re.sub(r"^avc\s*", "", x).split(), \
               cb=lambda *args: j().averageChannel(*args), id="avc") )
 
     c.addCommand( \
         mkcmd(rx=re.compile(r"^solint\b.*$"), hlp=Help["solint"], \
-              args=lambda x: re.sub("^solint\s*", "", x).split(), \
+              args=lambda x: re.sub(r"^solint\s*", "", x).split(), \
               cb=lambda *args: j().solint(*args), id="solint") )
     c.addCommand( \
         mkcmd(rx=re.compile(r"^nchav\b.*$"), hlp=Help["nchav"], \
-              args=lambda x: re.sub("^nchav\s*", "", x).split(), \
+              args=lambda x: re.sub(r"^nchav\s*", "", x).split(), \
               cb=lambda *args: j().nchav(*args), id="nchav") )
 
     # Weigth threshold
     c.addCommand( \
         mkcmd(rx=re.compile(r"^wt\b.*$"), hlp=Help["wt"], \
-              args=lambda x: re.sub("^wt\s*", "", x).split(), \
+              args=lambda x: re.sub(r"^wt\s*", "", x).split(), \
               cb=lambda *args: j().weightThreshold(*args), id="wt") )
 
     # the 'new plot' command
     c.addCommand( \
         mkcmd(rx=re.compile(r"^new\b.*$"), \
-              hlp=Help["new"], args=lambda x: re.sub("^new\s*", "", x).split(), \
+              hlp=Help["new"], args=lambda x: re.sub(r"^new\s*", "", x).split(), \
               cb=lambda *args: j().newPlot(*args), id="new") )
 
     # the TaQL command - insert raw taql command
     c.addCommand( \
         mkcmd(rx=re.compile(r"taql\b.*$"), hlp=Help["taql"], \
-              args=lambda x: all_or_nothing(re.sub("^taql\s*", "", x)), \
+              args=lambda x: all_or_nothing(re.sub(r"^taql\s*", "", x)), \
               cb=lambda *args: j().taqlStr(*args), id="taql") )
 
     # O/S interface "cd" , "pwd" and "ls"
@@ -2914,7 +2914,7 @@ def run_plotter(cmdsrc, **kwargs):
               hlp="cd [dir]\n\tchange current working directory (default: $HOME)") )
 
     c.addCommand( \
-        mkcmd(rx=re.compile("^ls(\s+\S.+)?$"), id="ls", args=lambda x: x, cb=lambda x: os.system(x),
+        mkcmd(rx=re.compile(r"^ls(\s+\S.+)?$"), id="ls", args=lambda x: x, cb=lambda x: os.system(x),
               hlp="ls [dir]\n\tlist directory contents (default: current working directory)") )
 
     def pwd():
@@ -2935,13 +2935,13 @@ def run_plotter(cmdsrc, **kwargs):
     c.addCommand( \
         mkcmd(rx=re.compile(r"^write\s+\S+$"), id="write", \
               hlp="write <tablename>\n\tWrite current selection out as new (reference) table", \
-              args=lambda x: re.sub("^write\s*", "", x), cb=write_tab) )
+              args=lambda x: re.sub(r"^write\s*", "", x), cb=write_tab) )
 
     # configure/inspect post processing
     c.addCommand( \
         mkcmd(rx=re.compile(r"^postprocess\b.*"), id="postprocess",
               hlp="postprocess [MODULE.FUNCTION]\n\tSet/display function to call on processed data",
-              args=lambda x: re.sub("^postprocess\s*", "", x).split(),
+              args=lambda x: re.sub(r"^postprocess\s*", "", x).split(), 
               cb=lambda *args: env().postProcess(*args)) )
 
     # set/inspect symbols
@@ -2956,7 +2956,7 @@ def run_plotter(cmdsrc, **kwargs):
 
     c.addCommand(
         mkcmd(rx=re.compile(r"^test_f(\s+\S+)*$"), id="test_f",
-              args=lambda x: re.sub("^test_f\s*", "", x).split(), cb=lambda *args: test_f(*args)) )
+              args=lambda x: re.sub(r"^test_f\s*", "", x).split(), cb=lambda *args: test_f(*args)) )
 
     c.run(cmdsrc)
 

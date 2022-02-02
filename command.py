@@ -336,7 +336,7 @@ class scripted:
 #  the "id" field is used as the short form of the command, for
 #    listing all commands
 #
-#   mkcmd(rx=re.compile("^foo(\s+[0-9]+)?$",
+#   mkcmd(rx=re.compile(r"^foo(\s+[0-9]+)?$",
 #         id="foo",
 #         args=lambda x: re.sub("^foo\s+",""),
 #         cb=lambda x: int(x)+42 if x else -1, 
