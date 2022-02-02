@@ -174,9 +174,9 @@ def parse_scan(qry, **kwargs):
     # transforming "*" into ".*" and "?" into "."
     # (basically shell regex => normal regex)
     def pattern2regex(s):
-        s = reduce(lambda acc, x: re.sub(x, x, acc), ["\+", "\-", "\."], s)
-        s = reduce(lambda acc, t_r: re.sub(t_r[0], t_r[1], acc), [("\*+", ".*"), ("\?", ".")], s)
-        return re.compile("^"+s+"$")
+        s = reduce(lambda acc, x: re.sub(x, x, acc), [r"\+", r"\-", r"\."], s)
+        s = reduce(lambda acc, t_r: re.sub(t_r[0], t_r[1], acc), [(r"\*+", r".*"), (r"\?", r".")], s)
+        return re.compile(r"^"+s+"$")
 
     def regex2regex(s):
         flagmap = {"i": re.I, None:0}
@@ -568,7 +568,7 @@ def parse_scan(qry, **kwargs):
     # attribute list = identifier {',' identifier}
     def parse_sort_list(s):
         rv = []
-        rxAttribute = re.compile("^[a-zA-Z][a-zA-Z0-9_]*$")
+        rxAttribute = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
         while True:
             item = tok(s)
             if item.type!='text':
@@ -1896,9 +1896,9 @@ def parse_filter_expr(qry, **kwargs):
     # transforming "*" into ".*" and "?" into "."
     # (basically shell regex => normal regex)
     def pattern2regex(s):
-        s = reduce(lambda acc, x: re.sub(x, x, acc), ["\+", "\-", "\."], s)
-        s = reduce(lambda acc, t_r: re.sub(t_r[0], t_r[1], acc), [("\*+", ".*"), ("\?", ".")], s)
-        return re.compile("^"+s+"$")
+        s = reduce(lambda acc, x: re.sub(x, x, acc), [r"\+", r"\-", r"\."], s)
+        s = reduce(lambda acc, t_r: re.sub(t_r[0], t_r[1], acc), [(r"\*+", r".*"), (r"\?", r".")], s)
+        return re.compile(r"^"+s+"$")
 
     def regex2regex(s):
         flagmap = {"i": re.I, None:0}
@@ -2225,9 +2225,9 @@ def parse_animate_expr(qry, **kwargs):
     # transforming "*" into ".*" and "?" into "."
     # (basically shell regex => normal regex)
     def pattern2regex(s):
-        s = reduce(lambda acc, x: re.sub(x, x, acc), ["\+", "\-", "\."], s)
-        s = reduce(lambda acc, t_r: re.sub(t_r[0], t_r[1], acc), [("\*+", ".*"), ("\?", ".")], s)
-        return re.compile("^"+s+"$")
+        s = reduce(lambda acc, x: re.sub(x, x, acc), [r"\+", r"\-", r"\."], s)
+        s = reduce(lambda acc, t_r: re.sub(t_r[0], t_r[1], acc), [(r"\*+", r".*"), (r"\?", r".")], s)
+        return re.compile(r"^"+s+"$")
 
     def regex2regex(s):
         flagmap = {"i": re.I, None:0}

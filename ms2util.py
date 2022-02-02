@@ -141,7 +141,7 @@ def str2time(s, refdate=0.0):
     time0  = (math.floor(refdate/secday))*secday
 
     # remove all whitespace
-    s = re.sub("\s+", "", s)
+    s = re.sub(r"\s+", "", s)
 
     # If it was all numeric, assume it's MJD seconds - the internal
     # measurement set format
