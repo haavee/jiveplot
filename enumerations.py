@@ -34,7 +34,7 @@ Elements from the enumeration can be used as ordinary variables:
     assert axes.x in axes
     #    "<string> in Enum(...)" finds the enumeration with name <string>
     if input('axis?> ') not in axes:
-        raise RuntimeError, "Unknown axis type ...?"
+        raise RuntimeError("Unknown axis type ...?")
 
     # can be iterated over
     for ax in axes:
@@ -65,6 +65,7 @@ Elements from the enumeration can be used as ordinary variables:
     axes['bar']    => ValueError: Enum(x,y,z) does not contain the value bar
     axes[foo.bar]  => ValueError: Enum(x,y,z) does not contain the value bar
 """
+from   six import with_metaclass, iteritems
 import operator, collections
 
 # Python 2.6 don't have OrderedDict in the collections module. Sigh.
@@ -85,7 +86,7 @@ except AttributeError:
                     continue
                 self.append( (k,v) )
                 self.seen.add( k )
-            for (k,v) in kwargs.iteritems():
+            for (k,v) in iteritems(kwargs):
                 if k in self.seen:
                     continue
                 self.append( (k,v) )
@@ -101,7 +102,7 @@ class EnumValueMeta(type):
         # Check if the meta'ed class is conform our expectations
         ev = dct.get('_enumvalue', None)
         if ev is None:
-            raise TypeError, "EnumValue/the modified class has no _enumvalue set!"
+            raise TypeError("EnumValue/the modified class has no _enumvalue set!")
         mName = str(ev[0])
         dct['__str__'] = dct['__repr__'] = classmethod(lambda self: mName)
         dct['_enumtypes'] = tuple(map(type, ev))
@@ -142,14 +143,15 @@ class EnumValueMeta(type):
     def __hash__(self):
         return hash(self._enumvalue[1])
 
-    def __ne__(self,other):
-        return not self.__eq__(other)
+    def __ne__(self, other):
+        return not self == other 
 
     def __del__(self):
-        raise TypeError, "Cannot delete an enumeration value"
+        pass
+        #raise TypeError("Cannot delete an enumeration value")
 
     def __delattr__(self, a):
-        raise TypeError, "Cannot delete an enumeration value"
+        raise TypeError("Cannot delete an enumeration value")
 
     def __str__(self):
         return self.__str__()
@@ -171,7 +173,7 @@ class EnumMeta(type):
         enums  = dct.get('_enums', ())
         # Prevent people trying to break things
         if sum(1 if kv[0] in dir(cls) else 0 for kv in enums):
-            raise TypeError, "Attempt to overwrite one or more of the class's methods with an enumerated name!"
+            raise TypeError("Attempt to overwrite one or more of the class's methods with an enumerated name!")
         # check if we already have this set of enums
         eptr   = _knownEnums.get(enums, None)
         if eptr is not None:
@@ -183,9 +185,8 @@ class EnumMeta(type):
         # use list to preserve the order
         enumvals = list()
         for ev in enums:
-            class EnumValueImpl:
+            class EnumValueImpl(with_metaclass(EnumValueMeta)):
                 _enumvalue    = ev
-                __metaclass__ = EnumValueMeta
             enumvals.append( EnumValueImpl )
             dct[ ev[0] ] = EnumValueImpl
 
@@ -218,7 +219,8 @@ class EnumMeta(type):
         return len(self._enums)
 
     def index(self, x, *args):
-        lst = map(str, self._enums) if isinstance(x, str) else self._enums
+        # thanks Python3 for having to explicitly make a list FFS!
+        lst = list(map(str, self._enums) if isinstance(x, str) else self._enums)
         return lst.index(x, *args)
 
     def __getitem__(self, a):
@@ -226,22 +228,22 @@ class EnumMeta(type):
             idx = a if isinstance(a, int) else self._enums.index(a)
             return self._enums[idx]
         except ValueError:
-            raise ValueError, "{0} does not contain the value {1}".format(self, a)
+            raise ValueError("{0} does not contain the value {1}".format(self, a))
 
     def __setitem__(self, a, v):
-        raise TypeError, "Seriously? Trying to assign into an enumeration?? {0}[{1}] = {2} ... tssssk".format(self, a, v)
+        raise TypeError("Seriously? Trying to assign into an enumeration?? {0}[{1}] = {2} ... tssssk".format(self, a, v))
 
     def __delitem__(self, a):
-        raise TypeError, "Cannot delete item {0} from enumeration".format(a)
+        raise TypeError("Cannot delete item {0} from enumeration".format(a))
 
     def __setattr__(self, a, v):
         # We cannot allow overwriting enumerated values but we can allow other attributes to be set?
         if a in self:
-            raise RuntimeError, "Attempt to overwrite enumerated value - cannot set {0}.{1} = {2}".format(self, a, v)
-        raise TypeError, "You cannot set attributes on an enumeration"
+            raise RuntimeError("Attempt to overwrite enumerated value - cannot set {0}.{1} = {2}".format(self, a, v))
+        raise TypeError("You cannot set attributes on an enumeration")
 
     def __delattr__(self, a):
-        raise TypeError, "Cannot delete attribute {0} from enumeration".format(a)
+        raise TypeError("Cannot delete attribute {0} from enumeration".format(a))
 
 
 def Enum(*names, **namedvalues):
@@ -252,14 +254,13 @@ def Enum(*names, **namedvalues):
     #enums = collections.OrderedDict((n, str(n)) for n in names)
     enums = Dict(((n, str(n)) for n in names))
     if len(enums)!=len(names):
-        raise TypeError, "Duplicate names detected in enumerated names"
+        raise TypeError("Duplicate names detected in enumerated names")
     # add the named values
     enums.update( **namedvalues )
     if len(enums)!=(len(names)+len(namedvalues)):
-        raise TypeError, "Duplicate names detected between names and named values"
-    class EnumImpl(object):
-        _enums        = tuple(enums.iteritems())
-        __metaclass__ = EnumMeta
+        raise TypeError("Duplicate names detected between names and named values")
+    class EnumImpl(with_metaclass(EnumMeta, object)):
+        _enums        = tuple((enums.iteritems if hasattr(enums, 'iteritems') else enums.items)())
     return EnumImpl
 
 
@@ -306,7 +307,10 @@ if __name__ == '__main__':
 
         # can convert to list/iterate
         def test_as_list(self):
-            self.assertItemsEqual(list(self.a), [self.a.noot, self.a.aap])
+            # FFS! Py2.7 has assertItemsEqual but Py3 doesn't;
+            #      there it's called assertCountEqual ARGH!
+            #      So we gonna use the compatible recipe
+            self.assertEqual(list(sorted(self.a)), list(sorted([self.a.noot, self.a.aap])))
 
         # a and c a constructed with same elements in same order
         # should yield identical enums

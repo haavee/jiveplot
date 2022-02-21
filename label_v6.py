@@ -1,10 +1,11 @@
+from   functional  import range_
 import collections, jenums
 
 AX        = jenums.Axes
 
 _attrl    = [AX.P, AX.CH, AX.SB, AX.FQ, AX.BL, AX.SRC, AX.TIME, AX.TYPE]
 _attrf    = [AX.P, AX.CH, AX.SB, AX.FQ, AX.BL, AX.SRC, AX.TIME]
-_nattrf   = range(len(_attrf))
+_nattrf   = range_(len(_attrf))
 BaseClass = collections.namedtuple('BaseClass', _attrl)
 
 _nones    = [None]*len(_attrl)

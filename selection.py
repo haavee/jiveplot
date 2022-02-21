@@ -39,7 +39,15 @@
 # Revision 1.2  2013-01-29 12:23:45  jive_cc
 # HV: * time to commit - added some more basic stuff
 #
-import jenums, hvutil, copy
+from   six        import iteritems
+from   functools  import reduce
+from   functional import compose, is_not_none, map_
+import jenums, hvutil, copy, operator
+
+# how to format a time range "(start, end)" as TaQL
+fmt_time_cond = "(TIME>={0[0]:.7f} && TIME<={0[1]:.7f})".format
+fmt_dd_select = "{0}/{1}/{2}:{3}".format
+range_repr    = compose(hvutil.range_repr, hvutil.find_consecutive_ranges)
 
 class selection:
     def __init__(self):
@@ -52,8 +60,8 @@ class selection:
         self.plotType        = None
         self.solint          = None # AIPS legacy :D
         self.solchan         = None # AIPS legacy :D
-        self.averageTime     = jenums.Averaging.None
-        self.averageChannel  = jenums.Averaging.None
+        self.averageTime     = jenums.Averaging.NoAveraging
+        self.averageChannel  = jenums.Averaging.NoAveraging
         self.taqlString      = None
         self.weightThreshold = None
         # We keep the baseline selection as human readable format (is an array of
@@ -76,9 +84,41 @@ class selection:
         self.newPlot[jenums.Axes.FQ] = True
         self.newPlot[jenums.Axes.BL] = True
 
+    # FIXME XXX FIXME
+    # should check in jplotter.py if selected time range is larger than the 
+    # whole data set because then we can decide to NOT add a time condition, making
+    # the query faster
     def selectTimeRange(self, timeranges):
         self.timeRange     = copy.deepcopy(timeranges)
-        self.timeRangeTaql = "(" + " OR ".join(map(lambda (s,e): "(TIME>={0:.7f} && TIME<={1:.7f})".format(s,e), self.timeRange)) + ")"
+        self.timeRangeTaql = "(" + " OR ".join(map(fmt_time_cond, self.timeRange)) + ")"
+
+    @classmethod
+    def group_sb(cls, acc, f_s_p_prods):
+        (f, s, p, prods) = f_s_p_prods
+        key = (f, p, str(prods))
+        acc.setdefault(key, set()).add(s)
+        return acc
+    @classmethod
+    def proc_sb(cls, f_p_ps_v):
+        ((f,p,ps), v) = f_p_ps_v
+        return (f, list(v), p, eval(ps))
+    @classmethod
+    def group_fq(cls, acc, f_s_p_l):
+        (f,s,p,l) = f_s_p_l
+        key = (str(s), p, str(l))
+        acc.setdefault(key, set()).add(f)
+        return acc
+    @classmethod
+    def proc_fq(cls, ss_p_ps_v):
+        ((ss, p, ps), v) = ss_p_ps_v
+        return (list(v), eval(ss), p, eval(ps))
+    @classmethod
+    def fmter(cls, pMap):
+        def do_it(f_s_p_l):
+            (f,s,p,l) = f_s_p_l
+            pols      = ",".join(hvutil.itemgetter(*l)(pMap.getPolarizations(p)))
+            return fmt_dd_select(range_repr(f), range_repr(s), p, pols)
+        return do_it
 
     # the ddSelection as Human Readable Format. Needs a 
     # polarization map to unmap indices to string
@@ -98,32 +138,15 @@ class selection:
         # such that we end up with 
         #    ddSelection = [(fs, [sb], pol, [prods]), ....]
         # once more dict + set to the rescue
-        def group_sb(acc, (f, s, p, prods)):
-            key = (f, p, str(prods))
-            acc[key].add(s) if key in acc else acc.update({key:set([s])})
-            return acc
-        hrf = map(lambda ((f,p,ps), v): (f,list(v),p,eval(ps)), \
-                  reduce(group_sb, self.ddSelection, {}).iteritems())
+        hrf = map(selection.proc_sb, iteritems(reduce(selection.group_sb, self.ddSelection, {})))
 
         # each entry can already be listed as one, abbreviated, line Let's see
         # if there are multiple FQs who have the same [sb], pol, [prods]
         # selection and group them together. Again: dict + set to the rescue
-        def group_fq(acc, (f,s,p,l)):
-            key = (str(s), p, str(l))
-            acc[key].add(f) if key in acc else acc.update({key:set([f])})
-            return acc
-        hrf = map(lambda ((ss, p, ps), v): (list(v), eval(ss), p, eval(ps)), \
-                  reduce(group_fq, hrf, {}).iteritems())
+        hrf = map(selection.proc_fq, iteritems(reduce(selection.group_fq, hrf, {})))
 
         # now we can produce the output
-        def fmter( (f,s,p,l) ):
-            return "{0}/{1}/{2}:{3}".format( \
-                    hvutil.range_repr(hvutil.find_consecutive_ranges(f)), \
-                    hvutil.range_repr(hvutil.find_consecutive_ranges(s)), \
-                    p, \
-                    ",".join(hvutil.itemgetter(*l)(pMap.getPolarizations(p))) \
-                    )
-        return map(fmter, hrf)
+        return map_(selection.fmter(pMap), hrf)
 
     def selectionTaQL(self):
         # If an explicit TaQL string is set, return that one
@@ -131,15 +154,17 @@ class selection:
             return self.taqlString
 
         # No? Ok, build the query
-        return reduce(lambda acc, x: (acc+" AND "+x if acc else x) if x else acc, \
-                      filter(lambda z: z is not None, \
-                             [self.baselinesTaql, self.sourcesTaql, self.timeRangeTaql, self.ddSelectionTaql]), \
-                      "")
+        return " AND ".join(filter(operator.truth, 
+                                   [self.baselinesTaql, self.sourcesTaql, self.timeRangeTaql, self.ddSelectionTaql]))
+        #return reduce(lambda acc, x: (acc+" AND "+x if acc else x) if x else acc, \
+        #              filter(is_not_none, \
+        #                     [self.baselinesTaql, self.sourcesTaql, self.timeRangeTaql, self.ddSelectionTaql]), \
+        #              "")
 
     def mkCPPNewplot(self):
         # return a list of True/False values for all plot axes in the order the C++
         # expects them
-        return map(lambda x: self.newPlot[x], [jenums.Axes.P, jenums.Axes.CH, jenums.Axes.SB,jenums.Axes.FQ,
+        return map_(lambda x: self.newPlot[x], [jenums.Axes.P, jenums.Axes.CH, jenums.Axes.SB,jenums.Axes.FQ,
                                                jenums.Axes.BL, jenums.Axes.SRC, jenums.Axes.TIME, jenums.Axes.TYPE])
 
 
