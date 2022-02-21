@@ -114,7 +114,7 @@ class plt_dataset(object):
         return None if not xi else minidataset(xu, yu, xf, yf, (min(xi), max(xa)), (min(yi), max(ya)))
 
 
-# Take two labels and join them - i.e. to go from separate plot/data set labels 
+# Take two labels and join them - i.e. to go from separate plot/data set labels
 # to full data set label
 is_not_none = lambda x: x is not None
 def join_label(l1, l2):
@@ -123,7 +123,7 @@ def join_label(l1, l2):
         aval = filter_(is_not_none, [getattr(l1, a), getattr(l2, a)])
         if len(aval)>1:
             raise RuntimeError("Duplicate attribute value {0}: {1} {2}".format(a, aval[0], aval[1]))
-        return None if len(aval)==0 else aval[0] 
+        return None if len(aval)==0 else aval[0]
     return label(reduce(lambda acc, a: operator.setitem(acc, a, attrval(str(a))) or acc, label._attrs, dict()), label._attrs)
 
 # take one label and split it in two; the plot and data set label, based
@@ -134,7 +134,7 @@ def split_label(l, inplot):
     def reductor(pl_dsl, attr):
         v = getattr(l, attr)
         setattr(pl_dsl[0], attr, v) if attr in inplot else setattr(pl_dsl[1], attr, v)
-        return (pl, dsl)
+        return pl_dsl
     return reduce(reductor, label._attrs, (mk_lab(), mk_lab()))
 
 def label_splitter(inPlot):

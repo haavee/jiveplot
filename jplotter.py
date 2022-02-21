@@ -677,7 +677,7 @@ class jplotter:
                 # Now compress them
                 if sel_.timeRange:
                     sel_.timeRange = reduce(reductor, sel_.timeRange[1:], [sel_.timeRange[0]])
-                
+
         # Display selected scans
         if sel_.scanSel:
             print("\n".join(map(str, sel_.scanSel)))
@@ -719,7 +719,7 @@ class jplotter:
                     if len(nch)==1:
                         nchan = list(nch)[0]
                 else:
-                    # no freq selection yet, see if all the spectral windows in all the 
+                    # no freq selection yet, see if all the spectral windows in all the
                     # freqids have the same number of channels. If they do we can easily
                     # use that "nch" as symbolic value
                     chset = reduce( \
@@ -808,11 +808,11 @@ class jplotter:
                     # c) escape re special characters: "+" => "\+", "." => "\."
                     #    so they won't be interpreted *as* regex characters - they're
                     #    wont to appear in source names
-                    #    Also replace the question mark by "." - do this _after_ the 
+                    #    Also replace the question mark by "." - do this _after_ the
                     #    literal dots have been escaped ...
                     srcs = hvutil.sub(srcs, [("\+", "\+"), ("\.", "\."), ("\?",".")])
 
-                    # d) replace wildcards (*) by (.*) 
+                    # d) replace wildcards (*) by (.*)
                     srcs = hvutil.sub(srcs, [("\*", ".*")])
 
                     # Now we can make a regex
@@ -821,7 +821,7 @@ class jplotter:
                     # and select only the matching sources
                     return lambda src_flag: (src_flag[0], (src_flag[1] if neg else add) if rx.match(src) else (add if neg else src_flag[1]))
 
-                # now build the list of selectors, based on comma-separated source selections 
+                # now build the list of selectors, based on comma-separated source selections
                 # and run all of them against the sourcelist
                 sel_.sources = selector([(x, False) for x in map_.fieldMap.getFields()], map(mkselector, args))
 
@@ -852,10 +852,10 @@ class jplotter:
         sel_   = self.selection
         blmap_ = self.mappings
         if args:
-            # remember current TaQL for the baselines so we can detect if the 
+            # remember current TaQL for the baselines so we can detect if the
             # selection changed
             oldTaql = copy.deepcopy(sel_.baselinesTaql)
-            
+
             # regex 'code' for the specials 'auto' and 'cross'
             #  so we can reuse them
             auto   = r"^(\w+)(\1)$"
@@ -881,7 +881,7 @@ class jplotter:
                 # what do we support?
                 #   aliases:  'all' 'auto' 'cross'
                 #   literals: [:alpha:]+    (no wildcards or ()'s)
-                #   regex like:  
+                #   regex like:
                 #       baseline = name* | *name | (name)name | name(name) | (name)(name)
                 #       name     = namestr | name "|" name
                 #       namestr  = [a-zA-Z0-9]+
@@ -895,7 +895,7 @@ class jplotter:
                 rxp3  = re.compile(r"^([^\(]+)(\([^\)]+\))$")
                 rxwc0 = re.compile(r"\*")
                 # note: grouping here has an effect on reversing the baselines below!
-                rxwc1 = re.compile(r"^\^?(\*|(\*)(\w+)|(\w+)(\*$))\$?$") 
+                rxwc1 = re.compile(r"^\^?(\*|(\*)(\w+)|(\w+)(\*$))\$?$")
                 subst =  [(re.compile(x), y) for (x,y) in \
                                 [("\s+", ""), ("\*+", "*"), ("^all$", "*"), \
                                   ("^auto$", r"^(\w+)(\\1)$"), \
@@ -961,7 +961,7 @@ class jplotter:
                     # we must 'reverse' the expression since sometimes baselines are mentioned
                     # B->A rather than A->B
                     revbls = None
-                    
+
                     if not (bls==auto) and not (bls==cross):
                         # no parenthesis but wildcards?
                         if not p0 and wc0:
@@ -981,7 +981,7 @@ class jplotter:
                                 mg = p3
                             revbls = "{1}{0}".format(mg.group(1), mg.group(2))
 
-                    # d) replace wildcards (*) by (.*) 
+                    # d) replace wildcards (*) by (.*)
                     bls = hvutil.sub(bls, [("\*", ".*")])
                     if revbls:
                         revbls = hvutil.sub(revbls, [("\*", ".*")])
@@ -1002,7 +1002,7 @@ class jplotter:
                         mr = rxr.match(bl) if rxr is not rx else False
                         return (bl, (flag if neg else add) if (m or mr) else (add if neg else flag))
                     return f
-                # now build the list of filters, based on comma-separated source selections 
+                # now build the list of filters, based on comma-separated source selections
                 # and run all of them against the sourcelist
                 sel_.baselines  = filterer([(x, False) for x in blmap_.baselineMap.baselineNames()], map(mkfilter, args))
 
@@ -1077,13 +1077,13 @@ class jplotter:
 
         sel_  = self.selection
         spMap = self.mappings.spectralMap
-        pMap  = self.mappings.polarizationMap 
+        pMap  = self.mappings.polarizationMap
 
         #  [<freqidsel>/]<subbandselection>[/<polselection>]
         #
         #  Where we will accept the following for the separate entries:
         #
-        #  freqidsel:    * OR 
+        #  freqidsel:    * OR
         #				ranges (eg: '1:5[:2]') AND/OR separate entries (commaseparated)
         #
         #               Note: freqidsel may be omitted if and only if there is
@@ -1105,7 +1105,7 @@ class jplotter:
         #                    [rl]{2}, *[lr], [lr]*, X, P, A
         #                       X = select crosspols
         #                       P = select parallel polarizations
-        #                or just 
+        #                or just
         #                    *
         #
         #  Examples:
@@ -1113,7 +1113,7 @@ class jplotter:
         #        all subbands from the default freqid. Only allowed iff
         #        there is only one freqid! Note: if the subband(s) are
         #        correlated with multiple polarization ids then the first
-        #        polarization id with parallel polarizations will be 
+        #        polarization id with parallel polarizations will be
         #        selected.
         #   */*  selects all polarizations from the first polarization ID
         #        for all subbands. This is allowed only iff there is one
@@ -1225,7 +1225,7 @@ class jplotter:
                         # everything from the first polid we encounter
                         pols = (None, [re.compile(r"^.+$")] )
 
-                    # Excellent! Now we can write a function that decides if the selection 
+                    # Excellent! Now we can write a function that decides if the selection
                     # can be honoure
                     #
                     # acc should change.
@@ -1245,7 +1245,7 @@ class jplotter:
                         (polid, rxs) = pols
                         idfilter = lambda x: True if polid is None else x==polid
 
-                        # The adder function checks if ALL regexes in the list 
+                        # The adder function checks if ALL regexes in the list
                         # yielded a result [if not, the POLID under consideration
                         # could not honour the requested Polarizations].
                         # Then, because each match could have matched >1 polarization
@@ -1292,7 +1292,7 @@ class jplotter:
                         if len(acc)==olen:
                             raise RuntimeError("the selection '{0}' did not match anything".format(arg))
                         return acc
-                    return selector 
+                    return selector
 
                 # Loop over all selections and for each selection build the
                 # selector function, execute the selector function and finally
@@ -1303,7 +1303,7 @@ class jplotter:
                 # Now there's some normalization to be done: it could be that
                 # different expressions selected different products out of the same
                 # fq/sb/polid combination so we want to group those together. Dict +
-                # set to the rescue!  
+                # set to the rescue!
                 # After the reduction we have:
                 #   ddSelection = [ (fq, sb, polid, [prods]), .... ]
                 def reductor(acc, f_s_p_prod):
@@ -1464,7 +1464,7 @@ class jplotter:
             #self.dirty = True
 
         # Display the settings, only for the axes for which the setting is true
-        print("{0} {1}".format(pplt("new plots on:"), 
+        print("{0} {1}".format(pplt("new plots on:"),
                 hvutil.dictfold(lambda ax_val, acc: acc+"{0} ".format(ax_val[0]) if ax_val[1] else acc, "", self.selection.newPlot)))
 
     _isHeaderLegend = re.compile(r'^(?P<not>no)?(?P<what>header|legend|source)$', re.I).match
@@ -1602,14 +1602,14 @@ class jplotter:
             e = NOW()
         print("Data munching took\t{0:.3f}s".format( e-s ))
 
-        ## Make a new 'record' where we keep meta data + plots/data sets 
+        ## Make a new 'record' where we keep meta data + plots/data sets
         ## with unmapped labels
         plotar2          = plots.Dict()
         plotar2.meta     = plots.Dict()
         plotar2.limits   = plots.Dict()
 
         E   = os.environ
-        S   = E.get #lambda env, deflt: E[env] if env in E else deflt 
+        S   = E.get #lambda env, deflt: E[env] if env in E else deflt
 
         plotar2.msname        = CP(self.msname)
         plotar2.column        = CP(self.mappings.domain.column)
@@ -1630,7 +1630,7 @@ class jplotter:
         plotar2.comment       = ""
         plotar2.weightThres   = CP(self.selection.weightThreshold)
 
-        # Annotate with averaging setting, if any 
+        # Annotate with averaging setting, if any
         if sel_.averageTime != AVG.NoAveraging:
             if sel_.timeRange:
                 # Need to to better formatting
@@ -1652,9 +1652,9 @@ class jplotter:
                     (eoff, sday) = divmod(e-day0, nspd)
                     eoff         = int(eoff)
                     etm          = hvutil.secondsInDayToTime(sday)
-                    return "{0}{1}->{2}{3}".format(str(soff)+"/" if dispday or soff!=dayoff[0] else "", timefmt(stm), 
+                    return "{0}{1}->{2}{3}".format(str(soff)+"/" if dispday or soff!=dayoff[0] else "", timefmt(stm),
                                                      "" if eoff==soff or (eoff==soff+1 and etm<stm) else str(eoff)+"/", timefmt(etm))
-                timerngs = " ".join(map(fmtRange, sel_.timeRange))    
+                timerngs = " ".join(map(fmtRange, sel_.timeRange))
             else:
                 se = self.mappings.timeRange
                 timerngs = "{0}->{1}".format(ms2util.as_time(se.start), ms2util.as_time(se.end))
@@ -1728,7 +1728,7 @@ class jplotter:
         # If there was no P information, make sure 'None' is not in the set;
         # it won't play nice with the ",".join( ... )
         plts.polarizations.discard( None )
-        plts.polarizations = ",".join(plts.polarizations) 
+        plts.polarizations = ",".join(plts.polarizations)
 
         # analyze the plot + data set attributes for unique values
         # those get appended to the project
@@ -1881,7 +1881,7 @@ class environment(object):
                 nExtra = min(hici - loci, 32)
                 # Generate extra colours and write them in the color index table
                 # was: map(lambda (ci, (r,g,b)): ppgplot.pgscr(...), ...)
-                # the map() was only used for its side-effects so drain()+map() 
+                # the map() was only used for its side-effects so drain()+map()
                 # is a good replacement
                 def set_pgscr(ci_rgb):
                     (ci, (r, g, b)) = ci_rgb
@@ -2000,7 +2000,7 @@ class environment(object):
 
 
 # Some commands need to have the whole expression as a single argument
-# but we'd like non-empty strings (i.e. nothing remains after stripping 
+# but we'd like non-empty strings (i.e. nothing remains after stripping
 # the command and whitespace) to not count as an argument.
 def all_or_nothing(s):
     return [s] if s else []
@@ -2038,7 +2038,7 @@ def run_plotter(cmdsrc, **kwargs):
     o.curdev  = 42
     foo       = {o.curdev: environment(defaults['unique'], "{0}/xw".format(o.curdev))}
     j         = lambda : foo[o.curdev].j
-  
+
     # Start building the commandset
 
     # the "ms" command
@@ -2083,7 +2083,7 @@ def run_plotter(cmdsrc, **kwargs):
             print("No MS opened yet")
         else:
             defaults = ['fq', 'ant', 'src', 'time']
-            disps = { 
+            disps = {
                     'fq'  : j().listFreqs,
                     'ch'  : j().listFreqs,
                     'p'   : j().listFreqs,
@@ -2100,7 +2100,7 @@ def run_plotter(cmdsrc, **kwargs):
             drap(lambda x: x(), \
                 map(lambda k: disps.get(k, unknown_range(k)), \
                     defaults if not args else map(str.lower, args)))
-        
+
     c.addCommand( \
         mkcmd(rx=re.compile(r"^r\b.*$"), hlp=Help["r"], \
               args=lambda x: re.sub(r"^r\s*", "", x).split(), cb=range_f, id="r") )
@@ -2182,7 +2182,7 @@ def run_plotter(cmdsrc, **kwargs):
         fn  = fns[ mo.group('ax') ]
         req = mo.group('scaling')
         lim = mo.group('lo') and mo.group('hi')
-        idx = int(mo.group('idx')) if mo.group('idx') else 0 
+        idx = int(mo.group('idx')) if mo.group('idx') else 0
         if req:
             if req=='local':
                 s = plots.Scaling.auto_local
@@ -2355,7 +2355,7 @@ def run_plotter(cmdsrc, **kwargs):
         for i in idx:
             print("{0} {1}".format(prefix(i), pref.filter_f(i)))
 
-    c.addCommand( 
+    c.addCommand(
             mkcmd(rx=rxFilter, id="filter", args = lambda x: x, cb=filter_fn,
                   hlp=Help["filter"])
         )
@@ -2380,7 +2380,7 @@ def run_plotter(cmdsrc, **kwargs):
         (ds_filter, grp_sort, settings) = cruft
         (dataset_id, filter_f)          = ds_filter
         (groupby_f,  sort_f)            = grp_sort
-        e = env() 
+        e = env()
         if dataset_id is None:
             # no dataset from memory so we'll have to refresh
             refresh(e)
@@ -2436,7 +2436,7 @@ def run_plotter(cmdsrc, **kwargs):
             pass
         return None
 
-    c.addCommand( 
+    c.addCommand(
             mkcmd(rx=rxAnimate, id="animate", args = lambda x: x, cb=animate_fn,
                   hlp=Help["animate"])
         )
@@ -2487,7 +2487,7 @@ def run_plotter(cmdsrc, **kwargs):
         for i in idx:
             print("{0} {1}".format(prefix(i), pref.mark(i)))
 
-    c.addCommand( 
+    c.addCommand(
             mkcmd(rx=rxMark, id="mark", args = lambda x: x, cb=mark_fn,
                   hlp=Help["mark"])
         )
@@ -2499,7 +2499,7 @@ def run_plotter(cmdsrc, **kwargs):
             print("No plot type selected to reset")
             return
         plots.Plotters[pt].reset()
-        
+
     c.addCommand( \
         mkcmd(rx=re.compile(r"^reset$"), \
               cb=reset, id="reset", \
@@ -2626,7 +2626,7 @@ def run_plotter(cmdsrc, **kwargs):
     rxType   = re.compile(r'(/[a-z]+)$', re.I)
     type2ext = functools.partial(re.compile(r'^[/vc]*', re.I).sub, '.')
     ext2type = {".ps":"/CPS", ".pdf":"/PDF", ".png":"/PNG"}
-   
+
     # convert user input device specification into
     # a PGPLOT compatible device string
     def user2pgplot(filenm):
@@ -2682,7 +2682,7 @@ def run_plotter(cmdsrc, **kwargs):
               cb=lambda x: mk_postscript(env(), x),
               hlp="save <filename>\n\tsave current plots to file <filename> in PostScript format.\nThe extension .ps and default lands cape '/cps' orientation will be added automatically if not given") )
 
-    # arithmancy support - allows store/retrieve of (the result of applying an expression to) plots 
+    # arithmancy support - allows store/retrieve of (the result of applying an expression to) plots
     #  # ... create plots
     #  $> store as phatime_sfxc
     #  # ... get other data, create different plots
@@ -2712,7 +2712,7 @@ def run_plotter(cmdsrc, **kwargs):
         namelen  = max(max(map(len, datasets.keys())), 10) if datasets else 0
         for (k,v) in iteritems(datasets):
             print("{0:<{1}} = {2}".format(k, namelen, "'{0}' from {1} [{2} plots]".format(v.plotType, v.msname, len(v)) if parsers.isDataset(v) else str(v)))
-            
+
 
     def store_fn(expr):
         if rxShowVars.match(expr):
@@ -3044,11 +3044,11 @@ def run_plotter(cmdsrc, **kwargs):
     c.addCommand( \
         mkcmd(rx=re.compile(r"^postprocess\b.*"), id="postprocess",
               hlp="postprocess [MODULE.FUNCTION]\n\tSet/display function to call on processed data",
-              args=lambda x: re.sub("^postprocess\s*", "", x).split(), 
+              args=lambda x: re.sub("^postprocess\s*", "", x).split(),
               cb=lambda *args: env().postProcess(*args)) )
 
-    #def test_f(*args):
-    #    print "test_f/n_arg=",len(args)," args=",args
+    def test_f(*args):
+       print("test_f/n_arg=", len(args), " args=", args)
 
     c.addCommand(
         mkcmd(rx=re.compile(r"^test_f(\s+\S+)*$"), id="test_f",

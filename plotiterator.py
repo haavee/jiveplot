@@ -192,7 +192,7 @@ print_if   = functional.choice(operator.truth, functional.printf, functional.con
 # We support different kinds of averaging
 def avg_vectornorm(ax):
     def do_it(x):
-        # first set all flagged + NaN/Inf values to 0 such that 
+        # first set all flagged + NaN/Inf values to 0 such that
         #  (1) any NaN/Inf's don't screw up the total sum
         #  (2) flagged data doesn't count towards the sum
         # We're going to need the input-mask twice
@@ -205,7 +205,7 @@ def avg_vectornorm(ax):
         # may effectively be removed
         flags   = ARRAY(numpy.sum(~imask, axis=ax, keepdims=True)==0, dtype=numpy.bool)
         # Find the maximum unflagged value along the input axis.
-        # Flagged data gets set to -inf such that max() 
+        # Flagged data gets set to -inf such that max()
         # may yield a useful result
         mdata        = numpy.abs(x.data)
         mdata[imask] = -numpy.inf
@@ -218,7 +218,7 @@ def avg_vectornorm(ax):
 def avg_arithmetic(ax):
     # normal arithmetic mean, should work both on complex or scalar data
     def do_it(x):
-        # first set all flagged + NaN/Inf values to 0 such that 
+        # first set all flagged + NaN/Inf values to 0 such that
         #  (1) any NaN/Inf's don't screw up the total sum
         #  (2) flagged data doesn't count towards the sum
         imask  = LOGICAL_OR(~ISFINITE(x.data), x.mask)
@@ -228,7 +228,7 @@ def avg_arithmetic(ax):
         # figure out where the counts are 0 - effectively
         # remove those data points
         nmask  = ARRAY(counts==0, dtype=numpy.bool)
-        # we have computed where the count==0 so we can now 
+        # we have computed where the count==0 so we can now
         # overwrite with 1 to prevent divide-by-zero errors.
         # Later we'll replace those values with NaN
         counts[nmask]=1
@@ -241,7 +241,7 @@ def avg_arithmetic(ax):
 def avg_sum(ax):
     # normal arithmetic mean, should work both on complex or scalar data
     def do_it(x):
-        # first set all flagged + NaN/Inf values to 0 such that 
+        # first set all flagged + NaN/Inf values to 0 such that
         #  (1) any NaN/Inf's don't screw up the total sum
         #  (2) flagged data doesn't count towards the sum
         imask   = LOGICAL_OR(~ISFINITE(x.data), x.mask)
@@ -273,8 +273,8 @@ class plotbase(object):
     # we have optimum call sequence for processing a table
     # key = (qryYesNo, readFlagYesNo)
     # I think that executing an empty query
-    #   tbl.query('') 
-    # takes longer than 
+    #   tbl.query('')
+    # takes longer than
     #   tbl.query()
     _qrycolmapf = {
             (False, False): lambda tbl, q, c: tbl,                    # no query, no flagcolum reading
@@ -324,7 +324,7 @@ class plotbase(object):
         #    (n_int, n_freq, n_pol)
         #
         # We can do that efficiently by transposing the data array in that case to be:
-        #    (n_freq, n_int, n_pol)  
+        #    (n_freq, n_int, n_pol)
         # Now the data mask also has this shape.
         # Then, numpy.logical_or(data.mask, weight_mask) does the right thing:
         #     weight_mask == (n_int, n_pol)   -> dimensions match on both data.mask and weight_mask
@@ -369,9 +369,9 @@ class plotbase(object):
             self.transpose_flag      = self.untranspose_flag = functional.identity
 
         ## Parse data-description-id selection into a map:
-        ## self.ddSelection will be 
+        ## self.ddSelection will be
         ##   map [ DATA_DESC_ID ] => (FQ, SB, POLS)
-        ## 
+        ##
         ## With FQ, SB integer - the indices,
         ##      POLS = [ (idx, str), ... ]
         ##        i.e. list of row indices and the polarization string
@@ -385,7 +385,7 @@ class plotbase(object):
         _pMap    = mapping.polarizationMap
         _spwMap  = mapping.spectralMap
         GETF     = _spwMap.frequenciesOfFREQ_SB
-        # Frequencies get done in MHz 
+        # Frequencies get done in MHz
         scale    = 1e6 if mapping.domain.domain == jenums.Type.Spectral else 1
 
         ## if user did not pass DATA_DESC_ID selection, default to all
@@ -460,19 +460,19 @@ class plotbase(object):
         raise RuntimeError("Someone forgot to implement this function for this plottype")
 
 
-## Unfortunately, our code relies on the fact that the numarrays returned 
+## Unfortunately, our code relies on the fact that the numarrays returned
 ## from "ms.getcol()" are 3-dimensional: (nintg x npol x nchannel)
 ## Sadly, casa is smart/stoopid enough to return no more dimensions
 ## than are needed; no degenerate axes are present.
 ## So if your table consists of one row, you get at best a matrix:
 ##     npol x nchannel
-## Further, if you happen to read single-pol data, guess what, 
+## Further, if you happen to read single-pol data, guess what,
 ## you get a matrix at best and a vector at worst!:
-##    matrix: nintg x nchannel 
+##    matrix: nintg x nchannel
 ##    vector: nchannel   (worst case: a table with one row of single pol data!)
 ##
 ## m3d() can be used to reshape an array to always be at least 3d,
-##   it inserts degenerate axis from the end, assuming that there 
+##   it inserts degenerate axis from the end, assuming that there
 ##   won't be data sets with only one row ...
 ##   (single pol does happen! a lot!)
 #def m3d(ar):
@@ -604,7 +604,7 @@ class dataset_list:
     def init_sumy(self, obj, xs, ys, m):
         obj.x  = numpy.array(xs)
         obj.y  = numpy.array(ys)
-        obj.sf = dataset.add_sumy
+        obj.sf = dataset_list.add_sumy
         obj.m  = m
 
     def __init__(self, x=None, y=None, m=None):
@@ -710,8 +710,8 @@ class dataset_chan:
     @classmethod
     def add_sumy_first(self, obj, xs, ys, m):
         # set masked values to 0 and convert mask to counts in existing object
-        obj.y[ obj.m ] = 0 
-        obj.m          = ARRAY(~obj.m, dtype=numpy.int) 
+        obj.y[ obj.m ] = 0
+        obj.m          = ARRAY(~obj.m, dtype=numpy.int)
         # from now on, averaging has to do something
         obj.af         = dataset_chan.average_n
         # from now on extra .add_y() calls will do something slight different
@@ -719,7 +719,7 @@ class dataset_chan:
         # use the new .add_y() to do the "integration" for us
         obj.sf(obj, xs, ys, m)
 
-    # before 'integrating' the y-values we must 
+    # before 'integrating' the y-values we must
     # make sure no NaN/Inf values are present
     # because a single NaN/Inf in a channel makes
     # the whole summation for that channel go NaN/Inf.
@@ -861,7 +861,7 @@ class dataset_solint_array:
             # because we already integrate (==sum) then no averaging equals summing and v.v. :-)
             fn = lambda x, _: x
         # construct a new dict with the averaged data values and set mask wether
-        # any unmasked values were collected for that x, channel 
+        # any unmasked values were collected for that x, channel
         self.a = dict()
         while self.d:
             (x, ys)    = self.d.popitem()
@@ -936,7 +936,7 @@ class dataset_solint_scalar:
             # because our data is already summed then no averaging == summing
             fn = lambda x, _: x
         # construct a new dict with the averaged data values and set mask based on
-        # number of unmasked 
+        # number of unmasked
         self.a = dict()
         while self.d:
             (x, ys) = self.d.popitem()
@@ -1124,12 +1124,12 @@ class fakems:
 #
 ## Tried a few different approaches for solint processing.
 ## The functions below are kept as illustrative references.
-## 
+##
 ## They are ordered from slowest to fastest operation, as benchmarked on running
 ## on the same data set with the same settings.
 ##
 ##  solint_numpy_indexing:       7.2s runtime
-##  solint_numpy_countbin:       5.9s  
+##  solint_numpy_countbin:       5.9s
 ##  solint_pure_python:          3.8s
 ##  solint_pure_python3:         3.2s
 ##  solint_pure_python2:         2.8s
@@ -1157,9 +1157,9 @@ class fakems:
 #    start = time.time()
 #    dsref.as_numarray()
 #
-#    # get the unique time stamps 
+#    # get the unique time stamps
 #    tms   = numpy.unique(dsref.x)
-#    
+#
 #    # check if there is something to be averaged at all
 #    if len(tms)==len(dsref.x):
 #        return time.time() - start
@@ -1339,7 +1339,7 @@ class data_quantity_time(plotbase):
         (AVG.Scalar, AVG.NoAveraging):           (avg_arithmetic, avg_none, False),
         (AVG.Scalar, AVG.Sum):            (avg_arithmetic, avg_sum,  False),
         (AVG.Scalar, AVG.Scalar):         (avg_arithmetic, avg_arithmetic, False),
-        # When vector averaging the channels, the time averaging governs 
+        # When vector averaging the channels, the time averaging governs
         # the choice of when to compute the quantity(ies)
         (AVG.Vector, AVG.NoAveraging):           (avg_arithmetic, avg_none, False),
         (AVG.Vector, AVG.Sum):            (avg_arithmetic, avg_sum,  False),
@@ -1395,7 +1395,7 @@ class data_quantity_time(plotbase):
         super(data_quantity_time, self).__init__(msname, selection, mapping, **kwargs)
 
         # channel selection+averaging schemes; support averaging over channels (or chunks of channels)
-        chansel  = Ellipsis 
+        chansel  = Ellipsis
         n_chan   = self.table[0][self.datacol].shape[0]
         if selection.chanSel:
             channels = mk_chansel(selection.chanSel)
@@ -1407,7 +1407,7 @@ class data_quantity_time(plotbase):
             if min(channels)<0:
                 raise RuntimeError("Negative channel number {0} is not acceptable".format(min(channels)))
             # if the user selected all channels (by selection
-            # 'ch 0:<last>' in stead of 'ch none' we don't 
+            # 'ch 0:<last>' in stead of 'ch none' we don't
             # override the default channel selection (which is more efficient)
             if channels!=functional.range_(n_chan):
                 chansel = channels
@@ -1445,18 +1445,18 @@ class data_quantity_time(plotbase):
                     print("         ranges were selected to average. Your plot")
                     print("         may contain less useful info than expected")
 
-                # try to be a bit optimized in time stamp replacement - filter the 
-                # list of time ranges to those applying to the time stamps we're 
+                # try to be a bit optimized in time stamp replacement - filter the
+                # list of time ranges to those applying to the time stamps we're
                 # replacing
                 def do_it(x):
                     mi,ma  = numpy.min(x), numpy.max(x)
                     ranges = functional.filter_(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-                    return functional.reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
+                    return functional.reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x)
                 self.timebin_fn = do_it
             else:
                 # Check if solint isn't too small
                 ti = mapping.timeRange.inttm[0]
-                if solint<=ti: 
+                if solint<=ti:
                     raise RuntimeError("solint value {0:.3f} is less than integration time {1:.3f}".format(solint, ti))
                 self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
 
@@ -1497,7 +1497,7 @@ class data_quantity_time(plotbase):
                     ch_mask[chansel] = False
 
                 # Since we're going to zap masked values (replace by 0) we can usefully use
-                # reduceat! So all we then need is an index array, informing reduceat what the 
+                # reduceat! So all we then need is an index array, informing reduceat what the
                 # reduction boundaries are!
                 # First up: the actual bin numbers we're interested in, we compute the actual
                 #           start + end indices from that
@@ -1505,7 +1505,7 @@ class data_quantity_time(plotbase):
                 bins.sort()
 
                 # we're going to apply channel binning so we must replace 'chansel'
-                # by 'bins' in order for downstream accounting of how many "channels" there will 
+                # by 'bins' in order for downstream accounting of how many "channels" there will
                 # be in the data
                 chansel = bins
 
@@ -1524,14 +1524,14 @@ class data_quantity_time(plotbase):
                 #         (see https://docs.scipy.org/doc/numpy/reference/generated/numpy.ufunc.reduceat.html)
                 #
                 #         Basically we can use this to efficiently bin i:j, j:k, ..., z:-1 ranges
-                #         If our bins (or in the future, arbitrary channels ranges)  are NOT adjacent, then we must 
+                #         If our bins (or in the future, arbitrary channels ranges)  are NOT adjacent, then we must
                 #         feed these operators to <operator>.reduceat:
-                #             [ start0, end0, start1, end1, ..., startN, endN ] 
+                #             [ start0, end0, start1, end1, ..., startN, endN ]
                 #         with the start, end indices of channel ranges 0..N
                 #         will produce the following outputs:
                 #             [ <operator>( A[start0:end0] ), <operator>( A[end0:start1] ), <operator>( A[start1:end1] ), ... ]
                 #         so we'd have to throw out every second entry in the output.
-                #         In numpy that's simple enough but it also means that <operator>.reduceat() does twice as must work 
+                #         In numpy that's simple enough but it also means that <operator>.reduceat() does twice as must work
                 #         for no apparent reason.
 
                 # Detect if the bins are adjacent
@@ -1637,7 +1637,7 @@ class data_quantity_time(plotbase):
                         self.chanidx.append( (ch_idx, start_end[0]) )
                         #self.chanidx.append( (ch_idx, "{0}*".format(start_end[0])) )
                     n_slices = len(slices)
-                    #  this is the simplistic approach 
+                    #  this is the simplistic approach
                     def use_dumbass_method(x):
                         # get an output array
                         n_int,_,n_pol = x.shape
@@ -1682,7 +1682,7 @@ class data_quantity_time(plotbase):
             # with the assigned label from self.chanidx
             org_chanidx   = CP(self.chanidx)
             post_channel  = lambda _, x: functional.map_(lambda chi: (chi[1], x[:,chi[0]]), org_chanidx)
-            # replace self.chanidx with a single entry which captures all channels and sets the 
+            # replace self.chanidx with a single entry which captures all channels and sets the
             # associated label to None - which we could use as a sentinel, if needed
             self.chanidx  = [(Ellipsis, None)]
 
@@ -1751,7 +1751,7 @@ class data_quantity_time(plotbase):
         # Now we can loop over all the rows in the data
         dds  = self.ddSelection
         ci   = self.chanidx
-        # We don't have to test *IF* the current data description id is 
+        # We don't have to test *IF* the current data description id is
         # selected; the fact that we see it here means that it WAS selected!
         # The only interesting bit is selecting the correct products
         for row in range(data.shape[0]):
@@ -1789,7 +1789,7 @@ class data_quantity_chan(plotbase):
         (AVG.Scalar, AVG.NoAveraging):           (avg_arithmetic, avg_none, False),
         (AVG.Scalar, AVG.Sum):            (avg_arithmetic, avg_sum,  False),
         (AVG.Scalar, AVG.Scalar):         (avg_arithmetic, avg_arithmetic, False),
-        # When vector averaging the channels, the time averaging governs 
+        # When vector averaging the channels, the time averaging governs
         # the choice of when to compute the quantity(ies)
         (AVG.Vector, AVG.NoAveraging):           (avg_arithmetic, avg_none, False),
         (AVG.Vector, AVG.Sum):            (avg_arithmetic, avg_sum,  False),
@@ -1858,7 +1858,7 @@ class data_quantity_chan(plotbase):
             if min(channels)<0:
                 raise RuntimeError("Negative channel number {0} is not acceptable".format(min(channels)))
             # if the user selected all channels (by selection
-            # 'ch 0:<last>' in stead of 'ch none' we don't 
+            # 'ch 0:<last>' in stead of 'ch none' we don't
             # override the default channel selection (which is more efficient)
             if channels!=functional.range_(n_chan):
                 chansel = channels
@@ -1891,18 +1891,18 @@ class data_quantity_chan(plotbase):
                 # local copy 'timerng') is a list or sorted, non-overlapping time ranges
                 timerng = functional.map_(lambda s_e: (s_e[0], s_e[1], sum(s_e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
 
-                # try to be a bit optimized in time stamp replacement - filter the 
-                # list of time ranges to those applying to the time stamps we're 
+                # try to be a bit optimized in time stamp replacement - filter the
+                # list of time ranges to those applying to the time stamps we're
                 # replacing
                 def do_it(x):
                     mi,ma  = numpy.min(x), numpy.max(x)
                     ranges = functional.filter_(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-                    return functional.reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
+                    return functional.reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x)
                 self.timebin_fn = do_it
             else:
                 # Check if solint isn't too small
                 ti = mapping.timeRange.inttm[0]
-                if solint<=ti: 
+                if solint<=ti:
                     raise RuntimeError("solint value {0:.3f} is less than integration time {1:.3f}".format(solint, ti))
                 self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
 
@@ -1938,7 +1938,7 @@ class data_quantity_chan(plotbase):
                 # average the selected channels according the requested averaging method
                 chbin_fn      = lambda x: avgchan_fn(1)(x[:,chansel,:])
                 # compute average channel number - honouring Ellipsis if necessary #[(0, '*')]
-                self.chanidx  = [numpy.mean(list(functional.range_(n_chan) if chansel is Ellipsis else chansel))] 
+                self.chanidx  = [numpy.mean(list(functional.range_(n_chan) if chansel is Ellipsis else chansel))]
                 # transform all frequencies to an average frequency
                 for dd in self.freq_of_dd.keys():
                     self.freq_of_dd[dd] = [numpy.mean(self.freq_of_dd[dd][chansel])]
@@ -1958,7 +1958,7 @@ class data_quantity_chan(plotbase):
                     ch_mask[chansel] = False
 
                 # Since we're going to zap masked values (replace by 0) we can usefully use
-                # reduceat! So all we then need is an index array, informing reduceat what the 
+                # reduceat! So all we then need is an index array, informing reduceat what the
                 # reduction boundaries are!
                 # First up: the actual bin numbers we're interested in, we compute the actual
                 #           start + end indices from that
@@ -1966,7 +1966,7 @@ class data_quantity_chan(plotbase):
                 bins.sort()
 
                 # we're going to apply channel binning so we must replace 'chansel'
-                # by 'bins' in order for downstream accounting of how many "channels" there will 
+                # by 'bins' in order for downstream accounting of how many "channels" there will
                 # be in the data
                 chansel = bins
 
@@ -1985,14 +1985,14 @@ class data_quantity_chan(plotbase):
                 #         (see https://docs.scipy.org/doc/numpy/reference/generated/numpy.ufunc.reduceat.html)
                 #
                 #         Basically we can use this to efficiently bin i:j, j:k, ..., z:-1 ranges
-                #         If our bins (or in the future, arbitrary channels ranges)  are NOT adjacent, then we must 
+                #         If our bins (or in the future, arbitrary channels ranges)  are NOT adjacent, then we must
                 #         feed these operators to <operator>.reduceat:
-                #             [ start0, end0, start1, end1, ..., startN, endN ] 
+                #             [ start0, end0, start1, end1, ..., startN, endN ]
                 #         with the start, end indices of channel ranges 0..N
                 #         will produce the following outputs:
                 #             [ <operator>( A[start0:end0] ), <operator>( A[end0:start1] ), <operator>( A[start1:end1] ), ... ]
                 #         so we'd have to throw out every second entry in the output.
-                #         In numpy that's simple enough but it also means that <operator>.reduceat() does twice as must work 
+                #         In numpy that's simple enough but it also means that <operator>.reduceat() does twice as must work
                 #         for no apparent reason.
 
                 # Detect if the bins are adjacent
@@ -2076,9 +2076,9 @@ class data_quantity_chan(plotbase):
                     indices = functional.map_(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
                     slices  = [(slice(i, i+1), slice(rng[0], rng[1]+1)) for i, rng in enumerate(indices)]
                     # for display + loopindexing create list of (array_index, "CH label") tuples
-                    self.chanidx = CP(bins) 
+                    self.chanidx = CP(bins)
                     n_slices = len(slices)
-                    #  this is the simplistic approach 
+                    #  this is the simplistic approach
                     def use_dumbass_method(x):
                         # get an output array
                         n_int,_,n_pol = x.shape
@@ -2147,7 +2147,7 @@ class data_quantity_chan(plotbase):
         #    # with the assigned label from self.chanidx
         #    org_chanidx   = CP(self.chanidx)
         #    post_channel  = lambda _, x: map(lambda chi: (chi[1], x[:,chi[0]]), org_chanidx)
-        #    # replace self.chanidx with a single entry which captures all channels and sets the 
+        #    # replace self.chanidx with a single entry which captures all channels and sets the
         #    # associated label to None - which we could use as a sentinel, if needed
         #    self.chanidx  = [(Ellipsis, None)]
 
@@ -2213,7 +2213,7 @@ class data_quantity_chan(plotbase):
         dds  = self.ddSelection
         #ci   = self.chanidx
         cif  = self.chanidx_fn
-        # We don't have to test *IF* the current data description id is 
+        # We don't have to test *IF* the current data description id is
         # selected; the fact that we see it here means that it WAS selected!
         # The only interesting bit is selecting the correct products
         for row in range(data.shape[0]):
@@ -2261,7 +2261,7 @@ class data_quantity_chan(plotbase):
 #                raise RuntimeError("Request to plot by frequency but no spectral mapping available")
 #            self.changeXaxis = lambda dd, chanidx: self.ddFreqs[ dd ][ chanidx ]
 #
-#        # solint must be >0.1 OR must be equal to None 
+#        # solint must be >0.1 OR must be equal to None
 #        # solint==None implies "aggregate all data into the selected time ranges in
 #        #   their separate bins"
 #        if avgTime!=AVG.NoAveraging and not (selection.solint is None or selection.solint>0.1):
@@ -2282,7 +2282,7 @@ class data_quantity_chan(plotbase):
 #        ## initialize the base class
 #        super(data_quantity_chan, self).__init__(msname, selection, mapping, **kwargs)
 #
-#        ## Some variables must be stored in ourselves such 
+#        ## Some variables must be stored in ourselves such
 #        ## that they can be picked up by the callback function
 #        slicers    = {}
 #
@@ -2422,7 +2422,7 @@ class data_quantity_chan(plotbase):
 #        #         (typically the last block)
 #        mfn  = self.maskfn if shp[0]==self.chunksize else mk3dmask_fn_mask(shp[0], self.chansel, shp[2])
 #
-#        # Now create the quantity data 
+#        # Now create the quantity data
 #        # qd will be a list of (quantity_name, quantity_data) tuples
 #        #   original: qd = map_(lambda (qnm, qfn): (qnm, qfn(mfn(d3d))), self.quantities)
 #        qd   = self.preProcess( mfn(d3d) )
@@ -2434,7 +2434,7 @@ class data_quantity_chan(plotbase):
 #
 #        # Now we can loop over all the rows in the data
 #
-#        # We don't have to test *IF* the current data description id is 
+#        # We don't have to test *IF* the current data description id is
 #        # selected; the fact that we see it here means that it WAS selected!
 #        # The only interesting bit is selecting the correct products
 #        dds = self.ddSelection
@@ -2443,7 +2443,7 @@ class data_quantity_chan(plotbase):
 #        cs  = self.chansel
 #        for row in range(shp[0]):
 #            ddr             = dd[row]
-#            (fq, sb, plist) = dds[ ddr ] 
+#            (fq, sb, plist) = dds[ ddr ]
 #            # we can already precompute most of the label
 #            # potentially, modify the TIME value to be a time bucket such
 #            # that we can intgrate into it
@@ -2481,7 +2481,7 @@ class data_quantity_chan(plotbase):
 #        #         (typically the last block)
 #        mfn  = self.maskfn if shp[0]==self.chunksize else mk3dmask_fn_mask(shp[0], self.chansel, shp[2])
 #
-#        # Now create the quantity data 
+#        # Now create the quantity data
 #        # qd will be a list of (quantity_name, quantity_data) tuples
 #        #   original: qd = map_(lambda (qnm, qfn): (qnm, qfn(mfn(d3d))), self.quantities)
 #        qd   = self.preProcess( wfn(mfn(d3d)) )
@@ -2497,7 +2497,7 @@ class data_quantity_chan(plotbase):
 #        cs  = self.chansel
 #        cx  = self.changeXaxis
 #        rf  = self.reject_f
-#        # We don't have to test *IF* the current data description id is 
+#        # We don't have to test *IF* the current data description id is
 #        # selected; the fact that we see it here means that it WAS selected!
 #        # The only interesting bit is selecting the correct products
 #        for row in range(shp[0]):
@@ -2552,23 +2552,23 @@ class unflagged(object):
 #                    print "         This is because no solint was set. Your plot"
 #                    print "         may contain less useful info than expected"
 #
-#                # try to be a bit optimized in time stamp replacement - filter the 
-#                # list of time ranges to those applying to the time stamps we're 
+#                # try to be a bit optimized in time stamp replacement - filter the
+#                # list of time ranges to those applying to the time stamps we're
 #                # replacing
 #                def do_it(x):
 #                    mi,ma  = numpy.min(x), numpy.max(x)
 #                    ranges = functional.filter_(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-#                    return reduce(lambda acc, (s, e, m): numpy.put(acc, numpy.where((acc>=s) & (acc<=e)), m) or acc, ranges, x) 
+#                    return reduce(lambda acc, (s, e, m): numpy.put(acc, numpy.where((acc>=s) & (acc<=e)), m) or acc, ranges, x)
 #                self.timebin_fn = do_it
 #            else:
 #                # Check if solint isn't too small
 #                ti = mapping.timeRange.inttm[0]
-#                if solint<ti: 
+#                if solint<ti:
 #                    raise RuntimeError("solint value {0:.3f} is less than integration time {1:.3f}".format(solint, ti))
 #                self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
 #
 #        self.dataset_proto = dataset_list if avgTime == AVG.NoAveraging else dataset_solint
-#        
+#
 #        ## we plot using the WEIGHT column
 #
 #        fields = [AX.TYPE, AX.BL, AX.FQ, AX.SB, AX.SRC, AX.P]
@@ -2597,7 +2597,7 @@ class unflagged(object):
 #        # ok, process all the rows!
 #        shp   = weight.shape
 #        flags = unflagged() if not flag_row else flag_row[0]
-#        # single-pol data will have shape (nrow,) 
+#        # single-pol data will have shape (nrow,)
 #        # but our code really would like it to be (nrow, npol), even if 'npol' == 1. (FFS casacore!)
 #        tm  = self.timebin_fn( tm )
 #        d2d = m2d(weight)
@@ -2617,7 +2617,7 @@ class weight_time(plotbase):
     # key into the lookup is '(avgChannelMethod, avgTimeMethod)'
     # For the weights we can remove a lot of entries:
     # no vector averaging applies here; weight IS a scalar.
-    # Also no point in postponing because the weight IS the quantity; 
+    # Also no point in postponing because the weight IS the quantity;
     # it is not a derived quantity.
     # Note: we KEEP the postponed and have self.quantities be a list-of-quantities
     #       (currently 1 entry with the identity transform ...) because that way
@@ -2673,7 +2673,7 @@ class weight_time(plotbase):
                 if min(channels)<0:
                     raise RuntimeError("Negative channel number {0} is not acceptable".format(min(channels)))
                 # if the user selected all channels (by selection
-                # 'ch 0:<last>' in stead of 'ch none' we don't 
+                # 'ch 0:<last>' in stead of 'ch none' we don't
                 # override the default channel selection (which is more efficient)
                 if channels!=range(n_chan):
                     chansel = channels
@@ -2719,25 +2719,26 @@ class weight_time(plotbase):
 
                 # It is important to KNOW that "selection.timeRange" (and thus our
                 # local copy 'timerng') is a list or sorted, non-overlapping time ranges
-                timerng = functinoal.map_(lambda s_e: (s_e[0], s_e[1], sum(s_e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
+                timerng = functional.map_(lambda s_e: (s_e[0], s_e[1], sum(s_e)/2.0),
+                        timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
                 if len(timerng)==1:
                     print("WARNING: averaging all data into one point in time!")
                     print("         This is because no solint was set or no time")
                     print("         ranges were selected to average. Your plot")
                     print("         may contain less useful info than expected")
 
-                # try to be a bit optimized in time stamp replacement - filter the 
-                # list of time ranges to those applying to the time stamps we're 
+                # try to be a bit optimized in time stamp replacement - filter the
+                # list of time ranges to those applying to the time stamps we're
                 # replacing
                 def do_it(x):
                     mi,ma  = numpy.min(x), numpy.max(x)
                     ranges = functional.filter_(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-                    return functional.reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x) 
+                    return functional.reduce(lambda acc, s_e_m: numpy.put(acc, numpy.where((acc>=s_e_m[0]) & (acc<=s_e_m[1])), s_e_m[2]) or acc, ranges, x)
                 self.timebin_fn = do_it
             else:
                 # Check if solint isn't too small
                 ti = mapping.timeRange.inttm[0]
-                if solint<=ti: 
+                if solint<=ti:
                     raise RuntimeError("solint value {0:.3f} is less than integration time {1:.3f}".format(solint, ti))
                 self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
 
@@ -2783,7 +2784,7 @@ class weight_time(plotbase):
                     ch_mask[chansel] = False
 
                 # Since we're going to zap masked values (replace by 0) we can usefully use
-                # reduceat! So all we then need is an index array, informing reduceat what the 
+                # reduceat! So all we then need is an index array, informing reduceat what the
                 # reduction boundaries are!
                 # First up: the actual bin numbers we're interested in, we compute the actual
                 #           start + end indices from that
@@ -2791,7 +2792,7 @@ class weight_time(plotbase):
                 bins.sort()
 
                 # we're going to apply channel binning so we must replace 'chansel'
-                # by 'bins' in order for downstream accounting of how many "channels" there will 
+                # by 'bins' in order for downstream accounting of how many "channels" there will
                 # be in the data
                 chansel = bins
 
@@ -2810,14 +2811,14 @@ class weight_time(plotbase):
                 #         (see https://docs.scipy.org/doc/numpy/reference/generated/numpy.ufunc.reduceat.html)
                 #
                 #         Basically we can use this to efficiently bin i:j, j:k, ..., z:-1 ranges
-                #         If our bins (or in the future, arbitrary channels ranges)  are NOT adjacent, then we must 
+                #         If our bins (or in the future, arbitrary channels ranges)  are NOT adjacent, then we must
                 #         feed these operators to <operator>.reduceat:
-                #             [ start0, end0, start1, end1, ..., startN, endN ] 
+                #             [ start0, end0, start1, end1, ..., startN, endN ]
                 #         with the start, end indices of channel ranges 0..N
                 #         will produce the following outputs:
                 #             [ <operator>( A[start0:end0] ), <operator>( A[end0:start1] ), <operator>( A[start1:end1] ), ... ]
                 #         so we'd have to throw out every second entry in the output.
-                #         In numpy that's simple enough but it also means that <operator>.reduceat() does twice as must work 
+                #         In numpy that's simple enough but it also means that <operator>.reduceat() does twice as must work
                 #         for no apparent reason.
 
                 # Detect if the bins are adjacent
@@ -2908,7 +2909,7 @@ class weight_time(plotbase):
                     for (ch_idx, start_end) in enumerate(indices):
                         self.chanidx.append( (ch_idx, start_end[0]) )
                     n_slices = len(slices)
-                    #  this is the simplistic approach 
+                    #  this is the simplistic approach
                     def use_dumbass_method(x):
                         # get an output array
                         n_int,_,n_pol = x.shape
@@ -2953,7 +2954,7 @@ class weight_time(plotbase):
             # with the assigned label from self.chanidx
             org_chanidx   = CP(self.chanidx)
             post_channel  = lambda _, x: functional.map_(lambda chi: (chi[1], x[:,chi[0]]), org_chanidx)
-            # replace self.chanidx with a single entry which captures all channels and sets the 
+            # replace self.chanidx with a single entry which captures all channels and sets the
             # associated label to None - which we could use as a sentinel, if needed
             self.chanidx  = [(Ellipsis, None)]
 
@@ -3041,7 +3042,7 @@ class weight_time(plotbase):
 
         # Now we can loop over all the rows in the data
         dds  = self.ddSelection
-        # We don't have to test *IF* the current data description id is 
+        # We don't have to test *IF* the current data description id is
         # selected; the fact that we see it here means that it WAS selected!
         # The only interesting bit is selecting the correct products
         for row in range(data.shape[0]):
@@ -3060,7 +3061,7 @@ class weight_time(plotbase):
         # now we can easily add in flag information;
         # flags either has shape of data or it's a single bool False
         data.mask = numpy.logical_or(data.mask, self.untranspose_flag(numpy.logical_or(self.transpose_flag(flag), flag_row)))
-        # weight thresholding - is easier for this one! 
+        # weight thresholding - is easier for this one!
         data.mask = numpy.logical_or(data.mask, weight_spectrum<self.threshold)
 
         # possibly vector-average the data
@@ -3075,7 +3076,7 @@ class weight_time(plotbase):
         # Now we can loop over all the rows in the data
         dds  = self.ddSelection
         ci   = self.chanidx
-        # We don't have to test *IF* the current data description id is 
+        # We don't have to test *IF* the current data description id is
         # selected; the fact that we see it here means that it WAS selected!
         # The only interesting bit is selecting the correct products
         for row in range(data.shape[0]):
@@ -3107,7 +3108,7 @@ class uv(plotbase):
                      filter(lambda tup: tup[1] not in [AVG.NoAveraging, None],
                             zip(["your channel selection".format, "solint {0}".format, "{0} avg in time".format, "nchav of {0}".format, "{0} avg in frequency".format, "weight threshold of {0}".format],
                                 [selection.chanSel, selection.solint, selection.averageTime, selection.solchan, selection.averageChannel, selection.weightThreshold])))))
-        
+
         ## we plot using the UVW column
         ## UVW is not a function of POL (it should be a function
         ##     of CH but that would mean we'd have to actually
@@ -3118,7 +3119,7 @@ class uv(plotbase):
         # The base class will have set up FLAG/FLAG_ROW accessors based on wether the user
         # specified reading flags or not. We can just use the transpose/untranspose functions
         # and expect them to Do The Right Thing (tm)
-        columns = ["ANTENNA1", "ANTENNA2", "DATA_DESC_ID", "FIELD_ID", "UVW", "FLAG_ROW"] 
+        columns = ["ANTENNA1", "ANTENNA2", "DATA_DESC_ID", "FIELD_ID", "UVW", "FLAG_ROW"]
         pts     =  ms2util.reducems2(self, self.table, {}, columns, verbose=True, chunksize=5000)
 
         rv  = {}
@@ -3129,7 +3130,7 @@ class uv(plotbase):
     def __call__(self, acc, a1, a2, dd, fld, uvw, row_flag):
         # transform the data into a masked array with inf/nan masked off
         uvw      = numpy.ma.masked_invalid(uvw)
-        # uvw = (nrow, 3), flag_row = (nrow) 
+        # uvw = (nrow, 3), flag_row = (nrow)
         # so to broadcast row_flag across the mask we use uvw.T [shape = (3, nrow)]
         uvw.mask = numpy.logical_or(uvw.mask.T, row_flag).T
         # now condense the (nrow, [u,v,w], dtype=bool) array to (nrow, [uflag || vflag]) [shape: (nrow,1)]:
@@ -3203,7 +3204,7 @@ class data_quantity_uvdist(plotbase):
             if min(channels)<0:
                 raise RuntimeError("Negative channel number {0} is not acceptable".format(min(channels)))
             # if the user selected all channels (by selection
-            # 'ch 0:<last>' in stead of 'ch none' we don't 
+            # 'ch 0:<last>' in stead of 'ch none' we don't
             # override the default channel selection (which is more efficient)
             if channels!=range(n_chan):
                 chansel = channels
@@ -3241,18 +3242,18 @@ class data_quantity_uvdist(plotbase):
 #                # local copy 'timerng') is a list or sorted, non-overlapping time ranges
 #                timerng = map_(lambda (s, e): (s, e, (s+e)/2.0), timerng if timerng is not None else [(mapping.timeRange.start, mapping.timeRange.end)])
 #
-#                # try to be a bit optimized in time stamp replacement - filter the 
-#                # list of time ranges to those applying to the time stamps we're 
+#                # try to be a bit optimized in time stamp replacement - filter the
+#                # list of time ranges to those applying to the time stamps we're
 #                # replacing
 #                def do_it(x):
 #                    mi,ma  = numpy.min(x), numpy.max(x)
 #                    ranges = functional.filter_(lambda tr: not (tr[0]>ma or tr[1]<mi), timerng)
-#                    return reduce(lambda acc, (s, e, m): numpy.put(acc, numpy.where((acc>=s) & (acc<=e)), m) or acc, ranges, x) 
+#                    return reduce(lambda acc, (s, e, m): numpy.put(acc, numpy.where((acc>=s) & (acc<=e)), m) or acc, ranges, x)
 #                self.timebin_fn = do_it
 #            else:
 #                # Check if solint isn't too small
 #                ti = mapping.timeRange.inttm[0]
-#                if solint<=ti: 
+#                if solint<=ti:
 #                    raise RuntimeError("solint value {0:.3f} is less than integration time {1:.3f}".format(solint, ti))
 #                self.timebin_fn = lambda x: (numpy.trunc(x/solint)*solint) + solint/2.0
 
@@ -3264,14 +3265,14 @@ class data_quantity_uvdist(plotbase):
         self.tmVectAvg = functional.identity
         self.tmScalAvg = functional.identity
 
-        # the x-axis is frequency ... but we pre-convert to a multiplication factor 
+        # the x-axis is frequency ... but we pre-convert to a multiplication factor
         # 1/lambda ( nu / c = 1 / lambda) such that going from baseline length in m
         # to baseline length in wavelengths is as easy as multiplying by 1 / lambda
         self.freq_of_dd=CP(self.ddFreqs)
         # transform all channel frequencies to 1 / lambda
         # NOTE: frequencies in this mapping are in units of MHz!!!!
         for dd in self.freq_of_dd.keys():
-            self.freq_of_dd[dd] = (ARRAY(self.freq_of_dd[dd]) * 1e6) / 299792458.0 
+            self.freq_of_dd[dd] = (ARRAY(self.freq_of_dd[dd]) * 1e6) / 299792458.0
 
         if avgChannel==AVG.NoAveraging:
             # No channel averaging - the new x-axis will be the indices of the selected channels
@@ -3281,7 +3282,7 @@ class data_quantity_uvdist(plotbase):
             # are mapped to 0..n-1. This is only necessary in case not all channels were selected
             if chansel is not Ellipsis:
                 self.vectorAvg  = lambda x: x[:,chansel,:] # collapses selection to indices [0, 1, ..., n-1]
-                self.chanidx_fn = lambda dd: self.freq_of_dd[dd][chansel] 
+                self.chanidx_fn = lambda dd: self.freq_of_dd[dd][chansel]
             else:
                 self.chanidx_fn = self.freq_of_dd.__getitem__
         else:
@@ -3293,7 +3294,7 @@ class data_quantity_uvdist(plotbase):
                 #self.chbin_fn = lambda x: normalize_ch(1)(numpy.ma.mean(x[:,avg_over,:], axis=1, keepdims=True))
                 # average the selected channels according the requested averaging method
                 chbin_fn      = lambda x: avgchan_fn(1)(x[:,chansel,:])
-                self.chanidx  = [numpy.mean(range(n_chan) if chansel is Ellipsis else chansel)] 
+                self.chanidx  = [numpy.mean(range(n_chan) if chansel is Ellipsis else chansel)]
                 # transform all frequencies to an average frequency
                 for dd in self.freq_of_dd.keys():
                     self.freq_of_dd[dd] = [numpy.mean(self.freq_of_dd[dd][chansel])]
@@ -3310,7 +3311,7 @@ class data_quantity_uvdist(plotbase):
                     ch_mask[chansel] = False
 
                 # Since we're going to zap masked values (replace by 0) we can usefully use
-                # reduceat! So all we then need is an index array, informing reduceat what the 
+                # reduceat! So all we then need is an index array, informing reduceat what the
                 # reduction boundaries are!
                 # First up: the actual bin numbers we're interested in, we compute the actual
                 #           start + end indices from that
@@ -3318,7 +3319,7 @@ class data_quantity_uvdist(plotbase):
                 bins.sort()
 
                 # we're going to apply channel binning so we must replace 'chansel'
-                # by 'bins' in order for downstream accounting of how many "channels" there will 
+                # by 'bins' in order for downstream accounting of how many "channels" there will
                 # be in the data
                 chansel = bins
 
@@ -3403,9 +3404,9 @@ class data_quantity_uvdist(plotbase):
                     indices = functional.map_(lambda s: (s*solchan, min((s+1)*solchan, n_chan)), bins)
                     slices  = [(slice(i, i+1), slice(rng[0], rng[1]+1)) for i, rng in enumerate(indices)]
                     # for display + loopindexing create list of (array_index, "CH label") tuples
-                    self.chanidx = CP(bins) 
+                    self.chanidx = CP(bins)
                     n_slices = len(slices)
-                    #  this is the simplistic approach 
+                    #  this is the simplistic approach
                     def use_dumbass_method(x):
                         # get an output array
                         n_int,_,n_pol = x.shape
@@ -3510,7 +3511,7 @@ class data_quantity_uvdist(plotbase):
         dds  = self.ddSelection
         #ci   = range(len(self.chanidx))
         cif  = self.chanidx_fn
-        # We don't have to test *IF* the current data description id is 
+        # We don't have to test *IF* the current data description id is
         # selected; the fact that we see it here means that it WAS selected!
         # The only interesting bit is selecting the correct products
         for row in range(data.shape[0]):
@@ -3555,7 +3556,7 @@ class data_quantity_uvdist(plotbase):
 #        ## initialize the base class
 #        super(data_quantity_uvdist, self).__init__(msname, selection, mapping, **kwargs)
 #
-#        ## Some variables must be stored in ourselves such 
+#        ## Some variables must be stored in ourselves such
 #        ## that they can be picked up by the callback function
 #        slicers    = {}
 #
@@ -3576,12 +3577,12 @@ class data_quantity_uvdist(plotbase):
 #        self.maskfn     = lambda x: numpy.ma.MaskedArray(x, mask=numpy.ma.nomask)
 #        self.chansel    = range(shape[0])
 #
-#        # We must translate the selected channels to a frequency (or wavelength) - such that we can 
+#        # We must translate the selected channels to a frequency (or wavelength) - such that we can
 #        # compute the uvdist in wavelengths
 #        _spwMap  = mapping.spectralMap
 #        ddids    = _spwMap.datadescriptionIDs()
 #
-#        # preallocate an array of dimension (nDDID, nCHAN) such that we can put 
+#        # preallocate an array of dimension (nDDID, nCHAN) such that we can put
 #        # the frequencies of DDID #i at row i - makes for easy selectin'
 #        self.factors = numpy.zeros((max(ddids)+1, shape[0]))
 #        for ddid in ddids:
@@ -3690,7 +3691,7 @@ class data_quantity_uvdist(plotbase):
 #
 #        # Now we can loop over all the rows in the data
 #
-#        # We don't have to test *IF* the current data description id is 
+#        # We don't have to test *IF* the current data description id is
 #        # selected; the fact that we see it here means that it WAS selected!
 #        # The only interesting bit is selecting the correct products
 #        for row in range(shp[0]):
@@ -3740,7 +3741,7 @@ class data_quantity_uvdist(plotbase):
 #
 #        # Now we can loop over all the rows in the data
 #
-#        # We don't have to test *IF* the current data description id is 
+#        # We don't have to test *IF* the current data description id is
 #        # selected; the fact that we see it here means that it WAS selected!
 #        # The only interesting bit is selecting the correct products
 #        for row in range(shp[0]):
