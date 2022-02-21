@@ -5,9 +5,9 @@ name: Python application
 
 on:
   push:
-    branches: [ master ]
+    branches: [ python23compat ]
   pull_request:
-    branches: [ master ]
+    branches: [ python23compat ]
 
 jobs:
   build:
