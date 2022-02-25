@@ -3,6 +3,9 @@ from   __future__ import print_function
 from   operator   import methodcaller
 from   functools  import reduce, partial
 import sys, os, re, jplotter, command
+import collections
+import numpy as np
+from pyrap import tables as pt
 
 # program default(s)
 NoWgt   = True    # do not produce weight plots
@@ -21,7 +24,7 @@ Map       = lambda fn  : partial(map, fn)
 # full MS path to plot base name transformation
 mk_basenm = compose(partial(re.sub, r'\.ms', ''), os.path.basename, partial(re.sub, r'/*$', ''))
 # CalSrc must be transformed such that it can be fed into "/{0}/i" regex,
-# even if CalSrc is comma-separated list of sources. 
+# even if CalSrc is comma-separated list of sources.
 # So: split CalSrc by ',', escape the individual source names and transform
 #     to "(<src>|<src>|....)" as regex alternatives for matching
 mk_calsrc = compose("({0})".format, "|".join, Map(re.escape), methodcaller('split', ','))
@@ -67,6 +70,55 @@ def get_val(arg, tp=str):
         raise RuntimeError("Mission optionvalue to {0}".format(arg))
 
 
+def chunkert(f, l, cs, verbose=True):
+    while f<l:
+        n = min(cs, l-f)
+        yield (f, n)
+        f = f + n
+
+def get_observed_subbands(ms):
+    """Given a MS file, it checks which subbands each antenna actually observed.
+    Meaning for which subbands each antenna has non-zero data.
+
+    Returns a dictionary with the antenna names as keys,
+    and a Python set with the observed subbands as values.
+    """
+    ants_spws = collections.defaultdict(set)
+    with pt.table(ms, readonly=True, ack=False) as mstable:
+        with pt.table(mstable.getkeyword('ANTENNA'), readonly=True, ack=False) as ms_ants:
+            antenna_names = ms_ants.getcol('NAME')
+
+        with pt.table(mstable.getkeyword('DATA_DESCRIPTION'), readonly=True, ack=False) as ms_spws:
+            spw_names = ms_spws.getcol('SPECTRAL_WINDOW_ID')
+
+        for (start, nrow) in chunkert(0, len(mstable), 5000):
+            ants1 = mstable.getcol('ANTENNA1', startrow=start, nrow=nrow)
+            ants2 = mstable.getcol('ANTENNA2', startrow=start, nrow=nrow)
+            spws = mstable.getcol('DATA_DESC_ID', startrow=start, nrow=nrow)
+            msdata = mstable.getcol('DATA', startrow=start, nrow=nrow)
+
+            for antenna in antenna_names:
+                for spw in spw_names:
+                    cond = np.where((ants1 == antenna) & (ants2 == antenna) & (spws == spw))
+                    if (msdata[cond] < 1e-7).all():
+                        ants_spws[antenna].add(spw)
+
+    return ants_spws
+
+def find_best_subband(ants_spws):
+    """Given the dictionary with the subbands that each antenna observed
+    (format from get_observed_subbands' output), it returns the subband number
+    at which most of the antennas are present.
+    """
+    counting = collections.Counter()
+    for antenna in ants_spws:
+        counting.update(ants_spws[antenna])
+
+    # .most_common() returns a list with the orderered elements,
+    # each in a two-elemen tuple: the element and the number of repetitions.
+    return counting.most_common()[0][0]
+
+
 def Usage(prog, full):
     print("Usage: {0} [-h] [-v] [-d] [-weight] [-scan #] <MS> <Refant> <CalSrc>".format(prog))
     if full:
@@ -101,7 +153,7 @@ def Usage(prog, full):
 
 
 class Settings(object):
-    def __init__(self, ms, refant, calsrc):
+    def __init__(self, ms, refant, calsrc, subband):
         self.measurementset = ms
         self.refant         = refant
         self.calsrc         = mk_calsrc(calsrc)
@@ -203,11 +255,11 @@ def mk_amp_time_auto_plot(settings, scansel, num):
     yield "pl"
     print("done auto plots on calibrator scan")
 
-def mk_anp_time_cross_plot(settings, timesel, num):
+def mk_anp_time_cross_plot(settings, timesel, sbsel, num):
     print("generating cross plots [anp/time] all scans")
     yield "bl {0}* -auto".format( settings.refant )
     # select inner 90% of the channels
-    yield "fq 3:6/p;ch 0.1*last:0.9*last"
+    yield "fq {0}/p;ch 0.1*last:0.9*last".format(sbsel)
     yield "new all f bl t"
     yield "avt none;avc vector"
     yield "pt anptime"
@@ -261,6 +313,9 @@ todo = [open_ms(s)]
 #       Allows for more freedom producing the scan selection query.
 scans       = []
 
+subbandNo = find_best_subband(get_observed_subbands(s.measurementset))
+
+
 if ScanNo:
     scans = ["scan_number={0}".format(ScanNo).format]
 else:
@@ -272,7 +327,7 @@ for (i, cond) in enumerate(scans):
 
 # And the anp versus time
 for (i, cond) in enumerate(('none', '$start-5m to +55m')):
-    todo.append( mk_anp_time_cross_plot(s, cond, i) )
+    todo.append( mk_anp_time_cross_plot(s, cond, subbandNo, i) )
 
 if not NoWgt:
     todo.append( mk_weight_plot(s) )
