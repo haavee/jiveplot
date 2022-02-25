@@ -739,7 +739,7 @@ class jplotter:
                 # Now we know we can safely replace strings -> values (and remove whitespace)
                 if nchan:
                     replacer = lambda x : hvutil.sub(x, [("\s+", ""), (re.compile(r"all"), "first:last"), \
-                                                         ("first", "0"), ("mid", repr(nchan/2)), ("last", repr(nchan-1))])
+                                                         ("first", "0"), ("mid", repr(nchan//2)), ("last", repr(nchan-1))])
                 else:
                     replacer = lambda x : hvutil.sub(x, [("\s+", "")])
                 expander = lambda x : hvutil.expand_string_range(replacer(x))
