@@ -100,7 +100,7 @@ def get_observed_subbands(ms):
             for antenna in antenna_names:
                 for spw in spw_names:
                     cond = np.where((ants1 == antenna) & (ants2 == antenna) & (spws == spw))
-                    if np.less(msdata[cond] < 1e-7).all():
+                    if (msdata[cond] < 1e-7).all():
                         ants_spws[antenna].add(spw)
 
     return ants_spws
