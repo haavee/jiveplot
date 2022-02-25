@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3.6
 from   __future__ import print_function
 from   operator   import methodcaller
 from   functools  import reduce, partial
@@ -100,7 +100,7 @@ def get_observed_subbands(ms):
             for antenna in antenna_names:
                 for spw in spw_names:
                     cond = np.where((ants1 == antenna) & (ants2 == antenna) & (spws == spw))
-                    if (msdata[cond] < 1e-7).all():
+                    if np.less(msdata[cond] < 1e-7).all():
                         ants_spws[antenna].add(spw)
 
     return ants_spws
@@ -153,7 +153,7 @@ def Usage(prog, full):
 
 
 class Settings(object):
-    def __init__(self, ms, refant, calsrc, subband):
+    def __init__(self, ms, refant, calsrc):
         self.measurementset = ms
         self.refant         = refant
         self.calsrc         = mk_calsrc(calsrc)
@@ -314,6 +314,7 @@ todo = [open_ms(s)]
 scans       = []
 
 subbandNo = find_best_subband(get_observed_subbands(s.measurementset))
+print(f"Subband {subbandNo} selected for amp & phase VS time plot.")
 
 
 if ScanNo:
