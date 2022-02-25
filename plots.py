@@ -1714,7 +1714,7 @@ Plotters  = {
                                      yheights=[0.48, 0.48], drawer=Drawers.Lines),
         # generic
         'uv'     : GenXvsYPlotter('U', 'V', lo=layout(2,2), colkey='src'),
-        'ampuv'  : GenXvsYPlotter('UV distance', YTypes.amplitude, lo=layout(2,2))
+        'ampuv'  : GenXvsYPlotter('UV distance', YTypes.amplitude, lo=layout(2,2)),
         'phauv'  : GenXvsYPlotter('UV distance', YTypes.phase, yscaling=[[-185, 185]], lo=layout(2,2))
 }
 

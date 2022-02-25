@@ -3780,5 +3780,6 @@ Iterators = {
     'rnichan' : data_quantity_chan([(YTypes.real, numpy.real), (YTypes.imag, numpy.imag)]),
     'wt'      : weight_time(),
     'uv'      : uv(),
-    'ampuv'   : data_quantity_uvdist([(YTypes.amplitude, numpy.ma.abs)])
+    'ampuv'   : data_quantity_uvdist([(YTypes.amplitude, numpy.ma.abs)]),
+    'phauv'   : data_quantity_uvdist([(YTypes.phase, lambda x: numpy.ma.angle(x, True))])
         }
