@@ -280,8 +280,7 @@ class InvalidBaselineId(Exception):
         self.baselineIdx = blid
 
     def __str__(self):
-        (x,y) = decodeblidx(self.baselineIdx)
-        return "At least one of the antennas in baseline {0} is unknown ({1} or {2})".format(self.baselineIdx, x, y)
+        return "The baseline id '{0}' (number or name) is unknown".format(self.baselineIdx)
 
 class InvalidPolarizationCode(Exception):
     def __init__(self,polstr):
@@ -1299,7 +1298,7 @@ def reducems(function, ms, init, columns, **kwargs):
     while i<mslen:
         cs   = min(chunksize, mslen-i)  # chunksize
         logfn(progress(i, 0, mslen, 50))
-        init = reduce(function, itertools.izip( *map_(lambda c_f: f(ms, c_f[0], i, cs), fns)), init)
+        init = reduce(function, itertools.izip( *map_(lambda c_f: c_f[1](ms, c_f[0], i, cs), fns)), init)
         i    = i + cs
     e = now()
     logfn(" "*60)
@@ -1328,7 +1327,7 @@ def reducems_raw(function, ms, init, columns, **kwargs):
     chunksz = kwargs.get('chunksize', 5000)
     fns     = map_(lambda col: (col, slicers.get(col, lambda tab, c, s, n: tab.getcol(c, startrow=s, nrow=n))), columns)
     return reduce(lambda acc, i_cs:\
-                    reduce(function, itertools.izip( *map_(lambda c_f: f(ms, c_f[0], i_cs[0], i_cs[1]), fns)), acc),
+                    reduce(function, itertools.izip( *map_(lambda c_f: c_f[1](ms, c_f[0], i_cs[0], i_cs[1]), fns)), acc),
                   chunkert(0, len(ms), chunksz), init)
 
 ## reducems calls function as:
