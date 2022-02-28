@@ -2030,6 +2030,11 @@ def run_plotter(cmdsrc, **kwargs):
     from command import mkcmd
     from helpfile import Help
 
+    if defaults.get('debug', False):
+        import platform
+        print("Starting jplotter/platform=", platform.platform())
+        print("         python/version=", platform.python_version())
+
     # These objectes we certainly need
     app = "jcli"
     c = command.CommandLineInterface(debug=defaults['debug'], app=app)
