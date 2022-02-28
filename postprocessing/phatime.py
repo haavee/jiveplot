@@ -1,5 +1,6 @@
 from __future__ import print_function
 import numpy, plots, math, operator
+from past.builtins import xrange
 
 def do_wrap(seq, low=-numpy.pi, high=numpy.pi):
     out   = []
@@ -44,7 +45,7 @@ def phaserate(plotar, ms2mappings):
             dsref = plotar[k][d]
             # get the full data set label - we have access to all the data set's properties (FQ, SB, POL etc)
             n     = plots.join_label(k, d)
-            # fit a line through the unwrapped phase 
+            # fit a line through the unwrapped phase
             unw    = numpy.unwrap(numpy.deg2rad(dsref.yval))
             coeffs = numpy.polyfit(dsref.xval, unw, 1)
             # evaluate the fitted polynomial at the x-loci
@@ -77,7 +78,7 @@ def phasedbg(plotar, ms2mappings):
             dsref = plotar[k][d]
             # get the full data set label - we have access to all the data set's properties (FQ, SB, POL etc)
             n     = plots.join_label(k, d)
-            # fit a line through the unwrapped phase 
+            # fit a line through the unwrapped phase
             unw    = numpy.unwrap(numpy.deg2rad(dsref.yval))
             #coeffs = numpy.polyfit(dsref.xval, unw, 1)
             coeffs = numpy.polyfit(xrange(len(dsref.yval)), unw, 1)

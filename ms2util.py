@@ -129,7 +129,7 @@ import datetime, copy, collections
 as_time = lambda x : pyrap.quanta.quantity(x, "s").formatted("dmy", 9)
 
 # string -> time conversion with a knack
-#  The system supports dayoffsets. In order for this to work correctly 
+#  The system supports dayoffsets. In order for this to work correctly
 #  it is advisory to fill in the refdata parameter with the zero-date.
 #  It does not matter what the actual time of day of that refdate will be
 #  since the date will be automatically truncated to 0h00m on the refdate
@@ -167,7 +167,7 @@ def str2time(s, refdate=0.0):
     tmq    = None
     if minsec:
         # set the timequantity
-        tmq = totime(minsec.group(1)+"min") 
+        tmq = totime(minsec.group(1)+"min")
         if minsec.group(2):
             tmq += totime(minsec.group(2))
     else:
@@ -193,7 +193,7 @@ def opentable(*args, **kwargs):
     # HV: Before we used to return the pyrap.tables.table() return value unadorned.
     #     This, however, does not have success written all over it. Specifically,
     #     either the pyrap, boost.python or C++ Table::... code holds a reference
-    #     from '<name>' to internal object. 
+    #     from '<name>' to internal object.
     #     This means that if '<name>' changes on disk, pyrap.tables.table('<name>')
     #     will keep on returning the _old_ (!!!!) table information AS LONG AS THERE
     #     ARE pyrap.tables.table() OBJECTS ALIVE THAT HAVE NOT __EXPLICITLY__ (!!!!)
@@ -333,7 +333,7 @@ class polarizationmap():
           #polcode(id=17,name='XR'),
           #polcode(id=18,name='XL'),
           #polcode(id=19,name='YR'),
-          #polcode(id=20,name='YL') 
+          #polcode(id=20,name='YL')
           ]
 
     @staticmethod
@@ -478,8 +478,8 @@ class subband:
     def unmapDDId(self, ddid):
         def foldfn(x, acc):
             # Note: 'x' is always a (int, int) tuple but by analyzing it like below
-            #        we can perform the extending of the accumulator only if the 
-            #        datadescription id we're looking for is in this subband's 
+            #        we can perform the extending of the accumulator only if the
+            #        datadescription id we're looking for is in this subband's
             #        data description map in a one liner
             ###
             ###  FIXME TODO
@@ -692,12 +692,12 @@ class spectralmap:
         try:
             if sbid<0:
                 raise InvalidSubband(sbid)
-            fqref = self._findFQ(fq)
+            fqref = self._findFQ(freqid)
             return fqref[sbid][1].spWinId
         except KeyError:
-            raise InvalidFreqGroup(fq)
+            raise InvalidFreqGroup(freqid)
         except IndexError:
-            raise InvalidSubband(sb)
+            raise InvalidSubband(sbid)
 
     #  Unmap a given spectral window id (note: this is the *zero*based rownumber!!)
     #
@@ -958,7 +958,7 @@ def makeBaselineMap(nm, **kwargs):
             if len(antab)==0:
                 return errf("No rows in the ANTENNA table")
 
-            # If we want to know only the antenna's that are 
+            # If we want to know only the antenna's that are
             # actually *used* ....
             filter_f  = None
             baselines = None
@@ -1102,7 +1102,7 @@ def getTimeRange(nm, **kwargs):
         #    pyrap.tables.taql("select TIME ...")        took 1.97s on that MS
         #    sorted( tbl.getcol('TIME') )                took 1.37s on that MS
         #    tbl.getcol('TIME')                          took 0.38s on that MS
-        #    
+        #
         #    using numpy:
         #      tm = tbl.getcol('TIME')                   takes 0.38s
         #      numpy.amin( tm )                          takes 0.02s
@@ -1181,7 +1181,7 @@ def indexr_heur(msname, fudge=2.1):
 ##  DataDomain stuff.
 ##  Provide for routine that attempts to
 ##  determine the domain of a given MS
-knownColumns = { 'DATA':  jenums.Type.Spectral, 
+knownColumns = { 'DATA':  jenums.Type.Spectral,
         'LAG_DATA':       jenums.Type.Lag,
         'MODEL_DATA':     jenums.Type.Spectral,
         'CORRECTED_DATA': jenums.Type.Spectral }
@@ -1277,7 +1277,7 @@ def mk_processor(fn=None):
 ## Pass it in via the 'slicers=' keyword arg to 'reducems'.
 ##   'slicers=' is taken to be a dict of
 ##      slicers [ <columnname> ] = fun( table, colnm, startrow, nrow )
-## You can provide your own column slicer if you wish, as long as it adheres 
+## You can provide your own column slicer if you wish, as long as it adheres
 ## to the prototype "fun(table, columnname, startrow, nrow)"
 now = datetime.datetime.now
 def reducems(function, ms, init, columns, **kwargs):
