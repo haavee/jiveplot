@@ -1283,7 +1283,6 @@ class jplotter:
                                             filter(operator.itemgetter(1), \
                                               map(lambda i_p: \
                                                     ((fq,sb,pid,i_p[0]), rx.match(i_p[1])), plist))), rxs))
-                                    return rv
                                 # Now run the pol id processor over all feasable polids
                                 # and add the succesfull polid(s), if anything
                                 drap(adder, \
