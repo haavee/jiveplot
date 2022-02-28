@@ -154,6 +154,10 @@ class EnumValueMeta(type):
 
     def __str__(self):
         return self.__str__()
+
+    def __format__(self, format_spec):
+        return format(str(self), format_spec)
+
     __repr__ = __str__
 
 
