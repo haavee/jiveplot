@@ -445,7 +445,7 @@ class CommandLineInterface:
         # compute maximum width of a command name
         ids   = List(map(GetA('id'), self.commands))
         width = max(map(len, ids))
-        fmt   = "{{0:<{0}}".format(width+2).format
+        fmt   = "{{0:<{0}}}".format(width+2).format
         def p(x):
             if len(s)>0 and len(s[-1])<(6*width):
                 s[-1] += x
