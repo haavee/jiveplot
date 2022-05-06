@@ -2260,8 +2260,8 @@ def run_plotter(cmdsrc, **kwargs):
         print("pointsize[{0}]: {1}".format(pt, ps))
 
     c.addCommand( \
-        mkcmd(rx=re.compile(r"^ptsz(\s+[0-9]+)?$"), \
-              args=lambda x: map_(int, re.sub("^ptsz\s*", "", x).split()),
+        mkcmd(rx=re.compile(r"^ptsz(\s+([0-9]*\.[0-9]+|[0-9]+(\.[0-9]*)?))?$"), \
+              args=lambda x: map_(float, re.sub("^ptsz\s*", "", x).split()),
               cb=set_ps, id="ptsz", \
               hlp="ptsz [<number>]\n\tset/display point size when drawing point plots"))
 
@@ -2273,12 +2273,25 @@ def run_plotter(cmdsrc, **kwargs):
         ms = plots.Plotters[pt].setMarkerSize(*args)
         print("markersize[{0}]: {1}".format(pt, ms))
 
+    def set_cs(*args):
+        pt = j().getPlotType()
+        if not pt:
+            print("No plot type selected to operate on")
+            return
+        cs = plots.Plotters[pt].setCharSize(*args)
+        print("charsize[{0}]: {1}".format(pt, cs))
+
     c.addCommand( \
         mkcmd(rx=re.compile(r"^marksz(\s+[0-9]+)?$"), \
               args=lambda x: map_(int, re.sub("^marksz\s*", "", x).split()),
               cb=set_ms, id="marksz", \
               hlp="marksz [<number>]\n\tset/display marker size for marking marked points"))
 
+    c.addCommand( \
+        mkcmd(rx=re.compile(r"^charsz(\s+([0-9]*\.[0-9]+|[0-9]+(\.[0-9]*)?))?$"), \
+              args=lambda x: map_(float, re.sub("^charsz\s*", "", x).split()),
+              cb=set_cs, id="charsz", \
+              hlp="charsz [<number>]\n\tset/display character size; 0=auto-scaling"))
 
     # Allow drawing lines, points or both
     def draw_fn(*args):

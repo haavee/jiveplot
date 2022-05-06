@@ -492,15 +492,23 @@ class Page(object):
         # if we need to do x/y labels we just shift the xleft and ybottom accordingly
         # zip the panel heights with their labels and filter those who are not empty
         # set the property on the page in units of the normal character height
-        self.labelCharSz = [h/n for (h,n) in 
-                zip_(map(lambda fraction: self.dy * fraction, self.plotter.yHeights),
-                     map(len, self.plotter.yLabel))+
-                [(self.dx, len(self.plotter.xLabel))] if n>0]
-        self.labelCharSz = min(0.8*Page.charSize, 0 if not self.labelCharSz else min(self.labelCharSz)) / Page.charSize
+        if self.plotter.charSize > 0:
+            self.labelCharSz = self.plotter.charSize
+        else:
+            self.labelCharSz = [h/n for (h,n) in 
+                    zip_(map(lambda fraction: self.dy * fraction, self.plotter.yHeights),
+                         map(len, self.plotter.yLabel))+
+                    [(self.dx, len(self.plotter.xLabel))] if n>0]
+            self.labelCharSz = min(0.8*Page.charSize, 0 if not self.labelCharSz else min(self.labelCharSz)) / Page.charSize
 
         # already compute the tickCharSz with the same current settings for consistency
-        self.tickCharSz = map_(lambda fraction: (self.dy * fraction)/len(Page.tickString), self.plotter.yHeights) + [ self.dx/len(Page.tickString) ]
-        self.tickCharSz = min(0.6*Page.charSize, min(self.tickCharSz)) / Page.charSize
+        # Allow user to override the character size?
+        if self.plotter.charSize > 0:
+            self.tickCharSz = self.plotter.charSize
+        else:
+            self.tickCharSz = map_(lambda fraction: (self.dy * fraction)/len(Page.tickString),
+                                   self.plotter.yHeights) + [ self.dx/len(Page.tickString) ]
+            self.tickCharSz = min(0.6*Page.charSize, min(self.tickCharSz)) / Page.charSize
 
         # the important values to keep are: tickwitdh (measured string length) and label x/y height and tick char height
         with pgenv(device):
@@ -932,6 +940,7 @@ class Plotter(object):
         self.lineWidth    = 2
         self.pointSize    = 4
         self.markerSize   = 6
+        self.charSize     = 0 # zero = auto-scale, otherwise use this value
         self.drawMethod   = CP([""]*len(self.yAxis))
         self.drawers      = CP([[]]*len(self.yAxis))
         self.setDrawer(*str(self.defaultDrawer).split())
@@ -1064,6 +1073,11 @@ class Plotter(object):
            self.markerSize = args[0]
         return self.markerSize
 
+    def setCharSize(self, *args):
+        if args:
+           self.charSize = args[0]
+        return self.charSize
+
     # some plot types (notably those <quantity> vs frequency/channel)
     # may support plotting all subband *next* to each other in stead
     # of on top of each other. Use "True" or "False"
@@ -1136,10 +1150,10 @@ class Plotter(object):
         return rv
 
     def drawPoints(self, dev, x, y, tp):
-        olw = dev.pgqlw()
-        dev.pgslw(self.pointSize)
+        och = dev.pgqch()
+        dev.pgsch(self.pointSize)
         dev.pgpt(x, y, tp)
-        dev.pgslw(olw)
+        dev.pgsch(och)
 
     def drawLines(self, dev, x, y):
         olw = dev.pgqlw()
