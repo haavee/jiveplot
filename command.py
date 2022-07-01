@@ -156,6 +156,9 @@ class readkbd(newhistory):
                 print("\nYour next line of input might be ignored.\nI have not understood readline's ^C handling good enough to make it work.\nFor the moment just type <enter> and ignore the displayed text.")
             return None
         if quit:
+            # Note: if this one is changed to "return" based on PEP479(*)
+            #       the CLI won't exit under ^D
+            # (*) https://peps.python.org/pep-0479/
             raise StopIteration
 
     next = __next__
@@ -244,10 +247,10 @@ class readfile:
         except IndexError:
             print("readfile[{0}]: Not enough arguments for script-line:".format(self.filename))
             print(line)
-            raise StopIteration
+            return
         except IOError as e:
             print("readfile[{0}]: {1}".format(self.filename, e))
-            raise StopIteration
+            return
 
     next = __next__
 
