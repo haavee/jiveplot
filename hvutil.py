@@ -262,7 +262,7 @@ def expand_string_range(s, rchar=":"):
             s = s + step
         if abs(s-e)<=abs(step):
             yield s
-        raise StopIteration
+        return
     def mkcounter(item):
         mo = rxRng.match(item)
         if mo:

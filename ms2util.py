@@ -1319,7 +1319,7 @@ def chunkert(f, l, cs, verbose=True):
         f = f + n
     logfn(progress(f, 0, l, 50))
     logfn(" "*80)
-    raise StopIteration
+    return
 
 ## Bare-bones reduce ms. No fancy progress display
 def reducems_raw(function, ms, init, columns, **kwargs):
