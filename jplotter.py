@@ -858,7 +858,7 @@ class jplotter:
             if pr.baselines is not None:
                 # the only acceptable empty set of baselines selected is when there is
                 # also no taql returned (the result of parsing "bl none")
-                if not pr.baselines and pr.taql is not 'FALSE':
+                if not pr.baselines and pr.taql != 'FALSE':
                     raise RuntimeError("Your baseline selection yielded no matches!")
                 # extract the baseline names (field 'BL')
                 sel_.baselines     = map_(GetA('BL'), pr.baselines)
