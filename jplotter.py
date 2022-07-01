@@ -2756,7 +2756,7 @@ def run_plotter(cmdsrc, **kwargs):
         buf = ""
         while True:
             (x,y,ch) = ppgplot.pgcurs()
-            ch = mouse.get(ch, ch)
+            ch = mouse.get(ch.decode(), ch.decode())
             if ch in "q":
                 break
             elif ch in "fl":
