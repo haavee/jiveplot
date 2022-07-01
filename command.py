@@ -239,7 +239,7 @@ class readfile:
     def __next__(self):
         line = None
         try:
-            line = re.sub(r"#.*$", "", self.file.next().rstrip('\n'))
+            line = re.sub(r"#.*$", "", next(self.file).rstrip('\n'))
             return line.format(*self.args)
         except IndexError:
             print("readfile[{0}]: Not enough arguments for script-line:".format(self.filename))
