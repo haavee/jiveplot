@@ -932,26 +932,20 @@ class baselinemap:
 
     def antennaNames(self):
         return list( self.antennaDict.values() )
-        #return map_(operator.itemgetter(0), self.antennaList)
 
     # return the list of (antenna, id) tuples, sorted by id
     def antennas(self):
         return sorted(self.antennaDict.items(), key=operator.itemgetter(0))
-        #return sorted(self.antennaList, key=operator.itemgetter(1))
 
     def antennaName(self, aid):
         try:
             return self.antennaDict[aid]
-            #[(nm, i)] = filter_(lambda ant_antid: ant_antid[1]==aid, self.antennaList)
-            #return nm
-        #except ValueError:
         except KeyError:
             raise InvalidAntenna(aid)
 
     def antennaId(self, name):
         try:
             namelower = name.lower()
-            #[(nm, aid)] = filter_(lambda ant_antid: ant_antid[0].lower()==namelower, self.antennaList)
             [(nm, aid)] = filter_(lambda ant_antid: ant_antid[1].lower()==namelower, self.antennaDict.items())
             return aid
         except ValueError:

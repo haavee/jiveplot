@@ -147,7 +147,7 @@ def fractionalDayToTime(frac):
     (frac, s) = math.modf(frac*60)
     return datetime.time(h, m, s, int(frac*1.0e6))
 
-## Convert time in seconds-since-start-of-day into datetime.time 
+## Convert time in seconds-since-start-of-day into datetime.time
 def secondsInDayToTime(sssod):
     # 3600 seconds per hour
     (h, s)  = divmod(sssod, 3600)
@@ -176,7 +176,7 @@ def quote_split(s, splitchar=';', quotes="'"):
     rv = [""]
 
     # switch quotiness if we see quotes[switch]
-    switch  = 0  
+    switch  = 0
     inquote = False
     for i in range_(len(s)):
         if not inquote and s[i]==splitchar:
@@ -295,9 +295,9 @@ def expand_string_range(s, rchar=":"):
 
 ##
 ## String processing utilities
-## 
+##
 
-## take a list of (pattern, replacement) tuples and run them 
+## take a list of (pattern, replacement) tuples and run them
 ## over the string to produce the final edited string
 subber   = lambda acc, pat_repl: re.sub(pat_repl[0], pat_repl[1], acc)
 sub      = lambda txt, lst: reduce(subber, lst, txt)
@@ -319,7 +319,7 @@ def untilnth(n, char):
         return True
     return match
 
-## return the leading part of the string up until the n'th 
+## return the leading part of the string up until the n'th
 ## occurrence of 'char'
 ## This is 'better' than s.split(sep=char)[0:n]
 ## because you will have lost the actual sep characters!

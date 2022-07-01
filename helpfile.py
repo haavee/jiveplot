@@ -6,7 +6,7 @@ Help = {
 	"ms":
 """ms [msname [options]]
     open MS/display current MS
-    
+
 If a MeaurementSet (MS) is opened, the code initializes all mappings and
 analyzes the frequency setup. After having opened an MS you can proceed with
 selecting data and operating on it.
@@ -43,7 +43,7 @@ Example:
     > ms X3c1.ms unique=f spw_order=by_id column=alma_phase_corr
 
 """,
-    
+
     ##################################################################
     # indexr
     ##################################################################
@@ -96,8 +96,8 @@ properties using 'complex-syntax'.
 
 Selecting whole scan(s) or scan ranges is simple; use the following syntax:
 
-    > scan [id|id-id|id-id:step]* 
-    
+    > scan [id|id-id|id-id:step]*
+
 'id' is the scan number as printed by 'listr' or 'r scan'. Ranges are inclusive
 of end points.
 
@@ -148,7 +148,7 @@ in a more natural way. Durations are integer numbers followed by time units of
 part.
 
     "3d2h22m" for a duration of 3 days, 2 hours and 22 minutes
-    "0.2s" 
+    "0.2s"
 
 The fields in a duration are optional but the order is important - a "higher"
 unit of time MUST come before a lower one. So "3d10.2s" is valid but "10s2m"
@@ -215,7 +215,7 @@ e.g. case insensitive mathing and partial pattern matching:
       The string match will be case sensitive. 'string' may contain the shell
       wildcard characters '*' or '?' and their interpretation and effect is
       identical to shell wild card matching/expansion.
-      When using wildcards be sure to use the quoted string "'pattern'" version 
+      When using wildcards be sure to use the quoted string "'pattern'" version
       or else the expression parser will interpret the '*' as arithmetic
       multiplication.
 
@@ -228,7 +228,7 @@ The following two conditions are _almost_ identical; the second version
 will match all source names starting with 'm15' as well as those starting
 with 'M15'. The first one only those starting with 'M15'.
 
-    > .... where field ~ 'M15*' 
+    > .... where field ~ 'M15*'
     > .... where field ~ /m15.*/i
 
 Full regular expression support:
@@ -241,7 +241,7 @@ same time formats as under the 'time' command are feasible: full-fledged time
 stamps and time stamps on days relative to the reference day of the experiment
 (day 0 of the experiment).
 
-    > .... where start>14-jun-2013/12h43m0s 
+    > .... where start>14-jun-2013/12h43m0s
     > .... where end <= 0/23h30m30s
 
 """,
@@ -266,7 +266,7 @@ in turn could lead to unexpected effects when selecting data only to find out
 that "your selection is empty".
 
 jiveplot offers you a choice of which meta data to display/allow you to select
-from (see the "r" command - the 'range' of selectables). 
+from (see the "r" command - the 'range' of selectables).
 
 If 'uniq' is True, upon opening of the MS the MAIN table will be analyzed and
 only the meta data for stations, frequencies, sources that are actually
@@ -290,8 +290,8 @@ Changing the setting will not take effect until a new MS is opened.
 	"taql":
 """taql [TaQL Query|none]
     display/edit raw TaQL query
-    
-Without arguments shows the TaQL query representing the current selection. 
+
+Without arguments shows the TaQL query representing the current selection.
 
 Use the 'command' version with extreme caution - it will overwrite the actual
 current TaQL query without altering the actual selection. It may be useful
@@ -306,7 +306,7 @@ expect (or what not to expect).
 	"r":
 """r (bl|src|time|fq|ch|p|sb|ant)*
    display range of selectables in current MS
-   
+
 This command displays the meta-data found in the MS. Without arguments an
 overview of all meta data is given, with the exception of baselines. With one
 or more arguments the command displays the range of the indicated selectable
@@ -410,7 +410,7 @@ will be written as "RR,LL".
 	"pp":
 """pp
    display current plot-properties
-   
+
 Properties are e.g. which plot type, if averaging is to be applied, if so
 _which_ averaging (scalar, vector) is used etc.
 
@@ -429,7 +429,7 @@ _which_ averaging (scalar, vector) is used etc.
 	"y":
 """y [<type>]
    set/display Y-Axis type
-   
+
 <type> is one of:
 [amp|pha|anp|re|im|reim|wt]""",
 
@@ -438,13 +438,13 @@ _which_ averaging (scalar, vector) is used etc.
     ##################################################################
 	"x":
 """x [<type>]
-   set/display X-Axis type 
-   
+   set/display X-Axis type
+
 <type> is one of [time|chan]""",
 	"avt":
 """avt [<method>]
-   set/display time averaging method 
-   
+   set/display time averaging method
+
 <method> is one of: [none|scalar|vector|vectornorm]
 
 vectornorm is like vector only the complex numbers are first normalized
@@ -457,7 +457,7 @@ before they are averaged. This is mostly useful for phase-versus-* plots.
 	"avc":
 """avc [<method>]
    set/display channel averaging method
-   
+
 <method> is one of: [none|scalar|vector|vectornorm]
 
 vectornorm is like vector only the complex numbers are first normalized
@@ -472,7 +472,7 @@ before they are averaged. This is mostly useful for phase-versus-* plots.
     set/display time averaging interval
 
 When time averaging is requested (see 'avt') on 'quantity versus channel'
-plots, the system must be told to integrate in which size 'time bin'. 
+plots, the system must be told to integrate in which size 'time bin'.
 
 In 'quantity versus time' plots, the time averaging setting 'avt' is ignored
 but 'solint' is honoured if set. In this case the 'by time' data will be scalar
@@ -564,8 +564,8 @@ settings are.
   nchav       result
   -----       --------------------------------------------------------------
 
-  none        all selected channels [even if they are a disjoint set] are 
-              averaged down to one value. the channel label in the plots 
+  none        all selected channels [even if they are a disjoint set] are
+              averaged down to one value. the channel label in the plots
               will be '*' in stead of the channel number
 
   >1          for each selected channel the system computes a destination
@@ -595,7 +595,7 @@ Of course this parameter's name also pays homage to Classic AIPS.
 	"wt":
 """wt [double]
    set/display weight threshold
-   
+
 Data with a weigth less than this threshold will be marked as flagged. When
 averaging data in time and/or frequency these points do not count towards the
 average.
@@ -646,7 +646,7 @@ Note: the '*' behind the syntax means that this sequence may be repeated any
 number of times!  i.e. with one single 'new' command you can set any number of
 values.
 
-Example: 
+Example:
     > new p,bl true ch,sb,src,time false
 would completely overwrite the current settings""",
 
@@ -656,7 +656,7 @@ would completely overwrite the current settings""",
 	"pge":
 """(nxt|prev) [nr]
    advance/go back [nr] pages of plots
-   
+
 The default is one page of plots""",
 
     ##################################################################
@@ -685,7 +685,7 @@ the size of the plots itself discarding nx/ny settings!
     ##################################################################
 	"ch":
 """ch [none|<range>|<singlechannel> ...]*
-   set/display current channel selection 
+   set/display current channel selection
 
 Without arguments displays the current channel selection and returns.
 
@@ -732,7 +732,7 @@ that point as indicated by the selector:
     <blcode>      => +<blcode> (no leading "+" or "-" defaults to "+")
     +<blcode>     = add baseline(s) matching <blcode> to selection
     -<blcode>     = remove  ..      ..        ..      from   ..
-     
+
 <blcode> is a specification of which baseline(s) to in- or exclude and can
 take several forms:
 
@@ -746,7 +746,7 @@ take several forms:
                 "-wb" means "remove all baselines to wb". The system looks for
                 baselines where "wb" is either the first or the second component
                 of the baseline
-    <antenna number> 
+    <antenna number>
                 an integer; select baseline(s) where either component is the
                 antenna with the ID <antenna number> from the ANTENNA subtable.
     '<identifier>'
@@ -879,7 +879,7 @@ The following pseudo time stamps have been defined:
     $start $mid $end $length $t_int
 
 When used, they evaluate to the corresponding value (in absolute date/time,
-except for the duration and integration time) based on the current MS. 
+except for the duration and integration time) based on the current MS.
 
 In order to help dealing with time, for arithmetic one can use 'durations' -
 time spans. They look a lot like time stamps but they are not; they just
@@ -900,7 +900,7 @@ _actual_ time stamps in the experiment.
     > time $start to $end
 
     # select time range from start -> start + length (id.)
-    > time $start to + $length  
+    > time $start to + $length
 
     # select the second half of the experiment
     > time $start + ($length/2) to $end
@@ -912,7 +912,7 @@ _actual_ time stamps in the experiment.
     > time $end - 1h to $end
 
     # do some arithmetic using the integration time:
-    # select 10 integrations after skipping the first 5: 
+    # select 10 integrations after skipping the first 5:
     > time $start + 5 * $t_int to + 10 * $t_int
 
     # Involving relative day time stamps - select
@@ -929,7 +929,7 @@ _actual_ time stamps in the experiment.
     # (this time we show the output on the terminal)
     > time $start to +1m , $start + 2m to +1m
     time: 31-Oct-2011/12:42:31.250 -> 31-Oct-2011/12:43:31.250
-    time: 31-Oct-2011/12:44:31.250 -> 31-Oct-2011/12:45:31.250 
+    time: 31-Oct-2011/12:44:31.250 -> 31-Oct-2011/12:45:31.250
 
     # note that overlapping time ranges will be automatically joined!
     > time $start to +4m , $start + 3m to +3m
@@ -956,7 +956,7 @@ which *does* work and gives the expected date+time stamp.""",
 	"s":
 """sb [<range> <single sp.window>]
    set/display current spectralwindow (subband) selection.
-   
+
 <range> may be specified as spw1:spw2[:inc] selecting
 spectral windows spw1->spw2 with increment inc (defaults
 to 1). The word all would select all spectral windows""",
@@ -966,8 +966,8 @@ to 1). The word all would select all spectral windows""",
     ##################################################################
 	"p":
 """p [<polcombi> <polcombi>... ]:
-   set/display current polarization selection 
-   
+   set/display current polarization selection
+
 <polcombi> may be specified as two out of [xylr*] or the
 string all.  eg: l* would select ll lr ** would select
 all polarizations note: for your pleasure the following
@@ -979,8 +979,8 @@ symbolic selections have been added:
     ##################################################################
 	"src":
 """src [none|[[-+][!]<source>]*]:
-   set/display current source selection 
- 
+   set/display current source selection
+
 Without arguments displays the current source selection and returns.
 
 The special selector 'none' removes the current source selection.
@@ -992,9 +992,9 @@ as indicated by the selector:
     <source>      = +<source> (no "+-" specified defaults to "+")
     !<source>     = +!<source>
     +<source>     = add sources matching <source> to selection
-    -<source>     = subtract  ,,      ,,     ,,   from   ,, 
+    -<source>     = subtract  ,,      ,,     ,,   from   ,,
     [+-]!<source> = add or subtract sources NOT matching <source>
-     
+
 
 <source> is the name of the source as it appears in the MS.  The range command
 ("r") lists all selectables, including the source names. The match is performed
@@ -1099,7 +1099,7 @@ set or reviewed.
 
 
 The plot software recognizes three different scaling options:
-    'local'     each individual plot will be auto scaled based on the 
+    'local'     each individual plot will be auto scaled based on the
                 minima and maxima of the data sets displayed in each plot
     'global'    all plots share the same scale, which will be derived from
                 the global minima and maxima across all plots
@@ -1115,7 +1115,7 @@ The plot software recognizes three different scaling options:
 The numerical suffix "0" or "1" means to set the scale of panel "0" or "1" in
 the plot(s). The panel numbering counts from lowest panel to highest panel.
 Typically this is most useful if multiple quantities are plotted at the same
-time, e.g. in "anp*" plots where both amplitude and phase are plotted. 
+time, e.g. in "anp*" plots where both amplitude and phase are plotted.
 
 Thus, in "anp" plots, the amplitude is plotted at the bottom and phase in the
 top. To make the amplitude plots scale locally (e.g. if cross- and
@@ -1134,7 +1134,7 @@ The new scaling options will be visible after the next plot command.""",
     ##################################################################
 	"pt":
 """pt [plottype]
-   set/display current plottype 
+   set/display current plottype
 
 Use the lp command to list available plottypes.""",
 
@@ -1152,7 +1152,7 @@ The special selector 'none' clears the current frequency selection.
 In order to understand this command you should familiarize yourself with how the
 system reads the frequency setup/subband and polarization from the MS and
 presents it to you. Read the documentation for the range command "r".  Part of
-the complication comes from what the MS actually *allows* to be stored. 
+the complication comes from what the MS actually *allows* to be stored.
 
 An "fq" command starts with an empty frequency selection and processes the
 selectors from left to right and adds the indicated selection to the current
@@ -1174,7 +1174,7 @@ combination thereof):
     <set>                 = <number> | <number>:<number>
 
 The <polarizations> field is optional. If unspecified it selects all
-polarizations for the given <fqid>/<subband> combinations. 
+polarizations for the given <fqid>/<subband> combinations.
 
 If specified, the <polarizations> field is a comma separated list of strings,
 identifying the polarizations to select. The set of polarizations may be,
@@ -1183,7 +1183,7 @@ indicated polarizations: the MS allows the same spectral window to be
 correlated with different polarization combinations. The system will typically
 select, if you don't specify, all that apply. Usually there is only one
 polarization ID so there won't be any difference (other than specifiying a
-non-existant polarization ID). 
+non-existant polarization ID).
 
 For your convenience the special "polarization" values "X" and "P" (case
 sensitive) have been defined; they dynamically select "all cross polarizations"
@@ -1199,7 +1199,7 @@ Note: wildcards are allowed in the polarizations, e.g. it's possible to select
 "r*" to select "RR" and "RL", should they be available.
 
 Examples:
-    
+
 0,3/0:4/l*
 select pols LL+LR from subbands 0->4 from both FREQID 0 and 3
 
@@ -1249,10 +1249,10 @@ Examples:
    and 'bl' to true):
 
     > new all f fq t sb t bl t
-  
+
   Now it's possible to sort the plots by subband:
     > sort sb
-    
+
   or by baseline first, then by subband:
     > sort bl sb
 
@@ -1322,7 +1322,7 @@ Examples:
     as index)
         > mark 0:
         > mark phase:
-    
+
     In a weight-versus-time plot (plottype 'wt'), mark all points that
     have a weight below 0.98:
 
@@ -1395,7 +1395,7 @@ Variable names are alphanumeric strings (extended with the '_' character).
 Either of the <expression> or 'as <variable name>' can be left out but not
 both. The unspecified part will default to '_'. Thus:
 
-        > store as foo 
+        > store as foo
             is short for:
             > store _ as foo
         i.e. "save current set of plots by the name of foo"
@@ -1414,7 +1414,7 @@ and unary minus. Note that unary minus has higher precedence than '^', thus
 '-1^2' evaluates to +1.
 
     Examples:
-        > store 1+2*3+4 as eleven     
+        > store 1+2*3+4 as eleven
 
         # ... open MS, select data, create plots
         > store as ms1_data           (store collection of plots)
@@ -1438,7 +1438,7 @@ It should be noted that an operation which combines data sets (e.g. "a + b")
 will only produce results for data sets that have the same labels; thus having
 the same TIME, SB, FQ, BL, P, CH, SRC values. The expression-evaluation engine
 iterates over the data sets that both collections have in common and evaluates
-the expression on all the y-values of that data set. 
+the expression on all the y-values of that data set.
 
 Thus:
 
@@ -1520,10 +1520,10 @@ Subscripting:
     It is now possible to use variable subscripting to select a subset of data
     sets from that variable and "erase" the property value:
         > load foo[p=ll]
-    
+
     The expression "foo[p=ll]" returns a temporary variable which contains the
     list of data sets addressed by the variable "foo" but only those for which
-    the "P"(olarization) property has the value "LL". 
+    the "P"(olarization) property has the value "LL".
 
     Because the property's value is "erased" after the selection, it becomes
     possible to type in this:
@@ -1537,9 +1537,9 @@ Subscripting:
 
     The expression within '[' ... ']' can contain multiple, comma separated
     selectors for the attributes:
-    
+
         <expression> = '[' <condition> { ',' <condition> } ']'
-        <condition>  = <attribute> '=' <value> 
+        <condition>  = <attribute> '=' <value>
         <attribute>  = "P", "CH", "SB", "SRC"
         <value>      = <number> | <text>
 
@@ -1599,7 +1599,7 @@ The formal <ckey_expr> grammar (explained below)
     <value>      = <number> | <text> | 'none' | ' <text> ' | <regex>
     <regex>      = '/' <text> '/' { 'i' }
     <default>    = 'default' '=' <number>
-    
+
 In this grammer, <number> and <text> are what you think they are: digits and
 characters (excluding embedded white space). When attribute values are compared
 with <text> it is done case-insensitive. The <text> inside a <regex> is,
@@ -1611,7 +1611,7 @@ In human readable form this grammar reads:
 
     A <ckey_expr> consists of one or more <selectors>, optionally followed by a
     <default> setting.
-    
+
     Each <selector> selects data sets with a label that matches a set of
     conditions and optionally assigns a specific colour index to those.
 
@@ -1642,7 +1642,7 @@ Examples:
     ckey p,sb
 
     # a more specific application: colour the data sets with 'll'
-    # polarization with colour 2 and the 'rr' polarization with colour 3. 
+    # polarization with colour 2 and the 'rr' polarization with colour 3.
     ckey p[ll]=2 p[rr]=3
 
     # The previous command will result in an error in the following cases:
@@ -1699,7 +1699,7 @@ within a plot.
 
 "[drawing options]" is an optional list of drawing style commands. Each drawing
 style command is:
-        
+
     (<panel>:)[lines|points|both]
 
 If the drawing style is prefixed with "<panel>:" the entry is called
@@ -1768,8 +1768,8 @@ syntax is mostly consistent with the syntax from the 'ckey' command or the
 'scan' selection's "where" clause.
 
     An <expression> may be prefixed with
-    
-    <address>':'  
+
+    <address>':'
         where <address> = '0' | '1' | 'amplitude' | 'phase' | 'real' | 'imaginary'
         basically the address of the (sub)panel of a potentially multi-panel
         plot. The numerical indices address from bottom panel to top.
@@ -1782,7 +1782,7 @@ syntax is mostly consistent with the syntax from the 'ckey' command or the
     <expression> = <condition> { 'and'|'or' <expression> } |
                    'not' <condition> | '(' <expression> ')'
 
-    <condition>  = <attribute> '~' <match>  | 
+    <condition>  = <attribute> '~' <match>  |
                    <attribute> <compare> <value> |
                    <attribute> 'in' <list>
 
@@ -1811,7 +1811,7 @@ put inside single quotes to support embedded spaces.
 In human readable form this grammar reads:
 
     An <expression> consists of one or more <conditions>.
-    
+
     Each <condition> selects data sets for which this condition returns true. It
     is possible to negate a <condition> using the 'not' operator.
 
@@ -1888,7 +1888,7 @@ The full syntax of the command is:
                    <attrname> 'in' <list> |
                    <attrname> 'like' <regex>
                    <attrname> 'like' <text>
-    <relop>      = '<' | '<=' | '=' | '>' | '>=' 
+    <relop>      = '<' | '<=' | '=' | '>' | '>='
     <list>       = '[' <values> ']'
     <values>     = <value> { ',' <values> }
     <value>      = <number> | <text>
@@ -2001,7 +2001,7 @@ Examples:
     The indicated y-axis frequency does not apply to this plot
 
     # clear label of time (== same as x-axis type)
-    > label time: '' 
+    > label time: ''
 
     # embedded quotes can be done in two ways:
     > label channel: "channel's property"    # the other flavour of quote

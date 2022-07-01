@@ -85,7 +85,7 @@ class selection:
         self.newPlot[jenums.Axes.BL] = True
 
     # FIXME XXX FIXME
-    # should check in jplotter.py if selected time range is larger than the 
+    # should check in jplotter.py if selected time range is larger than the
     # whole data set because then we can decide to NOT add a time condition, making
     # the query faster
     def selectTimeRange(self, timeranges):
@@ -120,7 +120,7 @@ class selection:
             return fmt_dd_select(range_repr(f), range_repr(s), p, pols)
         return do_it
 
-    # the ddSelection as Human Readable Format. Needs a 
+    # the ddSelection as Human Readable Format. Needs a
     # polarization map to unmap indices to string
     def ddSelectionHRF(self, pMap):
         if not self.ddSelection:
@@ -134,8 +134,8 @@ class selection:
         #    written as:
         #    ddSelection = [([fq], [sb], polid, [prods]), ...]
 
-        # Group together all the subbands for the same (fq, pol, [prods]) 
-        # such that we end up with 
+        # Group together all the subbands for the same (fq, pol, [prods])
+        # such that we end up with
         #    ddSelection = [(fs, [sb], pol, [prods]), ....]
         # once more dict + set to the rescue
         hrf = map(selection.proc_sb, iteritems(reduce(selection.group_sb, self.ddSelection, {})))
@@ -154,7 +154,7 @@ class selection:
             return self.taqlString
 
         # No? Ok, build the query
-        return " AND ".join(filter(operator.truth, 
+        return " AND ".join(filter(operator.truth,
                                    [self.baselinesTaql, self.sourcesTaql, self.timeRangeTaql, self.ddSelectionTaql]))
         #return reduce(lambda acc, x: (acc+" AND "+x if acc else x) if x else acc, \
         #              filter(is_not_none, \

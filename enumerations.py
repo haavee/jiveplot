@@ -1,4 +1,4 @@
-""" 
+"""
 Python can support enumerations/enum like types, a finite set of immutable symbolic values that either stand for themselves (the name IS the value) or refer to another, fixed, value.
 
 An enumeration can be constructed using the Enum(...) function:
@@ -109,7 +109,7 @@ class EnumValueMeta(type):
         # Maybe you want to disable creating instances of the enum values?
         return super(EnumValueMeta, cls).__new__(cls, mName, parents, dct)
 
-    # read-only property '.value' 
+    # read-only property '.value'
     @property
     def value(cls):
         return cls._enumvalue[1]
@@ -144,7 +144,7 @@ class EnumValueMeta(type):
         return hash(self._enumvalue[1])
 
     def __ne__(self, other):
-        return not self == other 
+        return not self == other
 
     def __del__(self):
         pass
@@ -403,17 +403,17 @@ if __name__ == '__main__':
 
         def test_no_attributes_on_enum(self):
             with self.assertRaises(TypeError):
-                self.a.foo = 42 
+                self.a.foo = 42
 
         def test_no_assign_attribute(self):
             with self.assertRaises(RuntimeError):
-                self.a.aap    = 42 
+                self.a.aap    = 42
         def test_no_assign_valued_enum(self):
             with self.assertRaises(RuntimeError):
-                self.d.NotFound = 42 
+                self.d.NotFound = 42
         def test_no_assign_index(self):
             with self.assertRaises(TypeError):
-                self.a[0]     = 42 
+                self.a[0]     = 42
         def test_no_assign_index_name(self):
             with self.assertRaises(TypeError):
                 self.a['aap'] = 42
@@ -421,7 +421,7 @@ if __name__ == '__main__':
         def test_no_assign_value(self):
             with self.assertRaises(AttributeError):
                 self.d.OK.value = 42
-       
+
         # it should be impossible to delete an enum value,
         # an enumeration value's value - even through indexing
         def test_no_del_property(self):

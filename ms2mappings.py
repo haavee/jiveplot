@@ -89,7 +89,7 @@ class mappings:
         ms2util.assertMinimalMS(nm)
 
         # test length of MS. If we think it's too long (say >500000 rows) and
-        # 'unique' is True, then warn + ask 
+        # 'unique' is True, then warn + ask
         with ms2util.opentable(nm) as m:
             def logit(x):
                 sys.stdout.write("{0} ... {1}                            \r".format(nm, x))

@@ -1,8 +1,8 @@
-# HV: Contains parsers for querying list of scans 
+# HV: Contains parsers for querying list of scans
 from   __future__ import print_function
 from   six        import iteritems
 from   functools  import reduce
-from   functional import * 
+from   functional import *
 import re, hvutil, operator, math, itertools, inspect, plotiterator, copy, numpy, plotutil, collections
 
 haveQuanta = False
@@ -10,7 +10,7 @@ try:
     import pyrap.quanta
     haveQuanta = True
 except ImportError:
-    pass 
+    pass
 
 class token_type(object):
     __slots__ = ['type', 'value', 'position']
@@ -170,7 +170,7 @@ def parse_scan(qry, **kwargs):
         return hvutil.expand_string_range(txt, rchar='-')
 
     # take a string and make a "^...$" regex out of it,
-    # doing escaping of regex special chars and 
+    # doing escaping of regex special chars and
     # transforming "*" into ".*" and "?" into "."
     # (basically shell regex => normal regex)
     def pattern2regex(s):
@@ -192,7 +192,7 @@ def parse_scan(qry, **kwargs):
         token_def(r"\b(to|not|where|limit)\b",  keyword_t()),
         # can't use 'keyword_t()' for the next one because we may need to accept whitespace between "order" and "by"
         token_def(r"\b(asc|desc)\b",            keyword_t()),
-        token_def(r"\border\s+by\b",            simple_t('order by')), 
+        token_def(r"\border\s+by\b",            simple_t('order by')),
         token_def(r"\bin\b",                    operator_t('in')),
         token_def(r"\b(and|or|in)\b",           operator_t('relop')),
         # Date + time formats
@@ -211,7 +211,7 @@ def parse_scan(qry, **kwargs):
         token_def(r"(?P<neg>-)?(?P<h>\d+)[hH]((?P<m>\d+)[mM])?((?P<s>\d+(\.\d*)?)[sS])?", xformmg_t('duration', mk_seconds)),
         token_def(r"(?P<neg>-)?(?P<m>\d+)[mM]((?P<s>\d+(\.\d*)?)[sS])?", xformmg_t('duration', mk_seconds)),
         token_def(r"(?P<neg>-)?(?P<s>\d+(\.\d*)?)[sS]", xformmg_t('duration', mk_seconds)),
-        # regex      
+        # regex
         token_def(r"/[^/]+/i?",               xform_t('regex', regex2regex)),
         token_def(r"[0-9]+-[0-9]+(:[0-9]+)?", xform_t('irange', mk_intrange)),
         float_token(),
@@ -246,7 +246,7 @@ def parse_scan(qry, **kwargs):
     ######  Our grammar
 
     # query    = modifier [ 'where' condition ['order by' sorting ] ['limit' int] ] eof
-    # modifier = expr 'to' expr 
+    # modifier = expr 'to' expr
     # expr     = term '+' term | term '-' term | term '*' term | term '/' term | '(' expr ')'
     # term     = duration | number | property | external
     # duration = \d+ 'd'[\d+ 'h'][\d+ 'm'] [\d+ ['.' \d* ] 's'] |
@@ -268,9 +268,9 @@ def parse_scan(qry, **kwargs):
 
 
     # regex      = '/' {anychar - '/'} '/' ['i']  ('i' is the case-insensitive match flag)
-    # identifier = alpha {character} 
+    # identifier = alpha {character}
     # anychar    = character | symbol
-    # character  = alpha | digit 
+    # character  = alpha | digit
     # alpha      = [a-zA-Z_] ;
     # digit      = [0-9] ;
 
@@ -325,7 +325,7 @@ def parse_scan(qry, **kwargs):
             return (perscan_f, compose(List, limit.value, orderby.value, Filter(filter_f)))
         raise SyntaxError("Tokens left after parsing %s" % tok(s))
 
-    # modifier = expr 'to' expr 
+    # modifier = expr 'to' expr
     def parse_modifier(s):
         # we require two functions to be generated, the start_time_fn (before 'to')
         # and the end_time_fn (after 'to' ...)
@@ -523,7 +523,7 @@ def parse_scan(qry, **kwargs):
             # extract the pattern from the literal (ie strip the leading/trailing "'" characters)
             rx.value = rx.value[1:-1]
         if rx.type in ['text', 'literal']:
-           rx.value = pattern2regex(rx.value) 
+           rx.value = pattern2regex(rx.value)
         return lambda scan: rx.value
 
     def parse_list(s):
@@ -599,7 +599,7 @@ def parse_scan(qry, **kwargs):
         # (see https://wiki.python.org/moin/HowTo/Sorting ) we must apply the sorting
         # functions in reverse order
         return reversed(rv)
-        
+
 
     class state_type:
         def __init__(self, tokstream):
@@ -624,11 +624,11 @@ def parse_scan(qry, **kwargs):
 # datetime   = year '/' month '/' day [T/] timestamp | day '-' month '-' year [T/] timestamp | day '-' monthstr '-' year [T/] timestamp
 # reltime    = {'-'} digit {digit} '/' timestamp
 # reltime    = {'-'} digit {digit} '/' duration
-# year       = 4 * digit 
+# year       = 4 * digit
 # month      = 2 * digit
 # monthstr   = 3 * alpha char
 # day        = 2 * digit
-# timestamp  = digit {digit} [hH] digit {digit} [mM] digit {digit} {'.' digits } [sS]) | 
+# timestamp  = digit {digit} [hH] digit {digit} [mM] digit {digit} {'.' digits } [sS]) |
 #              digit {digit} ':' digit {digit} ':' digit {digit} {'.' digits}
 # duration   = number [hH] { number [mM] { number ['.' number] [sS] } } | number [mM] { number ['.' number] [sS] } | number ['.' number] [sS]
 # scan prop  = 'scan' digits '.' identifier
@@ -730,7 +730,7 @@ def parse_time_expr(txt, **env):
             return (start_time, start_time)
 
         # insert the current rterm value in the environment such that
-        # the 'end_time' may use "+ duration" 
+        # the 'end_time' may use "+ duration"
         env['$#parsed:start^time#$'] = start_time
         # parse the end time after consuming the 'to' keyword
         depth      = s.depth
@@ -834,7 +834,7 @@ def parse_time_expr(txt, **env):
 # Parse a simple duration (sort of VEX format):
 #    ...y..d..h..m....s
 # there must be at least one unit present, trailing fields after the highest order unit are optional.
-# only accepts units in this order; e.g. cannot say 10s1h 
+# only accepts units in this order; e.g. cannot say 10s1h
 MINf   = r"(?P<m>\d+(\.\d*)?)[mM]"
 HRf    = r"(?P<h>\d+(\.\d*)?)[hH]"
 DAYf   = r"(?P<d>\d+(\.\d*)?)d"
@@ -998,7 +998,7 @@ def immediate_apply(l, f, r):
 def do_iterate(d0, f, d1):
     # we know that either d0 or d1 is a dataset
     proto    = d0 if isDataset(d0) else d1
-    # from the prototype dataset 
+    # from the prototype dataset
     # apply in the correct order!
     app      = (lambda d: f(d, d1)) if isDataset(d0) else (lambda d: f(d0, d))
     def reductor(acc, k_ds):
@@ -1007,7 +1007,7 @@ def do_iterate(d0, f, d1):
         return acc
     return reduce(reductor, iteritems(proto), copy_attributes(plotutil.Dict(), proto))
 
-applicator_table = { 
+applicator_table = {
     # infix:  lhs <operator> rhs
     # table key is:
     #      ( <isDataset lhs>, <isDataset rhs> )
@@ -1038,7 +1038,7 @@ def parse_dataset_expr(txt, datasets, **env):
     identifier  = NAMED("name", ident)+MAYBE(r"\."+NAMED("type", ident))
     unary_minus = mk_operator('-')
 
-    # extract the expression 
+    # extract the expression
     annotation = hvutil.sub(txt, [(r"^\s*load\s*", ""), (r"^\s*store\s*", ""), (r"\bas\b.*", "")]).strip()
 
     # basic lexical elements
@@ -1098,7 +1098,7 @@ def parse_dataset_expr(txt, datasets, **env):
     # entry point of grammar
     def parse_dataset_expr_impl(s):
         # only 'load' or 'store' are supported at this point
-        supported = { 'load': parse_load_dataset, 
+        supported = { 'load': parse_load_dataset,
                       'store': parse_store_dataset }
         cur = tok(s)
         if cur.type not in supported:
@@ -1121,7 +1121,7 @@ def parse_dataset_expr(txt, datasets, **env):
     def parse_store_dataset(s):
         # 'store' {expr} 'as' <id>
         # 'store' <expr> {'as' <id>}
-        # look at the next token, it could be either 
+        # look at the next token, it could be either
         # an expression or the 'as' keyword, to indicate
         # that the current plots need to be stored
         cur  = tok( s )
@@ -1202,7 +1202,7 @@ def parse_dataset_expr(txt, datasets, **env):
         return cur
 
     #@argprint
-    #   '[' <filter> ']' 
+    #   '[' <filter> ']'
     def parse_filter(s):
         # check if we indeed are looking at start of filter/subscripting and if so eat up that token
         if tok(s).type != 'lbracket':
@@ -1371,7 +1371,7 @@ def parse_dataset_expr(txt, datasets, **env):
 
         # Check if we recognize it
         if final.type=='number':
-            # ok, we know we recognize the token, let's eat the number 
+            # ok, we know we recognize the token, let's eat the number
             next( s )
             def mk_f(v):
                 def do_it(ds):
@@ -1446,7 +1446,7 @@ def parse_dataset_expr(txt, datasets, **env):
     def parse_arglist(s, al):
         #   <arglist>   = <empty> | <list>
         #   <list>      = <expr> {',' <expr> }
-        
+
         # Basically we're done if we see 'rparen'
         # don't eat the token because the upper level needs to see it to
         # make sure that parens are balanced
@@ -1462,7 +1462,7 @@ def parse_dataset_expr(txt, datasets, **env):
 
         if arg is None:
             raise SyntaxError("Empty argument is not allowed (current token={0})".format( tok(s).value ))
-        
+
         # append it to the argument list
         al.append( arg )
 
@@ -1513,7 +1513,7 @@ def parse_dataset_expr(txt, datasets, **env):
 #
 # > ckey SB[0], BL[/wb*/]=1
 #
-# without constraints it does 'iota' = automatic counting 
+# without constraints it does 'iota' = automatic counting
 # > ckey P[RR],SB
 #
 # When a label is passed that doesn't match any of the criteria an exception is thrown
@@ -1622,7 +1622,7 @@ def parse_ckey_expr(expr):
             def do_it(label):
                 aval = getattr(label, attrnm)
                 #print "parse_selector:do_it({0}) - attrnm[{1}] => {2}".format(str(label), attrnm, aval)
-                # 'attrlist' is a list of functions that we'll pass the attribute value to see if it 
+                # 'attrlist' is a list of functions that we'll pass the attribute value to see if it
                 # matches the condition(s). Return true if at least one matches
                 #if (aval is None) or (attrlist and [pred(aval) for pred in attrlist].count(True)==0):
                 if attrlist and [pred(aval) for pred in attrlist].count(True)==0:
@@ -1673,7 +1673,7 @@ def parse_ckey_expr(expr):
 
         def mk_colidxfn():
             def do_it(keycoldict, key):
-                # the default colour key function: if key not in keycoldict yet, 
+                # the default colour key function: if key not in keycoldict yet,
                 # insert new one with new colour
                 ck = keycoldict.get(key, None)
                 if ck is None:
@@ -1691,7 +1691,7 @@ def parse_ckey_expr(expr):
             return do_it
         colidxfn = mk_colidxfn()
         #colidxfn = lambda keycoldict, key: keycoldict.setdefault(key, len(keycoldict))
-       
+
         if equal.type=='equal':
             # must see an integer
             next(s)
@@ -1743,7 +1743,7 @@ def parse_ckey_expr(expr):
         cur = tok(s)
         if cur.type != 'equal':
             raise SyntaxError("Unexpected token '{0}', expect '='".format(cur))
-        next(s) 
+        next(s)
         # finally, we need to see a number; the default color
         cur = tok(s)
         if cur.type != 'number':
@@ -1892,7 +1892,7 @@ def parse_filter_expr(qry, **kwargs):
         return hvutil.expand_string_range(txt, rchar='-')
 
     # take a string and make a "^...$" regex out of it,
-    # doing escaping of regex special chars and 
+    # doing escaping of regex special chars and
     # transforming "*" into ".*" and "?" into "."
     # (basically shell regex => normal regex)
     def pattern2regex(s):
@@ -1950,7 +1950,7 @@ def parse_filter_expr(qry, **kwargs):
         if tok(s).type is None:
             raise SyntaxError("empty filter")
 
-        filter_f  = parse_condition(s) 
+        filter_f  = parse_condition(s)
         # "LIMIT"
         #limit     = tok(s)
         #if limit.type=='limit':
@@ -2090,7 +2090,7 @@ def parse_filter_expr(qry, **kwargs):
             # extract the pattern from the literal (ie strip the leading/trailing "'" characters)
             rx.value = rx.value[1:-1]
         if rx.type in ['text', 'literal']:
-           rx.value = pattern2regex(rx.value) 
+           rx.value = pattern2regex(rx.value)
         return rx.value
 
     def parse_list(s):
@@ -2152,7 +2152,7 @@ def parse_filter_expr(qry, **kwargs):
 #   animation parser
 #
 #   Let the user animate datasets based on dataset attribute value(s)
-#   *after* they've been read from disk 
+#   *after* they've been read from disk
 #
 #########################################################################################################
 
@@ -2181,12 +2181,12 @@ def parse_filter_expr(qry, **kwargs):
 #                   <attrname> 'in' <list> |
 #                   <attrname> 'like' <regex> |
 #                   <attrname> 'like' <text>
-#    <relop>      = '<' | '<=' | '=' | '>' | '>=' 
+#    <relop>      = '<' | '<=' | '=' | '>' | '>='
 #    <list>       = '[' <listitems> ']' | <intrange>
 #    <listitems>  = <listitem> {',' <listitems> }
 #    <listitem>   = <value> | <intrange>
 #    <intrange>   = <int>':'<int>
-#    <value>      = <number> | <text> 
+#    <value>      = <number> | <text>
 #    <text>       = ''' <characters> '''
 #    <regex>      = '/' <text> '/'
 #    <number>     = [0-9]+
@@ -2221,7 +2221,7 @@ def parse_animate_expr(qry, **kwargs):
         return hvutil.expand_string_range(txt, rchar='-')
 
     # take a string and make a "^...$" regex out of it,
-    # doing escaping of regex special chars and 
+    # doing escaping of regex special chars and
     # transforming "*" into ".*" and "?" into "."
     # (basically shell regex => normal regex)
     def pattern2regex(s):
@@ -2330,7 +2330,7 @@ def parse_animate_expr(qry, **kwargs):
         except StopIteration:
             return (selection_f, groupby_f, options)
         raise SyntaxError("(at least one)token left after parsing: {0}".format(tok(s)))
-    
+
     #    <selection>  = "" | <dataset>
     def parse_selection(s):
         # try to parse the dataset identifier, if it is None then there was none
@@ -2510,7 +2510,7 @@ def parse_animate_expr(qry, **kwargs):
             raise SyntaxError("Failed to parse right-hand-term of cond_expr (%s)" % tok(s))
         return lambda ds: compare.value(mk_attribute_getter(attribute.value)(ds), rterm)
 
-    #    <value>      = <number> | <text> 
+    #    <value>      = <number> | <text>
     def parse_value(s):
         value = tok(s)
         if value.type not in ['int', 'text', 'identifier']:
@@ -2527,7 +2527,7 @@ def parse_animate_expr(qry, **kwargs):
         # consume the token
         next(s)
         if rx.type in ['text', 'literal']:
-           rx.value = pattern2regex(rx.value) 
+           rx.value = pattern2regex(rx.value)
         return rx.value
 
     #    <list>       = '[' <values> ']' | <intrange>
@@ -2594,7 +2594,7 @@ def parse_animate_expr(qry, **kwargs):
         next(s)
         return t.value if t.type == 'irange' else [t.value]
 
-    
+
     #    <attributes> = <attribute> { ',' <attribute> }
     #    <attribute>  = <attrname> { <sortorder> }
     #    <attrname>   = 'time' | 'src' | 'bl' | 'p' | 'sb' | 'ch' | 'type'
@@ -2655,7 +2655,7 @@ def parse_animate_expr(qry, **kwargs):
             if tok(s).type != 'comma':
                 break
         return options
-   
+
     option_type_map = {'fps': (float, ['int','float'])}
     def parse_option(s):
         # need to see an identifier
@@ -2786,7 +2786,7 @@ taqlmap        = {'+': 'OR',      '-': 'AND NOT'}
 operator2set   = lambda op: setoperatormap.get(op, set.union)
 
 # cooked selectors
-cookmap = { 
+cookmap = {
     # 'all' and 'none' are sort of synonyms but not quite
     # By giving 'all' a bit of TaQL this becomes valid: "bl all -wb"
     # "bl none +wb" would be valid and equal
@@ -2878,9 +2878,9 @@ def mk_match(blmatch):
 
 # mk_field_f_ takes a list of tuples
 #   [ (set{field-ids}, match-fn, antid), (set(field-ids), match-fn, antid), ...]
-# where each tuple describes a match function and on which baseline tuple fields to 
+# where each tuple describes a match function and on which baseline tuple fields to
 # run this function
-#  
+#
 # and turns it into a list of tuples:
 #    [ (field-idx, [match-fn, match-fn, ...]), (field-idx, [match-fn, match-fn]), ... ]
 # i.e. groups the match functions by individual field index such that after extracting
@@ -2930,7 +2930,7 @@ def mk_field_f(ant1, ant2):
     taql = "(({0}) OR ({1}))".format(bl_taql2ant(a1, a2), bl_taql2ant(a2, a1))
     return (taql, [do_it])
 
-# given dict of "XAnt" (name) -> xant (nr) entries, 
+# given dict of "XAnt" (name) -> xant (nr) entries,
 # transform into case insensitive tokens. The reverse length sort is to have the longer names
 # before the shorter ones to handle the case of shorter name being prefix of longer name
 ant_tokens = compose(Map_(lambda ant: (re.compile(r""+ant, re.I), value_t('antenna'))),
@@ -3032,7 +3032,7 @@ class selector_parser:
     # return tuple (set{}, match_f, antenna_id)
     #     or None, in case not a valid token
     # set{} is the set of field numbers that match_f should operate on.
-    # Note: field_numbers as in the named tuple BLMapEntry 
+    # Note: field_numbers as in the named tuple BLMapEntry
     #       (xant, yant, "XAnt", "YAnt", "XAntYAnt", "YAntXAnt")
     #        0     1     2       3       4           5
     def parse_item(self, s, blmap, antmap):
@@ -3042,9 +3042,9 @@ class selector_parser:
             next(s)
         # now we accept 'text', 'antenna', number or '*'
         # for the matching it is important to know if we're matching on
-        # antenna number or on antenna name 
+        # antenna number or on antenna name
         tp = p_tok(s).type
-        rv = None 
+        rv = None
         if tp in ['text', 'antenna'] or s.inquote:
             # text match for all types on BLMapEntry fields #2 and #3 (XAnt, YAnt)
             aname   = str(p_tok(s).value if tp in ['text', 'int', 'antenna'] else p_tok(s).type).lower()
@@ -3131,11 +3131,11 @@ def parse_baseline_expr(qry, blmap, **kwargs):
             if tok(s).type is None:
                 next(s)
         except StopIteration:
-            # the selections are a list of functions which 
+            # the selections are a list of functions which
             # update the current selection
             return reduce(lambda acc, f: f(acc, blmap_), selections, ParseResult())
         raise SyntaxError("(at least one)token left after parsing: {0}".format(tok(s)))
-    
+
     #    <selection>  = <selector> { <selector> }
     def parse_selection(s):
         selectors = list()
@@ -3184,9 +3184,9 @@ def parse_baseline_expr(qry, blmap, **kwargs):
 
 
 # regex      = '/' {anychar - '/'} '/' ['i']  ('i' is the case-insensitive match flag)
-# identifier = alpha {character} 
+# identifier = alpha {character}
 # anychar    = character | symbol
-# character  = alpha | digit 
+# character  = alpha | digit
 # alpha      = [a-zA-Z_] ;
 # digit      = [0-9] ;
 

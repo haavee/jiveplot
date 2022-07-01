@@ -57,7 +57,7 @@ class layout(object):
 ## key such that for data sets having identical "keys"
 ## they will be drawn in identical colors.
 
-# the default colour index function: each key gets their 
+# the default colour index function: each key gets their
 # own distinctive colour index
 def ckey_builtin(label, keycoldict, **opts):
     key = str(label)
@@ -83,7 +83,7 @@ def ckey_builtin(label, keycoldict, **opts):
 #### A function that returns functions that remap each subband's x-axis
 #### such that they are put next to each other in subband (=meta data) order
 #### The original x-axes will be *remapped* for plotting purposes.
-#### If you want to plot against e.g. physical x-axis values don't set 'multiSubband' 
+#### If you want to plot against e.g. physical x-axis values don't set 'multiSubband'
 #### to true or plot against frequency (note: not implemented yet ...)
 ####
 #### Returns tuple (dict(), new-xaxis-maximum-value)
@@ -453,10 +453,10 @@ class Page(object):
         self.footer  = 0.04 if plotter.showLegend else 0.00
         self.xl_     = 0.01
         self.xr_     = 0.98
-        self.yb_     = self.footer 
+        self.yb_     = self.footer
         self.yt_     = 1.0 - self.header
         self.plotter = plotter
-        # the left hand side and bottom of the plot area 
+        # the left hand side and bottom of the plot area
         # may be offset (to make room for x/y axis labels
         self.leftShift_   = 0
         self.rightShift_  = 0
@@ -474,7 +474,7 @@ class Page(object):
                 self._shrinkLayout(nplot, **kwargs)
         elif not plotter.fixedLayout:
             nplot = min(nplot, self.layout.nplots()) if onePage else nplot
-            # shrinkage is allowed if number of plots < layout 
+            # shrinkage is allowed if number of plots < layout
             # AND (either nx,ny==1 OR spillage > 25%)
             # otherwise we leave the layout well alone I guess
             if nplot<self.layout.nplots() and (self.layout.nx==1 or self.layout.ny==1 or (float(nplot)/self.layout.nplots())<=0.75):
@@ -495,7 +495,7 @@ class Page(object):
         if self.plotter.charSize > 0:
             self.labelCharSz = self.plotter.charSize
         else:
-            self.labelCharSz = [h/n for (h,n) in 
+            self.labelCharSz = [h/n for (h,n) in
                     zip_(map(lambda fraction: self.dy * fraction, self.plotter.yHeights),
                          map(len, self.plotter.yLabel))+
                     [(self.dx, len(self.plotter.xLabel))] if n>0]
@@ -850,7 +850,7 @@ AllInOne = type("AllInOne", (), {})()
 ##########################################################
 noFilter = lambda x: True
 # The label regex's match groups:
-#                                          non-capturing 3 
+#                                          non-capturing 3
 #                                          |
 #                       1                  v
 rxLabel  = re.compile(r'([^ \t\v]+)\s*:\s*((?<![\\])[\'"])((?:.(?!(?<![\\])\2))*.?)\2')
@@ -900,7 +900,7 @@ class Plotter(object):
         self.drawDict  = { Drawers.Points: [self.drawfuncs[Drawers.Points]],
                            Drawers.Lines:  [self.drawfuncs[Drawers.Lines]],
                            Drawers.Both:   [self.drawfuncs[Drawers.Points], self.drawfuncs[Drawers.Lines]] }
-        
+
         # reset ourselves - go back to default plot settings
         # some (if not all of these) can be modified by the user
         self.reset()
@@ -966,7 +966,7 @@ class Plotter(object):
     #    - all arguments fully unqualified "draw lines points"
     #    - all arguments fully qualified   "draw amplitude:points phase:lines"
     # In order to prevent this:
-    #      "draw phase:points lines" 
+    #      "draw phase:points lines"
     def setDrawer(self, *args):
         if args:
             # divide the arguments into qualifieds or unqualifieds
@@ -1167,7 +1167,7 @@ class Plotter(object):
                 cb(dev, **kwargs)
 
     #
-    # Deal with colouring data sets based 
+    # Deal with colouring data sets based
     # the data set label
     #
 
@@ -1336,7 +1336,7 @@ class Quant2TimePlotter(Plotter):
                     # the x-axis limits too
                     xlims = map_(xform_x, xlims)
 
-                    # tell viewport to draw a framed box - initializes the world coordinates 
+                    # tell viewport to draw a framed box - initializes the world coordinates
                     # and based on the current plot's x-axis type we get time or normal x-axis
                     vp.setLabelledBox(device, xlims[0], xlims[1], ylims[0], ylims[1])
 
@@ -1368,7 +1368,7 @@ class Quant2TimePlotter(Plotter):
                             # Any extra drawing commands?
                             self.doExtraCallbacks(device, data, xoffset=day0hr)
                     # do some extra work for panel (subplot) number 0
-                    if subplot==0: 
+                    if subplot==0:
                         # 2nd use of the data sets: print the source names at the appropriate times
                         vp.printSrcNameByTime(device, datasets, xform_x)
                         # and draw the main plot label
@@ -1446,7 +1446,7 @@ class GenXvsYPlotter(Plotter):
                 # get the viewport for this particular subplot
                 vp = cvp.subplot(0)
 
-                # tell viewport to draw a framed box - initializes the world coordinates 
+                # tell viewport to draw a framed box - initializes the world coordinates
                 # and based on the current plot's x-axis type we get time or normal x-axis
                 vp.setLabelledBox(device, xlims[0], xlims[1], ylims[0], ylims[1])
 
@@ -1574,7 +1574,7 @@ class Quant2ChanPlotter(Plotter):
                     # get the viewport for this particular subplot
                     vp = cvp.subplot(subplot)
 
-                    # tell viewport to draw a framed box - initializes the world coordinates 
+                    # tell viewport to draw a framed box - initializes the world coordinates
                     # and based on the current plot's x-axis type we get time or normal x-axis
                     vp.setLabelledBox(device, xlims[0], xlims[1], ylims[0], ylims[1])
 
@@ -1608,7 +1608,7 @@ class Quant2ChanPlotter(Plotter):
                             # Any extra drawing commands?
                             self.doExtraCallbacks(device, data)
                     # do some extra work for panel (subplot) number 0
-                    if subplot==0: 
+                    if subplot==0:
                         # and draw the main plot label
                         vp.drawMainLabel(device, "{0:s}".format(label.format(plotlabel.attrs(plotar.plotlabel))) )
                         # indicate multi subband if set
@@ -1637,7 +1637,7 @@ class Quant2ChanPlotter(Plotter):
 #              Plotting ratios of two data sets that are basically equal (i.e.
 #              ratio==1.00000000...)  some of them are displayed as
 #              0.14000000xyz. First thought it was NaN clogging up the display
-#              but that didn't fix anything. 
+#              but that didn't fix anything.
 #
 #              Traced to here - "dy" (ylims[1] - ylims[0]) was ~3.147e-6 which
 #              is larger than the "dy" limit of 1e-6 (which I had arbitrarily
@@ -1698,7 +1698,7 @@ def getXYlims(plotarray, ytype, curplotlabel, xscaling, yscaling):
         return (xlims, ylims)
 
 
-###### 
+######
 ###### The list of defined plotters
 ######
 

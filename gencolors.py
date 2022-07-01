@@ -36,7 +36,7 @@ def getfracs(n):
         f0 += d
 
 # can be used for the v in hsv to map linear values 0..1 to something that looks equidistant
-bias = lambda x: (math.sqrt(x/3)/Fraction(2,3)+Fraction(1,3))/Fraction(6,5) 
+bias = lambda x: (math.sqrt(x/3)/Fraction(2,3)+Fraction(1,3))/Fraction(6,5)
 
 ## Iterate the fastest over the actual colour, then by pureness and finally
 ## by lightness
