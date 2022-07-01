@@ -112,11 +112,11 @@ except NameError:
     ensure_list = lambda f: lambda *args, **kwargs: list(f(*args, **kwargs))
     range_      = range
 
-# The "_" versions evaluate to something that always yields a 
+# The "_" versions evaluate to something that always yields a
 # list and does that efficiently under both Py2 and Py3
 map_       = ensure_list(map)
 zip_       = ensure_list(zip)
-#range_     = ensure_list(range) 
+#range_     = ensure_list(range)
 filter_    = ensure_list(filter)
 # enumerate takes a positional parameter and an optional keyword argument.
 # also it doesn't give a list() in neither Py2 nor Py3 so enumerate_()
@@ -135,46 +135,46 @@ Map_       = lambda f: partial(map_, f)
 # tlist.py: # But for code which can be run under Py2 as well as Py3 this incurs
 # tlist.py: # a penalty if that is done.
 # tlist.py: #
-# tlist.py: # The timing tests below clearly show this. The net result is that 
+# tlist.py: # The timing tests below clearly show this. The net result is that
 # tlist.py: # Py3 is always a factor 3 slower compared to Py2 map()/filter()
 # tlist.py: # returning a direct list.
 # tlist.py: from __future__ import print_function
-# tlist.py: 
+# tlist.py:
 # tlist.py: test_list = filter(lambda x: x%2==0, range(1000))
-# tlist.py: 
+# tlist.py:
 # tlist.py: try:
 # tlist.py:     r = raw_input
 # tlist.py:     List = lambda x: x
 # tlist.py: except NameError:
 # tlist.py:     List = lambda x: list(x)
-# tlist.py: 
+# tlist.py:
 # tlist.py: # This is definitely fastest but under Py3 does not satisfy our
 # tlist.py: # constraint that len() and []-indexing are possible on the return value
 # tlist.py: def immediate():
 # tlist.py:     return test_list
-# tlist.py: 
+# tlist.py:
 # tlist.py: # This is what 2to3 does, wrap map()/filter() in "list(...)"
 # tlist.py: def wrapped():
 # tlist.py:     return list(test_list)
-# tlist.py: 
+# tlist.py:
 # tlist.py: # This is what I propose to wrap with instead
 # tlist.py: def dynamic():
 # tlist.py:     return List(test_list)
-# tlist.py: 
-# tlist.py: 
+# tlist.py:
+# tlist.py:
 # tlist.py: if __name__=='__main__':
 # tlist.py:     import timeit
 # tlist.py:     print("immedate: ", timeit.timeit("immediate()", setup="from __main__ import immediate"))
 # tlist.py:     print("wrapped: ",  timeit.timeit("wrapped()", setup="from __main__ import wrapped"))
 # tlist.py:     print("dynamic: ",  timeit.timeit("dynamic()", setup="from __main__ import dynamic"))
-# tlist.py: 
+# tlist.py:
 # tlist.py: ########################################################################################
-# tlist.py: #  Timing results using anaconda/Python2 
+# tlist.py: #  Timing results using anaconda/Python2
 # tlist.py: #  immedate:  0.133291959763
 # tlist.py: #   wrapped:  1.37940621376
 # tlist.py: #   dynamic:  0.129576206207
 # tlist.py: #
-# tlist.py: #  Timing results using anaconda/Python3 
+# tlist.py: #  Timing results using anaconda/Python3
 # tlist.py: #  immedate:  0.12062911898829043
 # tlist.py: #   wrapped:  0.419401798164472
 # tlist.py: #   dynamic:  0.39737311704084277
