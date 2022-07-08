@@ -2762,7 +2762,7 @@ def mk_select_action(expression, f, op, taqlop):
         (selected, taql) = f(blm)
         # the only valid selector that gives an empty set is the one
         # with taql == 'FALSE' (the result of parsing the 'none' token)
-        if not selected and taql is not 'FALSE':
+        if not selected and taql != 'FALSE':
             print("WARN: your expression '{0}' did not match anything".format(expression))
         #print("\tselected=",selected,"\n\ttaql=",taql)
         pr_acc.baselines = op(set() if pr_acc.baselines is None else pr_acc.baselines, selected)
@@ -2995,7 +2995,7 @@ class selector_parser:
     def parse_selector(self, s, blmap, antmap, require_item):
         options = list()
         # do we see lparen?
-        if p_tok(s).type is 'lparen':
+        if p_tok(s).type == 'lparen':
             s.depth = s.depth + 1
             next(s)
         # now we start collecting selections, they may be quoted
@@ -3013,13 +3013,13 @@ class selector_parser:
             tp = p_tok(s).type
             # by just breaking from the loop on ")" it can be either
             # correct or incorrect but that is easily checked outside the loop
-            if tp is 'rparen':
+            if tp == 'rparen':
                 s.depth = s.depth - 1
                 next(s)
                 break
             # If we don't see "|" we break (again, if we opened parens but
             # no closing one then that's caught outside the loop
-            if tp is not 'or':
+            if tp != 'or':
                 break
             # eat the "|"
             next(s)
@@ -3037,7 +3037,7 @@ class selector_parser:
     #        0     1     2       3       4           5
     def parse_item(self, s, blmap, antmap):
         # we may see a quote now
-        if p_tok(s).type is 'quote':
+        if p_tok(s).type == 'quote':
             s.inquote = not s.inquote
             next(s)
         # now we accept 'text', 'antenna', number or '*'
@@ -3056,17 +3056,17 @@ class selector_parser:
         else:
             # numeric if number, "*" without quotes is anything
             # Note: only consume the token if we've handled it
-            if tp is 'int':
+            if tp == 'int':
                 # numerical match on field xant, yant
                 anum = p_tok(s).value
                 rv   = (set([0, 1]), partial(eq, anum), anum)
                 next(s)
-            elif tp is '*':
+            elif tp == '*':
                 # matches anything!
                 rv = (set(), None, -1)
                 next(s)
         # only eat the quote if we're expecting one
-        if s.inquote and p_tok(s).type is 'quote':
+        if s.inquote and p_tok(s).type == 'quote':
             s.inquote = not s.inquote
             next(s)
         # mismatched quotes?
@@ -3141,7 +3141,7 @@ def parse_baseline_expr(qry, blmap, **kwargs):
         selectors = list()
 
         # we expect type 'selector' now!
-        while tok(s).type is 'selector':
+        while tok(s).type == 'selector':
             selectors.append( selector_p( tok(s).value, blmap_, antmap_ ) )
             next(s)
         return selectors
