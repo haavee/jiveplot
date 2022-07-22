@@ -418,10 +418,11 @@ if not hasattr(ppgplot, 'pgqwin'):
     ppgplot.pgqwin = pgqwin
 
 
-CP   = copy.deepcopy
-NOW  = time.time
-AVG  = jenums.Averaging
-FLAG = jenums.Flagstuff
+CP     = copy.deepcopy
+NOW    = time.time
+AVG    = jenums.Averaging
+FLAG   = jenums.Flagstuff
+SYMBOL = jenums.Symbol
 
 pwidth = lambda p, w: "{0:{1}}".format(p, w)
 ppfx   = lambda p: pwidth(p, 10)
@@ -1381,6 +1382,36 @@ class jplotter:
         hl = filter_(operator.truth, [show.Header, show.Legend, show.Source])
         if hl:
             print("{0} {1}".format(pplt("show[{0}]:".format(curPlotType)), " ".join(hl)))
+
+
+    ## Display or set symbols for the different data types (unflagged, flagged, marked, marked+flagged)
+    def symbolSetting(self, *args):
+        curPlotType = self.getPlotType()
+        curPlot     = None if curPlotType is None else plots.Plotters[curPlotType]
+        if curPlot is None:
+            raise RuntimeError("No plot type selected to operate on")
+
+        args        = filter_(operator.truth, args)
+        toshow      = list() if args else [SYMBOL.Unflagged, SYMBOL.Flagged, SYMBOL.Marked, SYMBOL.Markedflagged]
+        isArg       = re.compile(r'^(?P<which>[^=]+)(=(?P<what>[0-9]+))?$').match
+
+        def proc_arg(acc, arg):
+            mo = isArg(arg)
+            if not mo:
+                raise SyntaxError("The argument '{0}' does not look like <name> or <name>=<number>".format(arg))
+            which = mo.group( 'which' ).capitalize()
+            if which not in SYMBOL:
+                raise RuntimeError("Data type '{0}' is unrecognized".format(which))
+            what  = mo.group('what')
+            if what:
+                curPlot.setSymbol(which, int(what))
+            toshow.append( which )
+
+        reduce(proc_arg, args, curPlot)
+        # now collect the values for all the selected types
+        cur = map(lambda w: "{0}={1}".format(w, curPlot.setSymbol(w)), hvutil.uniq(toshow))
+        print("{0} {1}".format(pplt("symbol[{0}]:".format(curPlotType)), "\t".join(cur)))
+
 
     ## raw TaQL string manipulation ..
     def taqlStr(self, *args):
@@ -2912,6 +2943,13 @@ def run_plotter(cmdsrc, **kwargs):
               hlp="postprocess [MODULE.FUNCTION]\n\tSet/display function to call on processed data",
               args=lambda x: re.sub("^postprocess\s*", "", x).split(),
               cb=lambda *args: env().postProcess(*args)) )
+
+    # set/inspect symbols
+    c.addCommand( \
+        mkcmd(rx=re.compile(r"^symbol\b.*"), id="symbol",
+              hlp="symbol [type,type=N]\n\tDisplay/set symbol number (PGPLOT) for types of data",
+              args=lambda x: re.sub("^symbol\s*", "", x).split(),
+              cb=lambda *args: j().symbolSetting(*args)) )
 
     def test_f(*args):
        print("test_f/n_arg=", len(args), " args=", args)

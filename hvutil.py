@@ -444,3 +444,10 @@ def mo_or_org(x, **convdict):
 def split_optarg(*args, **convdict):
     (a, o) = partition(lambda x: isinstance(x, str), map(lambda y: mo_or_org(y, **convdict), args))
     return (a, dict(o))
+
+
+# Simple+slow uniq/unique function that retains order
+# cf. https://stackoverflow.com/a/37163210
+def uniq(l):
+    used = set()
+    return [x for x in l if x not in used and (used.add(x) or True)]
