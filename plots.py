@@ -8,6 +8,7 @@ import inspect, math, numpy, operator, os, types, functional, functools
 
 AX       = jenums.Axes
 FLAG     = jenums.Flagstuff
+SYMBOL   = jenums.Symbol
 Scaling  = enumerations.Enum("auto_global", "auto_local")
 FixFlex  = enumerations.Enum("fixed", "flexible")
 RowsCols = enumerations.Enum("rows", "columns")
@@ -892,6 +893,14 @@ class Plotter(object):
         self.defaultShowHeader   = True
         self.defaultShowLegend   = True
         self.defaultShowSource   = True
+        # Drawing attributes
+        self.defaultPointSize    = 1
+        self.defaultLineWidth    = 2
+        self.defaultMarkerSize   = 1.5
+        self.defaultCharSize     = 0 # zero = auto-scale, otherwise use this value
+        # Symbols for the different categories
+        self.defaultSymbol       = {SYMBOL.Unflagged: -2, SYMBOL.Flagged: 5,
+                                    SYMBOL.Marked: 7, SYMBOL.Markedflagged: 27 }
 
         # dict mapping a specific drawer to a method call on self
         self.drawfuncs = { Drawers.Points: lambda dev, x, y, tp: self.drawPoints(dev, x, y, tp),
@@ -937,10 +946,11 @@ class Plotter(object):
         self.filter_fun   = CP(self.defaultFilter)
         self.filter_fun_s = CP(self.defaultFilterS)
         self.multiSubband = False
-        self.lineWidth    = 2
-        self.pointSize    = 4
-        self.markerSize   = 6
-        self.charSize     = 0 # zero = auto-scale, otherwise use this value
+        self.lineWidth    = CP(self.defaultLineWidth)
+        self.pointSize    = CP(self.defaultPointSize)
+        self.markerSize   = CP(self.defaultMarkerSize)
+        self.charSize     = CP(self.defaultCharSize)
+        self.symbol       = CP(self.defaultSymbol)
         self.drawMethod   = CP([""]*len(self.yAxis))
         self.drawers      = CP([[]]*len(self.yAxis))
         self.setDrawer(*str(self.defaultDrawer).split())
@@ -1077,6 +1087,11 @@ class Plotter(object):
         if args:
            self.charSize = args[0]
         return self.charSize
+
+    def setSymbol(self, sym, *args):
+        if args:
+            self.symbol[sym] = args[0]
+        return self.symbol[sym]
 
     # some plot types (notably those <quantity> vs frequency/channel)
     # may support plotting all subband *next* to each other in stead
@@ -1351,20 +1366,20 @@ class Quant2TimePlotter(Plotter):
                             (mu, mf) = (None, None)
                             # Any unflagged data to display?
                             if data.xval is not None:
-                                drap(functional.ylppa(device, xform_x(data.xval), data.yval, -2), self.drawers[subplot])
+                                drap(functional.ylppa(device, xform_x(data.xval), data.yval, self.symbol[SYMBOL.Unflagged]), self.drawers[subplot])
                                 mu = self.markedPointsForYAxis(subplot, data.xval, data.yval)
                             # Any flagged data to display?
                             if data.xval_f is not None:
-                                drap(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, 5), self.drawers[subplot])
+                                drap(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, self.symbol[SYMBOL.Flagged]), self.drawers[subplot])
                                 mf = self.markedPointsForYAxis(subplot, data.xval_f, data.yval_f)
                             # draw markers if necessary, temporarily changing line width(markersize)
-                            lw = device.pgqlw()
-                            device.pgslw(self.markerSize)
+                            ch = device.pgqch()
+                            device.pgsch(self.markerSize)
                             if mu:
-                                device.pgpt( xform_x(data.xval[mu]), data.yval[mu], 7)
+                                device.pgpt( xform_x(data.xval[mu]), data.yval[mu], self.symbol[SYMBOL.Marked])
                             if mf:
-                                device.pgpt( xform_x(data.xval_f[mf]), data.yval_f[mf], 27)
-                            device.pgslw(lw)
+                                device.pgpt( xform_x(data.xval_f[mf]), data.yval_f[mf], self.symbol[SYMBOL.Markedflagged])
+                            device.pgsch(ch)
                             # Any extra drawing commands?
                             self.doExtraCallbacks(device, data, xoffset=day0hr)
                     # do some extra work for panel (subplot) number 0
@@ -1461,20 +1476,20 @@ class GenXvsYPlotter(Plotter):
                         (mu, mf) = (None, None)
                         # Any unflagged data to display?
                         if data.xval is not None:
-                            drap(functional.ylppa(device, xform_x(data.xval), data.yval, -2), self.drawers[0])
+                            drap(functional.ylppa(device, xform_x(data.xval), data.yval, self.symbol[SYMBOL.Unflagged]), self.drawers[0])
                             mu = self.markedPointsForYAxis(0, data.xval, data.yval)
                         # Any flagged data to display?
                         if data.xval_f is not None:
-                            drap(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, 5), self.drawers[0])
+                            drap(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, self.symbol[SYMBOL.Flagged]), self.drawers[0])
                             mf = self.markedPointsForYAxis(0, data.xval_f, data.yval_f)
                         # draw markers if necessary, temporarily changing line width(markersize)
-                        lw = device.pgqlw()
-                        device.pgslw(self.markerSize)
+                        ch = device.pgqch()
+                        device.pgsch(self.markerSize)
                         if mu:
-                            device.pgpt( xform_x(data.xval[mu]), data.yval[mu], 7)
+                            device.pgpt( xform_x(data.xval[mu]), data.yval[mu], self.symbol[SYMBOL.Marked])
                         if mf:
-                            device.pgpt( xform_x(data.xval_f[mf]), data.yval_f[mf], 27)
-                        device.pgslw(lw)
+                            device.pgpt( xform_x(data.xval_f[mf]), data.yval_f[mf], self.symbol[SYMBOL.Markedflagged])
+                        device.pgsch(ch)
                         # Any extra drawing commands?
                         self.doExtraCallbacks(device, data)
                 # and draw the main plot label
@@ -1591,20 +1606,20 @@ class Quant2ChanPlotter(Plotter):
                             (mu, mf) = (None, None)
                             # Any unflagged data to display?
                             if data.xval is not None:
-                                drap(functional.ylppa(device, xform_x(data.xval), data.yval, -2), self.drawers[subplot])
+                                drap(functional.ylppa(device, xform_x(data.xval), data.yval, self.symbol[SYMBOL.Unflagged]), self.drawers[subplot])
                                 mu = self.markedPointsForYAxis(subplot, data.xval, data.yval)
                             # Any flagged data to display?
                             if data.xval_f is not None:
-                                drap(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, 5), self.drawers[subplot])
+                                drap(functional.ylppa(device, xform_x(data.xval_f), data.yval_f, self.symbol[SYMBOL.Flagged]), self.drawers[subplot])
                                 mf = self.markedPointsForYAxis(subplot, data.xval_f, data.yval_f)
                             # draw markers if necessary, temporarily changing line width(markersize)
-                            lw = device.pgqlw()
-                            device.pgslw(self.markerSize)
+                            ch = device.pgqch()
+                            device.pgsch(self.markerSize)
                             if mu:
-                                device.pgpt( xform_x(data.xval[mu]), data.yval[mu], 7)
+                                device.pgpt( xform_x(data.xval[mu]), data.yval[mu], self.symbol[SYMBOL.Marked])
                             if mf:
-                                device.pgpt( xform_x(data.xval_f[mf]), data.yval_f[mf], 27)
-                            device.pgslw(lw)
+                                device.pgpt( xform_x(data.xval_f[mf]), data.yval_f[mf], self.symbol[SYMBOL.Markedflagged])
+                            device.pgsch(ch)
                             # Any extra drawing commands?
                             self.doExtraCallbacks(device, data)
                     # do some extra work for panel (subplot) number 0
