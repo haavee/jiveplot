@@ -855,15 +855,9 @@ class jplotter:
             # selection changed
             oldTaql = copy.deepcopy(sel_.baselinesTaql)
             pr      = parsers.parse_baseline_expr(args[0], self.mappings.baselineMap)
-            if pr.baselines is not None:
-                # the only acceptable empty set of baselines selected is when there is
-                # also no taql returned (the result of parsing "bl none")
-                if not pr.baselines and pr.taql != 'FALSE':
-                    raise RuntimeError("Your baseline selection yielded no matches!")
-                # extract the baseline names (field 'BL')
-                sel_.baselines     = map_(GetA('BL'), pr.baselines)
-                sel_.baselinesTaql = copy.deepcopy(pr.taql)
-                self.dirty = self.dirty or oldTaql!=sel_.baselinesTaql
+            sel_.baselines     = map_(GetA('BL'), pr.baselines)
+            sel_.baselinesTaql = copy.deepcopy(pr.taql)
+            self.dirty = self.dirty or oldTaql!=sel_.baselinesTaql
         blstr = ["No baselines selected yet"]
         if sel_.baselines:
             blstr = sel_.baselines

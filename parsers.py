@@ -2781,6 +2781,20 @@ def mk_select_action(expression, f, op, taqlop):
         return pr_acc
     return do_it
 
+# This method is appended as final "mk_select_action()"
+# and in case the selection is empty verifies the taql is 'FALSE'
+# If that is true, the taql is replaced with '' (no taql) such
+# that a "bl none" command effectively removes any bl selection taql
+def fixup_bl_none(pr_acc, blm):
+    if not pr_acc.baselines:
+        if pr_acc.taql != 'FALSE':
+            raise RuntimeError("Your baseline selection yielded no matches!")
+        pr_acc.taql = ''
+    if pr_acc.taql:
+        pr_acc.taql = '(' + pr_acc.taql + ')'
+    return pr_acc
+
+
 setoperatormap = {'+': set.union, '-': set.difference}
 taqlmap        = {'+': 'OR',      '-': 'AND NOT'}
 operator2set   = lambda op: setoperatormap.get(op, set.union)
@@ -2849,9 +2863,9 @@ ant2_taql   = partial(ant_taql, 2)
 
 # This matches either end of a baseline (e.g. only conditions given for one end of the baseline
 # you have to remember that the condition can apply to either ANTENNA1 or ANTENNA2
-bl_taql1ant = combine("{0} OR {1}".format, ant1_taql, ant2_taql)
+bl_taql1ant = combine("({0} OR {1})".format, ant1_taql, ant2_taql)
 # Single condition for baseline with constraints on both ends
-bl_taql2ant = lambda a1, a2: "{0} AND {1}".format(ant1_taql(a1), ant2_taql(a2))
+bl_taql2ant = lambda a1, a2: "({0} AND {1})".format(ant1_taql(a1), ant2_taql(a2))
 # and now the full fledged baseline with constraints on both ends
 # (which means that it could also be reversed)
 bl_taql     = lambda a1, a2: "(({0}) OR ({1}))".format(bl_taql2ant(a1, a2), bl_taql2ant(a2, a1))
@@ -3133,6 +3147,9 @@ def parse_baseline_expr(qry, blmap, **kwargs):
         except StopIteration:
             # the selections are a list of functions which
             # update the current selection
+            # We add one specific function to the end to evaluate the final result
+            # and transform "bl none"'s taql of FALSE to '' (no taql, effectively)
+            selections.append( fixup_bl_none )
             return reduce(lambda acc, f: f(acc, blmap_), selections, ParseResult())
         raise SyntaxError("(at least one)token left after parsing: {0}".format(tok(s)))
 
