@@ -2161,7 +2161,7 @@ def run_plotter(cmdsrc, **kwargs):
 
     c.addCommand( \
         mkcmd(rx=re.compile(r"^marksz(\s+([0-9]*\.[0-9]+|[0-9]+(\.[0-9]*)?))?$"), \
-              args=lambda x: map_(int, re.sub(r"^marksz\s*", "", x).split()),
+              args=lambda x: map_(float, re.sub(r"^marksz\s*", "", x).split()),
               cb=set_ms, id="marksz", \
               hlp="marksz [<number>]\n\tset/display marker size for marking marked points"))
 
