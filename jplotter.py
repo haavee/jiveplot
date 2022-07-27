@@ -2138,8 +2138,8 @@ def run_plotter(cmdsrc, **kwargs):
         print("pointsize[{0}]: {1}".format(pt, ps))
 
     c.addCommand( \
-        mkcmd(rx=re.compile(r"^ptsz(\s+[0-9]+)?$"), \
-              args=lambda x: map_(int, re.sub(r"^ptsz\s*", "", x).split()),
+        mkcmd(rx=re.compile(r"^ptsz(\s+([0-9]*\.[0-9]+|[0-9]+(\.[0-9]*)?))?$"), \
+              args=lambda x: map_(float, re.sub(r"^ptsz\s*", "", x).split()),
               cb=set_ps, id="ptsz", \
               hlp="ptsz [<number>]\n\tset/display point size when drawing point plots"))
 
@@ -2160,7 +2160,7 @@ def run_plotter(cmdsrc, **kwargs):
         print("charsize[{0}]: {1}".format(pt, cs))
 
     c.addCommand( \
-        mkcmd(rx=re.compile(r"^marksz(\s+[0-9]+)?$"), \
+        mkcmd(rx=re.compile(r"^marksz(\s+([0-9]*\.[0-9]+|[0-9]+(\.[0-9]*)?))?$"), \
               args=lambda x: map_(int, re.sub(r"^marksz\s*", "", x).split()),
               cb=set_ms, id="marksz", \
               hlp="marksz [<number>]\n\tset/display marker size for marking marked points"))
