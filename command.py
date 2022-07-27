@@ -25,6 +25,10 @@ class UnknownCommand(Exception):
     def __str__(self):
         return "the command '{0}' is unknown".format(self.msg)
 
+
+def void(x):
+    return None
+
 ## The command object will use a "line source" object which
 ## should expose (at least) the context protocol
 ## (http://docs.python.org/2/library/stdtypes.html#context-manager-types)
@@ -647,7 +651,7 @@ class CommandLineInterface:
         if not self.app:
             return
         with open(os.path.join(os.getenv('HOME'), ".{0}.macros".format(self.app)), 'w') as mf:
-            reduce(lambda acc, n_v: acc.write("{0[0]} '{0[1]}'\n".format(n_v)) or acc, iteritems(self.macros), mf)
+            reduce(lambda acc, n_v: void(acc.write("{0[0]} '{0[1]}'\n".format(n_v))) or acc, iteritems(self.macros), mf)
             mf.close()
 
 
