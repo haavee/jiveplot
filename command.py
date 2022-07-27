@@ -52,7 +52,7 @@ class UnknownCommand(Exception):
 ## and push/pop of (temporary) alternative history. Classes which
 ## want their own readline history saved can derive from this one.
 class newhistory(object):
-    
+
     ## The actual history for the new environment will be stored/retrieved
     ## from ${HOME}/.<basename>.history
     def __init__(self, basename):
@@ -67,7 +67,7 @@ class newhistory(object):
         if not haveReadline:
             return self
         ## Set up the new history context
-        self.historyFile      = os.path.join( os.getenv('HOME'), ".{0}.history".format(self.basename)) 
+        self.historyFile      = os.path.join( os.getenv('HOME'), ".{0}.history".format(self.basename))
         (h, self.oldhistFile) = tempfile.mkstemp(prefix=self.basename, suffix=".hist", dir="/tmp")
         # only need the filename, really
         os.close(h)
@@ -87,7 +87,7 @@ class newhistory(object):
         self.oldCompleter = readline.get_completer()
         readline.set_completer(self.completer)
         return self
-  
+
     # clean up the context
     def __exit__(self, ex_tp, ex_val, ex_tb):
         if not haveReadline:
@@ -143,7 +143,7 @@ class readkbd(newhistory):
             quit = True
             print("\nKTHXBYE!")
         except KeyboardInterrupt:
-            # user pressed ctrl-c whilst something was 
+            # user pressed ctrl-c whilst something was
             # in the buffer. Make the code skip the next line of input.
             if len(readline.get_line_buffer())>0:
                 #self.controlc = readline.get_line_buffer()
@@ -195,7 +195,7 @@ class readstring:
 ## readstring() above.
 class readfile:
 
-    ## Allow creation with (optional) arguments - each line in 
+    ## Allow creation with (optional) arguments - each line in
     ## the file will be interpreted as a string formatting
     ## command (http://docs.python.org/2/library/string.html#format-string-syntax)
     ##
@@ -203,7 +203,7 @@ class readfile:
     ##     line = <file>.next().format( *self.args )
     ##
     ## Where "self.args" is, effectively,
-    ##     "args[0].split()" 
+    ##     "args[0].split()"
     ## ie the first (optional) argument will be
     ##   1) interpreted as string
     ##   2) split into pieces at whitespace
@@ -218,7 +218,7 @@ class readfile:
     ##
     ##    Then, in a CommandLineInterface you can issue the command:
     ##       jcli> play script.scr aap 42 0xdead
-    ##    
+    ##
     def __init__(self, f, *args):
         if not f:
             raise ValueError("no filename given to readfile()")
@@ -280,7 +280,7 @@ class scripted:
 
 # in order to make a command call this function
 # you have to fill in at least the "id" and "rx" fields
-# and the "cb" callback function to execute if 
+# and the "cb" callback function to execute if
 # "rx" matches. "rx" is a regular expression and
 # "cb" a callable.
 #
@@ -292,8 +292,8 @@ class scripted:
 # say, the docstring of the function - the system's
 # builtin "help" command uses it.
 #
-# You _may_ specify an "args" function which will be 
-# executed to transform the command into an argument 
+# You _may_ specify an "args" function which will be
+# executed to transform the command into an argument
 # list for the callback function, otherwise the whole
 # line will be passed as argument to the callback.
 #
@@ -308,7 +308,7 @@ class scripted:
 #         else:
 #           c.cb()
 #
-# If your callback function has optional arguments 
+# If your callback function has optional arguments
 # (not unthinkable) it's betst to define the callback as:
 #
 #  def my_callback(*args):
@@ -331,7 +331,7 @@ class scripted:
 #  the "cb" function will be called with the - optional - argument
 #    and if it was given, convert to int and add 42.
 #    nothing happens - you can't print from a lambda (#GVD KUDTPYTHON!)
-#    but suppose your "cb" is a real function (or the lambda calls a 
+#    but suppose your "cb" is a real function (or the lambda calls a
 #    real function) then you _can_ make stuff happen.
 #  the "id" field is used as the short form of the command, for
 #    listing all commands
@@ -339,7 +339,7 @@ class scripted:
 #   mkcmd(rx=re.compile(r"^foo(\s+[0-9]+)?$",
 #         id="foo",
 #         args=lambda x: re.sub("^foo\s+",""),
-#         cb=lambda x: int(x)+42 if x else -1, 
+#         cb=lambda x: int(x)+42 if x else -1,
 #         hlp="foo [<number>]\nthis foo's the number, if given")
 def mkcmd(**kwargs):
     # create an instance of an anonymous type
@@ -476,14 +476,14 @@ class CommandLineInterface:
     def addMacro(self, macro, **kwargs):
         store     = kwargs.get('store', True)
         n, v      = macro
-        # We need to do cycle detection - 
+        # We need to do cycle detection -
         # (1) create an updated macro definition set, including the
         #     new definition
         nmacro    = copy.deepcopy(self.macros)
         nmacro[n] = v
         # (2) transform into a graph:
         #       name => [list, of, entities]
-        #     (for each macro, compile the list of 
+        #     (for each macro, compile the list of
         #      macro names that are found in the value)
         def reductor(acc, k_v):
             acc[k_v[0]] = filter_(lambda txt: re.search(wordmatch(txt), k_v[1]), nmacro.keys())
@@ -511,15 +511,15 @@ class CommandLineInterface:
             return
         # Ok, see if we find a match
         cmd    = self._isCmd(t)
-        # Allow macro expansion? Defaults to True otherwise take the value of 
+        # Allow macro expansion? Defaults to True otherwise take the value of
         # the ".expand" attribute, if it has it
-        # At this point we may find a macro here, so it wouldn't be recognized 
+        # At this point we may find a macro here, so it wouldn't be recognized
         # as a command but after macro expansion it could!
         expand = cmd.expand if cmd and hasattr(cmd, "expand") else True
         if expand:
             t2  = self._doMacroSubstitution(t)
-            # if macros were substituted, we may 
-            # end up with >1 command. Process them 
+            # if macros were substituted, we may
+            # end up with >1 command. Process them
             # as we do all other commands
             if t2 != t:
                 self.run(readstring(t2))
@@ -528,7 +528,7 @@ class CommandLineInterface:
             raise UnknownCommand(t)
         # prepare the arguments, if any
         #   NOTE: if you use "def X(*args)" and use as follows:
-        #            y = "some string" 
+        #            y = "some string"
         #            X(*y)
         #         then X() gets called with len(y) arguments -
         #         the individual characters of the string 8-/
@@ -544,9 +544,9 @@ class CommandLineInterface:
             cmd.cb(args)
         else:
             #cmd.cb(args)
-            # HV: TODO FIXME XXX 
+            # HV: TODO FIXME XXX
             #     Need to rework the callbacks to use "*args" such that
-            #     IF a command provides an "arg" function to create 
+            #     IF a command provides an "arg" function to create
             #     (a list of) arguments, the function actually is called
             #     with that many arguments and not with one tuple
             cmd.cb(*args)
@@ -554,7 +554,7 @@ class CommandLineInterface:
     def help(self, *args):
         # We need a function to extract the helptexts
         # of (1) the indicated commands or (2) all
-        # commands. 
+        # commands.
         # If all commands are selected we only print the
         # first line of the texts
         nohlp = lambda c : "{0} - no help available".format(c)
@@ -570,7 +570,7 @@ class CommandLineInterface:
                     return cmd.hlp if hasattr(cmd, "hlp") else nohlp(c)
                 except ValueError:
                     return "{0} - no help for unknown command".format(c)
-            txts = map_(txt, args) 
+            txts = map_(txt, args)
         maybePage( txts )
 
     def macro(self, args, **kwargs):
@@ -640,7 +640,7 @@ class CommandLineInterface:
             with open(mfn, 'r') as mf:
                 reduce(lambda acc, line: self.macro(line, verbose=False, store=False) or acc, mf, None)
         except IOError:
-            # no macro file yet 
+            # no macro file yet
             pass
 
     def storeMacros(self):
@@ -658,7 +658,7 @@ def getScreenSize():
     except:
         try:
             hw = (os.environ['LINES'], os.environ['COLUMNS'])
-        except:  
+        except:
             hw = None
     return hw
 
@@ -683,7 +683,7 @@ hlp_macro = \
 """macro [<name>[ <definition>]]
 \tmacro inspection/definition
 
-'macro' 
+'macro'
     Without arguments displays all currently defined macros.
 'macro <name>'
     Display the definition of <name>, if any known
@@ -739,7 +739,7 @@ hlp_shell = \
 
 Anything you type after the exlamation mark will be passed on as-is to a
 subshell which means that e.g. environment variable expansion and '~' expansion
-is available here. 
+is available here.
 
 The command will be executed through Python's "os.system(...)" in favour of
 subprocess.check() because the latter requires splitting the input and also

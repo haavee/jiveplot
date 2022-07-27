@@ -398,7 +398,6 @@ from   six        import iteritems
 import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, imp, time
 import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors, functools
 from   functional import compose, const, identity, map_, filter_, drap, range_, reduce, partial, GetA
->>>>>>> a231cce (Working baseline parser!)
 
 if '-d' in sys.argv:
     print("PPGPLOT=",repr(ppgplot))
@@ -741,7 +740,7 @@ class jplotter:
                 # Now we know we can safely replace strings -> values (and remove whitespace)
                 if nchan:
                     replacer = lambda x : hvutil.sub(x, [(r"\s+", r""), (re.compile(r"all"), r"first:last"), \
-                                                         (r"first", r"0"), (r"mid", repr(nchan/2)), (r"last", repr(nchan-1))])
+                                                         (r"first", r"0"), (r"mid", repr(nchan//2)), (r"last", repr(nchan-1))])
                 else:
                     replacer = lambda x : hvutil.sub(x, [(r"\s+", r"")])
                 expander = lambda x : hvutil.expand_string_range(replacer(x))
