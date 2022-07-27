@@ -813,7 +813,7 @@ class jplotter:
                     #    literal dots have been escaped ...
                     srcs = hvutil.sub(srcs, [(r"\+", r"\+"), (r"\.", r"\."), (r"\?", r".")])
 
-                    # d) replace wildcards (*) by (.*) 
+                    # d) replace wildcards (*) by (.*)
                     srcs = hvutil.sub(srcs, [(r"\*", r".*")])
 
                     # Now we can make a regex
@@ -1169,7 +1169,6 @@ class jplotter:
                 sel_.ddSelectionTaql = "(DATA_DESC_ID in {0})".format( \
                         map_(lambda fspl: spMap.datadescriptionIdOfFREQ_SB_POL(fspl[0], fspl[1], fspl[2]), \
                              sel_.ddSelection))
-               #print "ddSelectionTaql:",sel_.ddSelectionTaql
 
             self.dirty = True
 
@@ -2940,7 +2939,7 @@ def run_plotter(cmdsrc, **kwargs):
     c.addCommand( \
         mkcmd(rx=re.compile(r"^postprocess\b.*"), id="postprocess",
               hlp="postprocess [MODULE.FUNCTION]\n\tSet/display function to call on processed data",
-              args=lambda x: re.sub(r"^postprocess\s*", "", x).split(), 
+              args=lambda x: re.sub(r"^postprocess\s*", "", x).split(),
               cb=lambda *args: env().postProcess(*args)) )
 
     # set/inspect symbols
