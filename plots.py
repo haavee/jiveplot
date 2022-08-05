@@ -910,10 +910,34 @@ class Plotter(object):
                            Drawers.Lines:  [self.drawfuncs[Drawers.Lines]],
                            Drawers.Both:   [self.drawfuncs[Drawers.Points], self.drawfuncs[Drawers.Lines]] }
 
+        # we start off very clean (the following reset() will mark it dirty ofc)
+        self.dirtyCount          = 0
+
         # reset ourselves - go back to default plot settings
         # some (if not all of these) can be modified by the user
         self.reset()
 
+    # Trace "dirty" state - allow the plotter to detect if any of the plot attributes have changed since last time it used this plottype
+    def get_dirty(self):
+        return self.dirtyCount > 0
+
+    def set_dirty(self, value):
+        # Only accept True/False as settable arguments
+        if value not in (True, False):
+            raise RuntimeError("dirty can only be set True or False")
+        if value:
+            self.dirtyCount += 1
+        else:
+            self.dirtyCount  = 0
+        return None
+
+    def del_dirty(self):
+        raise RuntimeError("tsssssk, *don't* do that!")
+
+    dirty = property(get_dirty, set_dirty, del_dirty, "Did any of the attributes change since last time this plotter was used")
+
+
+    ## API methods
     def description(self):
         return self.Description
 
@@ -933,6 +957,7 @@ class Plotter(object):
         #    * automatic scaling of each plot
         # currently support two subplots in y axis. both subplots share
         # the x-axis
+        self.dirtyCount   = 1
         self.layOut       = CP(self.defaultLayout)
         self.fixedLayout  = CP(self.defaultFixedLayout)
         self.xScale       = CP(self.defaultxScaling)
@@ -959,6 +984,7 @@ class Plotter(object):
         self.showHeader   = CP(self.defaultShowHeader)
         self.showLegend   = CP(self.defaultShowLegend)
         self.showSource   = CP(self.defaultShowSource)
+
 
     # self.drawers    = [ [drawers-for-yaxis0], [drawers-for-yaxis1], ... ]
     # self.drawMethod = "yaxis0:method yaxis1:method ...."
@@ -1010,6 +1036,7 @@ class Plotter(object):
                     self.drawMethod[idx] = dm
             else:
                 raise RuntimeError("You cannot mix qualified axis drawing methods with unqualified ones")
+            self.dirty = True
         return " ".join(map(":".join, zip(map(str,self.yAxis), self.drawMethod)))
 
     # want to fix the scale of the axes?
@@ -1021,6 +1048,7 @@ class Plotter(object):
         if not args:
             return self.xScale
         self.xScale = args[0]
+        self.dirty  = True
 
     # y-scale can be set per subplot
     def yscale(self, idx, *args):
@@ -1028,6 +1056,7 @@ class Plotter(object):
             if not args:
                 return self.yScale[idx]
             self.yScale[idx] = args[0]
+            self.dirty       = True
         except IndexError:
             raise RuntimeError("This plot type has no panel {0}".format(idx))
 
@@ -1063,6 +1092,8 @@ class Plotter(object):
                     seen.add( RowsCols )
                     continue
                 raise RuntimeError("Unrecognized option '{0}' passed to layout".format(opt))
+        if nxy or opts:
+            self.dirty = True
 
     def layoutStyle(self):
         return ",".join(["fixed" if self.fixedLayout else "flexible", "rows" if self.layOut.rows else "columns"])
@@ -1071,26 +1102,31 @@ class Plotter(object):
     def setLineWidth(self, *args):
         if args:
            self.lineWidth = args[0]
+           self.dirty     = True
         return self.lineWidth
 
     def setPointSize(self, *args):
         if args:
            self.pointSize = args[0]
+           self.dirty     = True
         return self.pointSize
 
     def setMarkerSize(self, *args):
         if args:
            self.markerSize = args[0]
+           self.dirty      = True
         return self.markerSize
 
     def setCharSize(self, *args):
         if args:
            self.charSize = args[0]
+           self.dirty    = True
         return self.charSize
 
     def setSymbol(self, sym, *args):
         if args:
             self.symbol[sym] = args[0]
+            self.dirty       = True
         return self.symbol[sym]
 
     # some plot types (notably those <quantity> vs frequency/channel)
@@ -1100,6 +1136,7 @@ class Plotter(object):
         if not args:
             return self.multiSubband
         self.multiSubband = args[0]
+        self.dirty        = True
 
     # We can influence the sort order of the plots
     def sortby(self, *args):
@@ -1115,6 +1152,7 @@ class Plotter(object):
         else:
             self.sortOrder    = hvutil.attrgetter( *map_(str.upper, args) )
             self.sortOrderStr = CP(" ".join(args))
+        self.dirty = True
         return self.sortOrderStr
 
     def mark(self, idx, *args):
@@ -1126,6 +1164,7 @@ class Plotter(object):
         else:
             self.marker[idx]    = plotiterator.partitioner(args[0])
             self.markerStr[idx] = CP(args[0])
+        self.dirty = True
 
     def filter_f(self, idx, *args):
         if not args:
@@ -1136,6 +1175,7 @@ class Plotter(object):
         else:
             self.filter_fun[idx]   = parsers.parse_filter_expr( args[0] )
             self.filter_fun_s[idx] = CP(args[0])
+        self.dirty = True
 
     def markedPointsForYAxis(self, idx, x, y):
         return self.marker[idx](x, y) if self.marker[idx] else []
@@ -1203,6 +1243,7 @@ class Plotter(object):
             else:
                 self.ck_fun   = parsers.parse_ckey_expr( args[0] )
                 self.ck_fun_s = CP(args[0])
+            self.dirty = True
         return self.ck_fun_s
 
     # reset the mapping of label => colour
@@ -1257,6 +1298,8 @@ class Plotter(object):
                         if axis not in lyax:
                             raise RuntimeError("The indicated y-axis {0} does not apply to this plot".format(axis))
                         self.yLabel[ lyax.index(axis) ] = CP(text)
+            self.dirty = True
+
         # ok return overview of labels (only return the labels that are defined)
         rv = []
         if self.xLabel:

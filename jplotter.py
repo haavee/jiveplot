@@ -1252,7 +1252,13 @@ class jplotter:
     def getNewPlot(self):
         return copy.deepcopy(self.selection.newPlot)
 
-    def newPlotChanged(self):
+    # always returns state of dirtyness of newPlot;
+    # call "newPlotChanged(False)" to clear dirty flag
+    def newPlotChanged(self, *args):
+        if args:
+            if len(args)!=1 or args[0]!=False:
+                raise RuntimeError("This function only supports being called with False")
+            self.npmodify = 0
         return self.npmodify>0
 
     def newPlot(self, *args):
@@ -2455,6 +2461,17 @@ def run_plotter(cmdsrc, **kwargs):
             j().markedDirty( False )
         return e.newRaw
 
+    def plottype_dirty(*args):
+        pt = j().getPlotType()
+        if not pt:
+            raise RuntimeError("No plottype set to operate on")
+        p = plots.Plotters[pt]
+        if args:
+            if len(args)!=1 or args[0] is not False:
+                raise RuntimeError("Only False is allowed as argument")
+            p.dirty = False
+        return p.dirty
+
     def do_plot(e, *args):
         try:
             args = list(args)
@@ -2469,8 +2486,9 @@ def run_plotter(cmdsrc, **kwargs):
             rf = refresh(e)
             # now go to standard plot post processing - something else may have changed
             rd = redraw_after_new(e)
-            if rf or rd or force:
+            if rf or rd or force or plottype_dirty():
                 do_redraw(e)
+                plottype_dirty(False)
         except KeyboardInterrupt:
             print(">>> plotting cancelled by user")
 
@@ -2483,6 +2501,8 @@ def run_plotter(cmdsrc, **kwargs):
             tmp = j().processLabel( j().organizeAsPlots(e.rawplots, j().getNewPlot()) )
             if not tmp:
                 raise RuntimeError("WARNING: no plots generated")
+            # only if we produced plots we clear the new plot setting
+            j().newPlotChanged(False)
             e.plots    = tmp
             e.first    = 0
             rv = e.newPlots = True
@@ -2604,8 +2624,10 @@ def run_plotter(cmdsrc, **kwargs):
         j().markedDirty(False)
         # trigger full postprocessing
         e.newRaw = True
-        # and let'r rip
+        # reorganise plots
         redraw_after_new(e)
+        # and just draw them
+        do_redraw(e)
 
     # Feature request Lorant S: be able to show currently defined variables
     rxShowVars = re.compile(r"^(store|load)\s*$")
