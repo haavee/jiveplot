@@ -2444,8 +2444,7 @@ def run_plotter(cmdsrc, **kwargs):
                 e.rawplots = j().makePlots()
             except KeyboardInterrupt:
                 e.rawplots = None
-                print(">>> plotting cancelled by user")
-                return False
+                raise
 
             if e.rawplots is None or len(e.rawplots)==0:
                 print("No plots produced? Rethink your selection")
@@ -2456,13 +2455,27 @@ def run_plotter(cmdsrc, **kwargs):
             j().markedDirty( False )
         return e.newRaw
 
-    def do_plot(e):
-        # maybe we need to refresh
-        refresh(e)
-        # now go to standard plot post processing - something else may have changed
-        redraw_after_new(e)
+    def do_plot(e, *args):
+        try:
+            args = list(args)
+            # check arguments
+            force = False
+            while '--force' in args:
+                force = True
+                args.remove('--force')
+            if args:
+                raise RuntimeError("Unsupported argument(s): {0}".format(" ".join(args)))
+            # maybe we need to refresh
+            rf = refresh(e)
+            # now go to standard plot post processing - something else may have changed
+            rd = redraw_after_new(e)
+            if rf or rd or force:
+                do_redraw(e)
+        except KeyboardInterrupt:
+            print(">>> plotting cancelled by user")
 
     def redraw_after_new(e):
+        rv = False
         # do we have new raw plots? or did the newPlot setting changed?
         # either would warrant making a new plot/dataset array
         if (e.newRaw or j().newPlotChanged()) and e.rawplots:
@@ -2472,7 +2485,7 @@ def run_plotter(cmdsrc, **kwargs):
                 raise RuntimeError("WARNING: no plots generated")
             e.plots    = tmp
             e.first    = 0
-            e.newPlots = True
+            rv = e.newPlots = True
         # if we have a new set of plots created ... we must run the postprocessing, if any
         if e.newPlots and e.plots:
             # okiedokie, that's done (pre-reset the flag such that it doesnt remain
@@ -2482,8 +2495,8 @@ def run_plotter(cmdsrc, **kwargs):
                 e.post_processing_fn( e.plots, j().mappings )
             # rerun this because things may have changed
             j().doMinMax(e.plots)
-        # now it's time to redraw on da skreen
-        do_redraw(e)
+            rv = True
+        return rv
 
     def do_redraw(e):
         if not e.plots:
@@ -2495,8 +2508,9 @@ def run_plotter(cmdsrc, **kwargs):
             j().drawFunc(e.plots, ppgplot, e.first, foo[o.curdev].navigable(), ncol=e.devNColor)
 
     c.addCommand( \
-            mkcmd(rx=re.compile(r"^pl$"), hlp="pl:\n\tplot current selection with current plot properties", \
-            cb=lambda : do_plot(env()), id="pl") )
+            mkcmd(rx=re.compile(r"^pl(\s+\S+)*$"), hlp="pl:\n\tplot current selection with current plot properties", \
+            args=lambda x: re.sub(r"^pl\s*", "", x).split(), \
+            cb=lambda *args: do_plot(env(), *args), id="pl") )
 
     # dry-run the current TaQL
     c.addCommand( \
@@ -2506,7 +2520,7 @@ def run_plotter(cmdsrc, **kwargs):
 
     # control what to show: flagged, unflagged, both
     c.addCommand( \
-            mkcmd(rx=re.compile(r"^show(\s\S+)*$"), hlp=Help["show"], \
+            mkcmd(rx=re.compile(r"^show(\s+\S+)*$"), hlp=Help["show"], \
             args=lambda x: re.sub(r"^show\s*", "", x).split(), \
             cb=lambda *args: j().showSetting(*args), id="show") )
 
