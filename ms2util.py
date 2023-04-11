@@ -717,6 +717,8 @@ class spectralmap:
     def unmapDDId(self, ddid):
         # look in all FREQGROUPS, in all SUBBANDS for the given DATA_DESC_ID
         for (k,v) in iteritems(hvutil.dictmap(lambda k_v: [sb for sb in k_v[1] if sb[1].unmapDDId(ddid)], self.spectralMap)):
+            if len(v)>1:
+                raise RuntimeError("Non-unique search result for DATA_DESC_ID={0}".format(ddid))
             if len(v)==1:
                 class sbres:
                     def __init__(self,fid,sb,pid):
@@ -727,10 +729,8 @@ class spectralmap:
                         return (self.FREQID, self.SUBBAND, self.POLID)
                 [pol] = v[0][1].unmapDDId(ddid)
                 return sbres(k[0], v[0][0], pol)
-            elif len(v)==0:
-                raise InvalidDataDescId(ddid)
-            else:
-                raise RuntimeError("Non-unique search result for DATA_DESC_ID={0}".format(ddid))
+        else:
+            raise InvalidDataDescId(ddid)
         return None
 
     # Print ourselves in readable format
