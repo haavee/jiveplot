@@ -970,6 +970,19 @@ isect_table = {
     (False, False): shortest_apply  # only apply to first 'n' elements
 }
 
+# args = (cond1(a), msg1(A)), (cond2(a), msg2(A)), ...
+# i.e. tuples with two elements: a function to test the result and a function to produce
+# the error message. Both functions get passed the full plot dataset
+#
+# Note: processing stops after the first test fails
+def maybe_warn(a, *args):
+    for (cond, msg) in args:
+        if cond(a):
+            print(msg(a))
+            break
+    return a
+
+
 def do_isect(d0, f, d1):
     # we know both d0 and d1 are flattened datasets
     # so we must iterate over the set of identical keys
@@ -989,7 +1002,11 @@ def do_isect(d0, f, d1):
         nOutput    = len(res[0])
         acc[ key ] = plotutil.plt_dataset(res[0], res[1], numpy.logical_or(ds0._m_flagged[:nOutput], ds1._m_flagged[:nOutput]))
         return acc
-    return reduce(app, set(d0.keys()) & set(d1.keys()), copy_attributes(plotutil.Dict(), d0))
+    nk0 = len(d0.keys())
+    nk1 = len(d1.keys())
+    return maybe_warn(reduce(app, set(d0.keys()) & set(d1.keys()), copy_attributes(plotutil.Dict(), d0)),
+            (lambda a: not a, lambda _: "do_isect(d0, f, d1): no common data sets were found, d1 has {} keys, d2 has {}".format(nk0, nk1)),
+            (lambda a: len(a.keys())!=nk0 or len(a.keys())!=nk1, lambda a: "do_isect(d0, f, d1): only {} common keys between d1 and d2 ({} and {} keys)".format(len(a.keys()), nk0, nk1)) )
 
 # implement infix operator 'f' on two datums
 def immediate_apply(l, f, r):
@@ -1021,7 +1038,6 @@ def applicator(d0, f, d1):
     # for both arguments we want a set of keys such that we can get the intersection
     # of identical keys. But that's only if both of 'm are datasets
     # otherwise it's either just numbers that are combined or one of them is a data set
-    print("Applicator/d0=",isDataset(d0)," d1=",isDataset(d1))
     return applicator_table[(isDataset(d0), isDataset(d1))](d0, f, d1)
 
 
