@@ -6,6 +6,14 @@ Python based visualization tool for AIPS++/CASA MeasurementSet data
 The jplotter command line tool allows the user to quickly visualize the
 radio-astronomical data contained in a MeasurementSet (`ms`).
 
+## Python support
+
+Starting from 20 Jul 2023 the `master` branch has been updated to support
+Py2 and Py3 based systems simultaneously. This version is tagged [v2.0](https://github.com/haavee/jiveplot/releases/tag/v2.0). The
+previous latest Py2-only master was tagged as
+[v1.1](https://github.com/haavee/jiveplot/releases/tag/v1.1) and
+[last-python2-only-master](https://github.com/haavee/jiveplot/releases/tag/last-python2-only-master).
+
 ## 5 second workflow
 
 After downloading and having the
