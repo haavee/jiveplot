@@ -1021,7 +1021,7 @@ def applicator(d0, f, d1):
     # for both arguments we want a set of keys such that we can get the intersection
     # of identical keys. But that's only if both of 'm are datasets
     # otherwise it's either just numbers that are combined or one of them is a data set
-    print("Applicator/d0=",isDataset(d0)," d1=",isDataset(d1))
+    #print("Applicator/d0=",isDataset(d0)," d1=",isDataset(d1))
     return applicator_table[(isDataset(d0), isDataset(d1))](d0, f, d1)
 
 
