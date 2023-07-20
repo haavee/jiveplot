@@ -1252,7 +1252,13 @@ class jplotter:
     def getNewPlot(self):
         return copy.deepcopy(self.selection.newPlot)
 
-    def newPlotChanged(self):
+    # always returns state of dirtyness of newPlot;
+    # call "newPlotChanged(False)" to clear dirty flag
+    def newPlotChanged(self, *args):
+        if args:
+            if len(args)!=1 or args[0]!=False:
+                raise RuntimeError("This function only supports being called with False")
+            self.npmodify = 0
         return self.npmodify>0
 
     def newPlot(self, *args):
@@ -2444,8 +2450,7 @@ def run_plotter(cmdsrc, **kwargs):
                 e.rawplots = j().makePlots()
             except KeyboardInterrupt:
                 e.rawplots = None
-                print(">>> plotting cancelled by user")
-                return False
+                raise
 
             if e.rawplots is None or len(e.rawplots)==0:
                 print("No plots produced? Rethink your selection")
@@ -2456,13 +2461,39 @@ def run_plotter(cmdsrc, **kwargs):
             j().markedDirty( False )
         return e.newRaw
 
-    def do_plot(e):
-        # maybe we need to refresh
-        refresh(e)
-        # now go to standard plot post processing - something else may have changed
-        redraw_after_new(e)
+    def plottype_dirty(*args):
+        pt = j().getPlotType()
+        if not pt:
+            raise RuntimeError("No plottype set to operate on")
+        p = plots.Plotters[pt]
+        if args:
+            if len(args)!=1 or args[0] is not False:
+                raise RuntimeError("Only False is allowed as argument")
+            p.dirty = False
+        return p.dirty
+
+    def do_plot(e, *args):
+        try:
+            args = list(args)
+            # check arguments
+            force = False
+            while '--force' in args:
+                force = True
+                args.remove('--force')
+            if args:
+                raise RuntimeError("Unsupported argument(s): {0}".format(" ".join(args)))
+            # maybe we need to refresh
+            rf = refresh(e)
+            # now go to standard plot post processing - something else may have changed
+            rd = redraw_after_new(e)
+            if rf or rd or force or plottype_dirty():
+                do_redraw(e)
+                plottype_dirty(False)
+        except KeyboardInterrupt:
+            print(">>> plotting cancelled by user")
 
     def redraw_after_new(e):
+        rv = False
         # do we have new raw plots? or did the newPlot setting changed?
         # either would warrant making a new plot/dataset array
         if (e.newRaw or j().newPlotChanged()) and e.rawplots:
@@ -2470,9 +2501,11 @@ def run_plotter(cmdsrc, **kwargs):
             tmp = j().processLabel( j().organizeAsPlots(e.rawplots, j().getNewPlot()) )
             if not tmp:
                 raise RuntimeError("WARNING: no plots generated")
+            # only if we produced plots we clear the new plot setting
+            j().newPlotChanged(False)
             e.plots    = tmp
             e.first    = 0
-            e.newPlots = True
+            rv = e.newPlots = True
         # if we have a new set of plots created ... we must run the postprocessing, if any
         if e.newPlots and e.plots:
             # okiedokie, that's done (pre-reset the flag such that it doesnt remain
@@ -2482,8 +2515,8 @@ def run_plotter(cmdsrc, **kwargs):
                 e.post_processing_fn( e.plots, j().mappings )
             # rerun this because things may have changed
             j().doMinMax(e.plots)
-        # now it's time to redraw on da skreen
-        do_redraw(e)
+            rv = True
+        return rv
 
     def do_redraw(e):
         if not e.plots:
@@ -2495,8 +2528,9 @@ def run_plotter(cmdsrc, **kwargs):
             j().drawFunc(e.plots, ppgplot, e.first, foo[o.curdev].navigable(), ncol=e.devNColor)
 
     c.addCommand( \
-            mkcmd(rx=re.compile(r"^pl$"), hlp="pl:\n\tplot current selection with current plot properties", \
-            cb=lambda : do_plot(env()), id="pl") )
+            mkcmd(rx=re.compile(r"^pl(\s+\S+)*$"), hlp="pl:\n\tplot current selection with current plot properties", \
+            args=lambda x: re.sub(r"^pl\s*", "", x).split(), \
+            cb=lambda *args: do_plot(env(), *args), id="pl") )
 
     # dry-run the current TaQL
     c.addCommand( \
@@ -2506,7 +2540,7 @@ def run_plotter(cmdsrc, **kwargs):
 
     # control what to show: flagged, unflagged, both
     c.addCommand( \
-            mkcmd(rx=re.compile(r"^show(\s\S+)*$"), hlp=Help["show"], \
+            mkcmd(rx=re.compile(r"^show(\s+\S+)*$"), hlp=Help["show"], \
             args=lambda x: re.sub(r"^show\s*", "", x).split(), \
             cb=lambda *args: j().showSetting(*args), id="show") )
 
@@ -2590,8 +2624,10 @@ def run_plotter(cmdsrc, **kwargs):
         j().markedDirty(False)
         # trigger full postprocessing
         e.newRaw = True
-        # and let'r rip
+        # reorganise plots
         redraw_after_new(e)
+        # and just draw them
+        do_redraw(e)
 
     # Feature request Lorant S: be able to show currently defined variables
     rxShowVars = re.compile(r"^(store|load)\s*$")
