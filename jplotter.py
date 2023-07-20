@@ -2528,7 +2528,7 @@ def run_plotter(cmdsrc, **kwargs):
             j().drawFunc(e.plots, ppgplot, e.first, foo[o.curdev].navigable(), ncol=e.devNColor)
 
     c.addCommand( \
-            mkcmd(rx=re.compile(r"^pl(\s+\S+)*$"), hlp="pl:\n\tplot current selection with current plot properties", \
+            mkcmd(rx=re.compile(r"^pl(\s+\S+)*$"), hlp=Help["pl"], \
             args=lambda x: re.sub(r"^pl\s*", "", x).split(), \
             cb=lambda *args: do_plot(env(), *args), id="pl") )
 

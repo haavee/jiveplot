@@ -401,8 +401,16 @@ will be written as "RR,LL".
     # pl
     ##################################################################
 	"pl":
-"""pl
-   plot current selection with current plot-properties""",
+"""pl [--force]
+   plot current selection with current plot-properties
+
+The system tries very hard to detect if anything has changed or not before
+starting time-consuming operations such as reading the data, regenerating the
+plots or redrawing the plots. For example, if the window size is changed and
+nothing else then the plot(s) do not get automatically redrawn.  Use '--force'
+to force the system to redraw anyway. Can be used in other cases where the
+system did not pick up a change. In such a case, please create a github issue
+and use '--force' in the meantime.""",
 
     ##################################################################
     # pp
