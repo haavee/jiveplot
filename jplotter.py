@@ -1391,7 +1391,7 @@ class jplotter:
 
         args        = filter_(operator.truth, args)
         toshow      = list() if args else [SYMBOL.Unflagged, SYMBOL.Flagged, SYMBOL.Marked, SYMBOL.Markedflagged]
-        isArg       = re.compile(r'^(?P<which>[^=]+)(=(?P<what>[0-9]+))?$').match
+        isArg       = re.compile(r'^(?P<which>[^=]+)(=(?P<what>-?[0-9]+))?$').match
 
         def proc_arg(acc, arg):
             mo = isArg(arg)

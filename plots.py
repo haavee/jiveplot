@@ -1205,10 +1205,17 @@ class Plotter(object):
         return rv
 
     def drawPoints(self, dev, x, y, tp):
-        och = dev.pgqch()
-        dev.pgsch(self.pointSize)
+        # Old behaviour: def symbol -2 and line widht: result=symbol scales
+        # New behaviour: def symbol still -2, but does not scale with character height
+        #                user must set other symbol to get it to scale
+        # Fix: restore old def behaviour and support new too
+        # Note: character height can be float in pgplot, line width is int, so we take care
+        #       to not really end up with 0 line width
+        (getf, setf) = (dev.pgqch, dev.pgsch) if tp>=0 else (dev.pgqlw, lambda w: dev.pgslw(max(1, int(round(w)))))
+        och = getf()
+        setf(self.pointSize)
         dev.pgpt(x, y, tp)
-        dev.pgsch(och)
+        setf( och)
 
     def drawLines(self, dev, x, y):
         olw = dev.pgqlw()
