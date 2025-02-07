@@ -395,7 +395,8 @@
 #
 from   __future__ import print_function
 from   six        import iteritems
-import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, imp, time
+import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, time
+import importlib
 import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors, functools
 from   functional import compose, const, identity, map_, filter_, drap, range_, reduce, partial, GetA
 
@@ -1860,9 +1861,13 @@ class environment(object):
                         if os.path.isdir(m_path):
                             sys.path.insert(0, m_path)
 
-                    (f, p, d) = imp.find_module(m_name)
-                    mod = imp.load_module(m_name, f, p, d)
-                    self.post_processing_fn  = mod.__dict__[m_fn]
+                    #(f, p, d) = imp.find_module(m_name)
+                    toolbox_specs = importlib.util.find_spec( m_name )
+                    toolbox       = importlib.util.module_from_spec( toolbox_specs )
+                    toolbox_specs.loader.exec_module( toolbox )
+                    #(f, p, d) = imp.find_module(m_name)
+                    #mod = imp.load_module(m_name, f, p, d)
+                    self.post_processing_fn  = sys.modules[m_name].__dict__[m_fn]
                     self.post_processing_mod = args[0]
                 except ImportError:
                     print("Failed to locate module {0}".format(m_name))

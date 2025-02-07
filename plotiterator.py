@@ -149,7 +149,7 @@
 ##
 from   __future__ import print_function
 from six          import iteritems
-import ms2util, hvutil, jenums, itertools, copy, operator, numpy, math, imp, time, collections, functional, plotutil
+import ms2util, hvutil, jenums, itertools, copy, operator, numpy, math, time, collections, functional, plotutil
 import pyrap.quanta
 
 # Auto-detect of pycasa
@@ -159,6 +159,16 @@ try:
     print("*** using PyCasa for measurementset data access ***")
 except:
     havePyCasa = False
+
+
+# imp vs importlib
+try:
+    import imp
+    new_module = imp.new_module
+except ImportError:
+    import types
+    new_module = types.ModuleType
+
 
 ## Introduce some shorthands
 NOW        = time.time
@@ -1000,7 +1010,7 @@ class partitioner:
                 "ymax = None\n"+
                 "f   = lambda x, y: "+expr,
                 'dyn-mark-string', 'exec')
-        self.mod  = imp.new_module("dyn_marker_mod")
+        self.mod  = new_module("dyn_marker_mod")
         exec(self.code, self.mod.__dict__)
 
     def __call__(self, x, y):
