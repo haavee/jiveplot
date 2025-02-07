@@ -254,7 +254,7 @@ def range_repr(l, rchar=":"):
 ##  All expressions will be converted to int after evaluating
 def expand_string_range(s, rchar=":"):
     rxNum = re.compile(r"^\d+$")
-    rxRng = re.compile(r"^(?P<s>[-\d\.+*/%()]+)"+rchar+"(?P<e>[-\d\.+*/%()]+)(:(?P<step>[-+]?\d+))?$")
+    rxRng = re.compile(r"^(?P<s>[-\d\.+*/%()]+)"+rchar+r"(?P<e>[-\d\.+*/%()]+)(:(?P<step>[-+]?\d+))?$")
     def count_from_to(s,e,step):
         while abs(s-e)>=abs(step):
             #print "s:{0} e:{1} diff:{2}".format(s, e, abs(s-e))

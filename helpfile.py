@@ -1972,7 +1972,7 @@ points meeting a criterion no marker of that kind will be drawn ...]
     # labelling axes
     ##################################################################
 "label":
-"""label [<axis1>: '<label1 text>' [<axisN> : '<labelN text']]
+r"""label [<axis1>: '<label1 text>' [<axisN> : '<labelN text>']]
     display or change axis label(s). Default: no labels.
 
 Axes can be labelled with text. Without arguments the command displays which

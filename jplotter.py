@@ -794,7 +794,7 @@ class jplotter:
                     srcs   = copy.deepcopy(src)
                     # 0) Check if it was an expression with an explicit add/subtract
                     add = True
-                    mo  = re.match("^\s*(?P<add>[-+])(?P<expr>.*)", srcs)
+                    mo  = re.match(r"^\s*(?P<add>[-+])(?P<expr>.*)", srcs)
                     if mo:
                         add  = (mo.group('add')=='+')
                         srcs = mo.group('expr')
@@ -2172,7 +2172,7 @@ def run_plotter(cmdsrc, **kwargs):
 
     c.addCommand( \
         mkcmd(rx=re.compile(r"^charsz(\s+([0-9]*\.[0-9]+|[0-9]+(\.[0-9]*)?))?$"), \
-              args=lambda x: map_(float, re.sub("^charsz\s*", "", x).split()),
+              args=lambda x: map_(float, re.sub(r"^charsz\s*", "", x).split()),
               cb=set_cs, id="charsz", \
               hlp="charsz [<number>]\n\tset/display character size; 0=auto-scaling"))
 
@@ -2981,7 +2981,7 @@ def run_plotter(cmdsrc, **kwargs):
     c.addCommand( \
         mkcmd(rx=re.compile(r"^symbol\b.*"), id="symbol",
               hlp="symbol [type,type=N]\n\tDisplay/set symbol number (PGPLOT) for types of data",
-              args=lambda x: re.sub("^symbol\s*", "", x).split(),
+              args=lambda x: re.sub(r"^symbol\s*", "", x).split(),
               cb=lambda *args: j().symbolSetting(*args)) )
 
     def test_f(*args):
