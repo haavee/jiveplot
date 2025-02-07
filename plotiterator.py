@@ -183,6 +183,10 @@ _ArrayT    = numpy.ndarray
 _MArrayT   = numpy.ma.core.MaskedArray
 IsArray    = lambda x: isinstance(x, _ArrayT) or isinstance(x, _MArrayT) or isinstance(x, list)
 
+# numpy 2.0 API removes a number of things _sigh_
+INF        = numpy.inf if hasattr(numpy, 'inf') else numpy.Inf
+INT        = numpy.int if hasattr(numpy, 'int') else int
+
 # Useful simple functions
 
 # take the current channel selection, and produce a list of the sorted unique channels
@@ -330,11 +334,11 @@ class plotbase(object):
         #     weight_mask == (n_int, n_pol)   -> dimensions match on both data.mask and weight_mask
         #                                        but for the first -> broadcasted along dim 0, which
         #                                        is n_freq, i.e. each spectral point gets the same weight per pol
-        self.threshold = CP(selection.weightThreshold) if selection.weightThreshold is not None else -numpy.Inf
+        self.threshold = CP(selection.weightThreshold) if selection.weightThreshold is not None else -INF
         transpose      = weight_rd = None
-        if self.threshold == -numpy.Inf:
+        if self.threshold == -INF:
             # No weight thresholding? Return an infinite weight to effectively disable thresholding
-            weight_rd = lambda _a,_b,_c,_d: numpy.Inf
+            weight_rd = lambda _a,_b,_c,_d: INF
             # Also no need to transpose/untranspose the data array for this 'shape'
             transpose = functional.identity
         else:
@@ -711,7 +715,7 @@ class dataset_chan:
     def add_sumy_first(self, obj, xs, ys, m):
         # set masked values to 0 and convert mask to counts in existing object
         obj.y[ obj.m ] = 0
-        obj.m          = ARRAY(~obj.m, dtype=numpy.int)
+        obj.m          = ARRAY(~obj.m, dtype=INT)
         # from now on, averaging has to do something
         obj.af         = dataset_chan.average_n
         # from now on extra .add_y() calls will do something slight different
@@ -729,7 +733,7 @@ class dataset_chan:
     def add_sumy(self, obj, xs, ys, m):
         ys[ m ] = 0
         obj.y = obj.y + ys
-        obj.m = obj.m + ARRAY(~m, dtype=numpy.int) # transform mask into counts
+        obj.m = obj.m + ARRAY(~m, dtype=INT) # transform mask into counts
 
     # very first call to .add_y() just store the parameters
     # no fancy processing
@@ -737,7 +741,7 @@ class dataset_chan:
     def init_sumy(self, obj, xs, ys, m):
         obj.x  = ARRAY(xs)
         obj.y  = ARRAY(ys)
-        obj.m  = ARRAY(m) #ARRAY(~m, dtype=numpy.int) # tranform mask into counts
+        obj.m  = ARRAY(m) #ARRAY(~m, dtype=INT) # tranform mask into counts
         obj.sf = dataset_chan.add_sumy_first
         obj.af = dataset_chan.average_noop
 
