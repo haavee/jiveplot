@@ -396,7 +396,6 @@
 from   __future__ import print_function
 from   six        import iteritems
 import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, time
-import importlib
 import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors, functools
 from   functional import compose, const, identity, map_, filter_, drap, range_, reduce, partial, GetA
 
@@ -428,6 +427,103 @@ pwidth = lambda p, w: "{0:{1}}".format(p, w)
 ppfx   = lambda p: pwidth(p, 10)
 pplt   = lambda p: pwidth(p, 25)
 prng   = lambda p: pwidth(p, 14)
+
+
+
+#
+# Brrrrrr won't the effing Pythonistas leave stuff alone ffs
+# The whole imp/importlib stuff is darn fluent over time
+#
+# Define a function, that given ([path], MODULE, FUNCTION)
+# attempts to load module MODULE and return FUNCTION
+# Raises if module can't be found or MODULE doesn't have FUNCTION
+# path may be empty, but if given all entries in sys.path should be searched
+
+# In the code below, get_modfn_impl() assumes its caller has done everything
+# they can to make sure that the directory that the module by the name m_name
+# could be in is already in sys.path.
+# Also: assume our caller has set up try/catch block for catching ImportError
+
+# https://stackoverflow.com/a/15934081
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings('error')
+    try:
+        # If old stuff available, do that
+        import imp
+        if '-d' in sys.argv:
+            print("Using imp")
+        def get_modfn_impl(m_name):
+            (f, p, d) = imp.find_module(m_name)
+            m         = imp.load_module(m_name, f, p, d)
+            f.close()
+            return m
+    except (ImportError, PendingDeprecationWarning, DeprecationWarning):
+        # Crikey better use new stuff
+        import importlib
+        if '-d' in sys.argv:
+            print("Using importlib")
+        def get_modfn_impl(m_name):
+            # Wisdom: https://stackoverflow.com/a/37124336
+            loader_details = [ (importlib.machinery.SourceFileLoader,
+                                importlib.machinery.SOURCE_SUFFIXES),
+                               (importlib.machinery.ExtensionFileLoader,
+                                importlib.machinery.EXTENSION_SUFFIXES),
+                              ]
+            toolsfinder    = importlib.machinery.PathFinder()
+            toolsfinder.invalidate_caches()
+            toolbox_specs  = toolsfinder.find_spec( m_name )
+            if toolbox_specs is None:
+                raise ImportError("failed to find {0} in any path".format(m_name))
+            toolbox = importlib.util.module_from_spec( toolbox_specs )
+            # load or exec needed? doesn't seem to [correction: yes it does, exec]
+            # load is deprecated, btw
+            toolbox_specs.loader.exec_module( toolbox )
+            return toolbox
+
+
+def get_modfn(m_path, m_name, m_fn):
+    fptr  = None
+    opath = CP(sys.path)
+    try:
+        # We must support loading from ourselves so we add copies
+        # of directories in sys.path that have a jiveplot
+        # subdirectory to sys.path
+        drap(partial(sys.path.insert, 0),
+             filter(os.path.isdir,
+                    map_(lambda p: os.path.join(p, 'jiveplot'), sys.path)))
+        # Now we add another level - go over all the paths _again_
+        # but now adding m_path and see if that path exists, but only if m_path seems
+        # to be a relative path
+        if not m_path:
+            # no path at all, just MODULE.FUNCTION - add os.getcwd() to search
+            # where we are executing from too
+            # No need to go over sys.path because there is no m_path to add ;-)
+            sys.path.insert(0, os.getcwd())
+        elif m_path[0]!='/':
+            # relative path
+            drap(partial(sys.path.insert, 0),
+                    filter(os.path.isdir,
+                        map_(lambda p: os.path.join(p, m_path), sys.path)))
+            # since it's a relative path, should look in current working dir as well
+            p = os.path.join(os.getcwd(), m_path)
+            if os.path.isdir(p):
+                sys.path.insert(0, p)
+        else:
+            # m_path is an absolute path, add it
+            if os.path.isdir(m_path):
+                sys.path.insert(0, m_path)
+
+        fptr = getattr(get_modfn_impl(m_name), m_fn)
+    except ImportError as msg:
+        #print("Failed to locate module {0} [{1}]".format(m_name, msg))
+        raise RuntimeError("Failed to locate module {0} [{1}]".format(m_name, msg))
+    except KeyError:
+        #print("Function {0} not found in module {1}".format(m_fn, m_name))
+        raise RuntimeError("Function {0} not found in module {1}".format(m_fn, m_name))
+    finally:
+        sys.path = opath
+    return fptr
 
 
 class jplotter:
@@ -1830,53 +1926,11 @@ class environment(object):
                     raise RuntimeError("Invalid MODULE.FUNCTION specification")
                 # strip the "." from ".FUNCTION"
                 m_fn  = m_fn[1:]
-                f     = None
-                opath = CP(sys.path)
-                try:
-                    # We must support loading from ourselves so we add copies
-                    # of directories in sys.path that have a jiveplot
-                    # subdirectory to sys.path
-                    drap(partial(sys.path.insert, 0),
-                                 filter(os.path.isdir,
-                                        map_(lambda p: os.path.join(p, 'jiveplot'), sys.path)))
-                    # Now we add another level - go over all the paths _again_
-                    # but now adding m_path and see if that path exists, but only if m_path seems
-                    # to be a relative path
-                    if not m_path:
-                        # no path at all, just MODULE.FUNCTION - add os.getcwd() to search
-                        # where we are executing from too
-                        # No need to go over sys.path because there is no m_path to add ;-)
-                        sys.path.insert(0, os.getcwd())
-                    elif m_path[0]!='/':
-                        # relative path
-                        drap(partial(sys.path.insert, 0),
-                                     filter(os.path.isdir,
-                                            map_(lambda p: os.path.join(p, m_path), sys.path)))
-                        # since it's a relative path, should look in current working dir as well
-                        p = os.path.join(os.getcwd(), m_path)
-                        if os.path.isdir(p):
-                            sys.path.insert(0, p)
-                    else:
-                        # m_path is an absolute path, add it
-                        if os.path.isdir(m_path):
-                            sys.path.insert(0, m_path)
 
-                    #(f, p, d) = imp.find_module(m_name)
-                    toolbox_specs = importlib.util.find_spec( m_name )
-                    toolbox       = importlib.util.module_from_spec( toolbox_specs )
-                    toolbox_specs.loader.exec_module( toolbox )
-                    #(f, p, d) = imp.find_module(m_name)
-                    #mod = imp.load_module(m_name, f, p, d)
-                    self.post_processing_fn  = sys.modules[m_name].__dict__[m_fn]
-                    self.post_processing_mod = args[0]
-                except ImportError:
-                    print("Failed to locate module {0}".format(m_name))
-                except KeyError:
-                    print("Function {0} not found in module {1}".format(m_fn, m_name))
-                finally:
-                    if f:
-                        f.close()
-                    sys.path = opath
+                # new way of getting MOD.FN
+                ppfn = get_modfn(m_path, m_name, m_fn)
+                self.post_processing_fn  = ppfn 
+                self.post_processing_mod = args[0]
 
         print("postProcessing: {0}".format( self.post_processing_mod ))
 
