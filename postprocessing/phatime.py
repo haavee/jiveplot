@@ -1,6 +1,12 @@
 from __future__ import print_function
 import numpy, plots, math, operator
-from past.builtins import xrange
+
+try:
+    # xrange could be A Thing Of The Past
+    from past.builtins import xrange
+except ImportError:
+    # ... but otherwise it's just a builtin
+    pass
 
 def do_wrap(seq, low=-numpy.pi, high=numpy.pi):
     out   = []
