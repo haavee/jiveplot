@@ -6,9 +6,14 @@
 ##       such that we can divide the "H" colour space in roughly even bits.
 ##       If you requested a low number of colours from the original code, they would be
 ##       rather close to each other
+# system import(s)
 from   __future__ import print_function
-import itertools, math, colorsys
-from   fractions import Fraction
+
+import math
+import colorsys
+import itertools
+
+from fractions import Fraction
 
 # Py2/Py3 compatibility: make sure map_() returns a list
 #         *efficiently* on either system

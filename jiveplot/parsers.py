@@ -1,9 +1,24 @@
-# HV: Contains parsers for querying list of scans
+# MV: Contains parsers for querying list of scans
+# system import(s)
 from   __future__ import print_function
+
+import re
+import copy
+import math
+import inspect
+import operator
+import itertools
+import collections
+
 from   six        import iteritems
 from   functools  import reduce
-from   functional import *
-import re, hvutil, operator, math, itertools, inspect, plotiterator, copy, numpy, plotutil, collections
+
+# extensions
+import numpy
+
+# own stuff
+from .           import (hvutil, plotutil, plotiterator)
+from .functional import *
 
 haveQuanta = False
 try:

@@ -81,12 +81,23 @@
 #
 # Revision 1.2  2013-01-29 12:23:44  jive_cc
 # HV: * time to commit - added some more basic stuff
-#
+
+# sys imports
 from   __future__ import print_function
-from   functional import map_, filter_, zip_, enumerate_, range_, is_not_none, drap
+
+import re
+import copy
+import math
+import string
+import datetime
+import operator
+import itertools
+
 from   six        import iteritems
-from   functools  import reduce, partial
-import itertools, operator, re, string, copy, math, datetime
+from   functools  import (reduce, partial)
+
+# own stuff
+from .functional  import (map_, filter_, zip_, enumerate_, range_, is_not_none, drap)
 
 ## Partition a list into two lists - one with the elements satisfying the predicate
 ## and one with the elements who don't

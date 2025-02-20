@@ -50,8 +50,12 @@
 #
 # Revision 1.2  2013-01-29 12:23:45  jive_cc
 # HV: * time to commit - added some more basic stuff
-#
-import sys, ms2util, jenums
+
+# system import(s)
+import sys
+
+# own stuff
+from . import (ms2util, jenums)
 
 class FailedToLoadMS(Exception):
     def __init__(self, ms):

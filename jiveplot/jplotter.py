@@ -394,10 +394,30 @@
 #   HV: * time to commit - added some more basic stuff
 #
 from   __future__ import print_function
+
+import re
+import os
+import sys
+import copy
+import math
+import time
+import pydoc
+import operator
+import datetime
+import functools
+import itertools
+import collections
+
 from   six        import iteritems
-import copy, re, math, operator, itertools, plotiterator, ppgplot, datetime, os, subprocess, numpy, parsers, time
-import jenums, selection, ms2mappings, plots, ms2util, hvutil, pyrap.quanta, sys, pydoc, collections, gencolors, functools
-from   functional import compose, const, identity, map_, filter_, drap, range_, reduce, partial, GetA
+
+# extension(s)
+import ppgplot
+
+# own stuff
+from .           import (plots, hvutil, jenums, ms2util, selection,
+                         parsers, ms2mappings, gencolors, plotiterator)
+from .functional import (compose, const, identity, map_, filter_, drap,
+                         range_, reduce, partial, GetA)
 
 if '-d' in sys.argv:
     print("PPGPLOT=",repr(ppgplot))
@@ -1962,9 +1982,8 @@ def run_plotter(cmdsrc, **kwargs):
     defaults.update(kwargs)
     # borrow the "mkcmd" function and only make it visible
     # in this scope
-    import command
-    from command import mkcmd
-    from helpfile import Help
+    from .command  import (mkcmd, quote_split, CommandLineInterface)
+    from .helpfile import Help
 
     if defaults.get('debug', False):
         import platform
@@ -1973,7 +1992,7 @@ def run_plotter(cmdsrc, **kwargs):
 
     # These objectes we certainly need
     app = "jcli"
-    c = command.CommandLineInterface(debug=defaults['debug'], app=app)
+    c = CommandLineInterface(debug=defaults['debug'], app=app)
 
     o         = type('', (), {})()
     o.curdev  = 42
@@ -2994,7 +3013,7 @@ def run_plotter(cmdsrc, **kwargs):
     # O/S interface "cd" , "pwd" and "ls"
     c.addCommand( \
         mkcmd(rx=re.compile(r"^cd\b.*$"), id="cd",
-              args=lambda x: command.quote_split(x, ' ')[1:],
+              args=lambda x: quote_split(x, ' ')[1:],
               # *args = list of arguments passed to lambda. First argument is list thus two dereferences
               #         (we only use the first argument to "cd" - "cd foo bar" will do "cd foo"
               cb=lambda *args: env().cwd(*args),

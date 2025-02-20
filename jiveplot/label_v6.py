@@ -1,5 +1,9 @@
-from   functional  import range_
-import collections, jenums
+# system imports
+import collections
+
+# own stuff
+from .           import jenums
+from .functional import range_
 
 AX        = jenums.Axes
 

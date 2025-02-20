@@ -1,5 +1,14 @@
 from   __future__ import print_function
-import numpy, plots, math, operator, copy
+# system imports
+import copy
+import math
+import operator
+
+# extensions
+import numpy
+
+# own stuff
+from jiveplot import plots
 
 COPY = copy.deepcopy
 # define a post-processing operation that always remembers the last data set and 

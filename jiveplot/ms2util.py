@@ -117,12 +117,29 @@
 #
 #  Revision 1.1.1.1  2001/04/06 13:34:34  verkout
 #  Files, new + from jivegui/MS1
+# system import(s)
 from   __future__ import print_function
-from   functional import map_, filter_, zip_, enumerate_
+
+import re
+import sys
+import copy
+import math
+import datetime
+import operator
+import itertools
+import collections
+
 from   six        import iteritems
 from   functools  import reduce
-import itertools, operator, math, re, jenums, hvutil, numpy, pyrap.tables, pyrap.quanta, sys
-import datetime, copy, collections
+
+# extensions
+import numpy
+import pyrap.tables
+import pyrap.quanta
+
+# own stuff
+from .           import (jenums, hvutil)
+from .functional import (map_, filter_, zip_, enumerate_)
 
 # Return a nicely human readable string representation
 # of a MS::TIME column value

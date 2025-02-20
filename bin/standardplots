@@ -1,11 +1,20 @@
 #!/usr/bin/env python3.6
 from   __future__ import print_function
-from   operator   import methodcaller
-from   functools  import reduce, partial
-import sys, os, re, jplotter, command
+
+# system imports
+import os
+import re
+import sys
 import collections
+from   operator   import methodcaller
+from   functools  import (reduce, partial)
+
+# extensions
 import numpy as np
-from pyrap import tables as pt
+from   pyrap import tables as pt
+
+# own stuff
+from jiveplot import (jplotter, command)
 
 # program default(s)
 NoWgt   = True    # do not produce weight plots

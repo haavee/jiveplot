@@ -1,9 +1,10 @@
 from __future__  import print_function
-from six         import iteritems
-from functools   import partial, reduce
-from itertools   import product, repeat, groupby
-from operator    import truth, contains, eq, is_not, attrgetter, itemgetter, methodcaller, __add__, is_
 from collections import deque
+from six         import iteritems
+from functools   import (partial, reduce)
+from itertools   import (product, repeat, groupby)
+from operator    import (truth, contains, eq, is_not, attrgetter,
+                         itemgetter, methodcaller, __add__, is_)
 
 # why this isn't in stdlib ... is probably because Guido does't like functional programming ...
 identity    = lambda x      : x
@@ -76,16 +77,17 @@ def DBG(pfx=None):
 
 # In Py3 one must sometimes drain an iterable for its side-effect (thx guys).
 # Py2:
-#     # no print function
+#     # no print function available in Py2
+#     # (unless imported from __future__ - but then see Py3 case below)
 #     def p(x):
 #       print x
 #     # but this does something useful
 #     map(p, list(...))
 # Py3:
-#     # we have print() ...
-#     # but this don't do nuttin' (so to speak):
+#     # we have a print() funcion ...
+#     # but this statement doesn't _do_ anything
 #     map(p, list(...))
-#     # this does the printing but discards the results
+#     # using "drain()" - t does the printing but discards the results
 #     drain( map(p, list(...)) )
 # I like this approach: https://stackoverflow.com/a/9372429
 drain       = deque(maxlen=0).extend

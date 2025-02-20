@@ -1,5 +1,13 @@
 from __future__ import print_function
-import numpy, plots, math, operator
+# system imports
+import math
+import operator
+
+# extensions
+import numpy
+
+# own stuff
+from jiveplot import plots
 
 try:
     # xrange could be A Thing Of The Past

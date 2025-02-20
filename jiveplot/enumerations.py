@@ -65,8 +65,11 @@ Elements from the enumeration can be used as ordinary variables:
     axes['bar']    => ValueError: Enum(x,y,z) does not contain the value bar
     axes[foo.bar]  => ValueError: Enum(x,y,z) does not contain the value bar
 """
-from   six import with_metaclass, iteritems
-import operator, collections
+
+# imports
+import operator
+import collections
+from   six import (with_metaclass, iteritems)
 
 # Python 2.6 don't have OrderedDict in the collections module. Sigh.
 try:
