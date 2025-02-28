@@ -210,6 +210,7 @@ IsArray    = lambda x: isinstance(x, _ArrayT) or isinstance(x, _MArrayT) or isin
 # numpy 2.0 API removes a number of things _sigh_
 INF        = numpy.inf if hasattr(numpy, 'inf') else numpy.Inf
 INT        = numpy.int if hasattr(numpy, 'int') else int
+NAN        = numpy.nan if hasattr(numpy, 'nan') else numpy.NaN
 
 # Useful simple functions
 
@@ -236,10 +237,10 @@ def avg_vectornorm(ax):
         # Flagged data gets set to -inf such that max()
         # may yield a useful result
         mdata        = numpy.abs(x.data)
-        mdata[imask] = -numpy.inf
+        mdata[imask] = -INF
         total       /= numpy.max(mdata, axis=ax, keepdims=True)
         # remove those data points
-        total[flags] = numpy.nan
+        total[flags] = NAN
         return MARRAY(total, mask = flags)
     return do_it
 
@@ -262,7 +263,7 @@ def avg_arithmetic(ax):
         counts[nmask]=1
         total       /= counts
         # And indicate where there was no average at all
-        total[nmask] = numpy.NaN
+        total[nmask] = NAN
         return MARRAY(total, mask = nmask)
     return do_it
 
@@ -280,7 +281,7 @@ def avg_sum(ax):
         # there aren't any of those
         flags   = ARRAY(numpy.sum(~imask, axis=ax, keepdims=True)==0, dtype=numpy.bool)
         # remove points that didn't have any unflagged data
-        total[flags] = numpy.nan
+        total[flags] = NAN
         return MARRAY(total, mask = flags)
     return do_it
 
@@ -798,7 +799,7 @@ class dataset_chan:
         # replace the counts by the mask
         obj.m      = m
         # and set masked values to NaN because averaging no values has no answer
-        obj.y[m]   = numpy.nan
+        obj.y[m]   = NAN
         # and indicate we did do the averaging
         obj.af     = None
 
@@ -901,7 +902,7 @@ class dataset_solint_array:
             data       = fn(ARRAY(ys), counts)
             # after averaging, points with zero counts should be set to NaN
             # to effectively remove them.
-            data[mask] = numpy.nan
+            data[mask] = NAN
             self.a[x]  = MARRAY(data, mask=mask)
             # ---------------------------
 
@@ -971,7 +972,7 @@ class dataset_solint_scalar:
             counts  = self.m.pop(x)
             # ---- latest ---------------
             # if no valid data at all substitute a value of nan
-            self.a[x] = fn(sum(ys), counts) if counts else numpy.nan
+            self.a[x] = fn(sum(ys), counts) if counts else NAN
             # ---------------------------
 
     def is_numarray(self):
@@ -1633,7 +1634,7 @@ class data_quantity_time(plotbase):
                         if avgchan_fn is avg_vectornorm:
                             # ok need to find the maximum complex number in each bin to scale it by
                             # take proper care of flagged/inf data
-                            tmpx.data[tmpx.mask] = -numpy.inf
+                            tmpx.data[tmpx.mask] = -INF
                             result /= (numpy.maximum.reduceat(numpy.abs(tmpx.data), indices, axis=1)[:,keepbins])
                         elif avgchan_fn in [avg_sum, avg_none]:
                             # either vector or scalar sum or no averaging, don't do anything
@@ -1645,7 +1646,7 @@ class data_quantity_time(plotbase):
                             result /= counts
                         # set entries where counts==0 to NaN to make it explicit
                         # that, mathematically speaking, there is nothing there
-                        result[mask] = numpy.nan
+                        result[mask] = NAN
                         # unshape + untranspose from 2-d ((n_int * n_pol), n_output_channels)
                         #                       into 3-d (n_int, n_pol, n_ouput_channels)
                         return transpose_ch(numpy.ma.array(result.reshape((n_int, n_pol, -1)), mask=mask.reshape((n_int, n_pol, -1))))
@@ -2089,7 +2090,7 @@ class data_quantity_chan(plotbase):
                         mask = numpy.array(counts == 0, dtype=numpy.bool)
                         # set entries where counts==0 to NaN to make it explicit
                         # that, mathematically speaking, there is nothing there
-                        result[mask] = numpy.nan
+                        result[mask] = NAN
                         # unshape + untranspose from 2-d ((n_int * n_pol), n_output_channels)
                         #                       into 3-d (n_int, n_pol, n_ouput_channels)
                         return transpose_ch(numpy.ma.array(result.reshape((n_int, n_pol, -1)), mask=mask.reshape((n_int, n_pol, -1))))
@@ -2918,7 +2919,7 @@ class weight_time(plotbase):
 #                            result /= counts
                         # set entries where counts==0 to NaN to make it explicit
                         # that, mathematically speaking, there is nothing there
-                        result[mask] = numpy.nan
+                        result[mask] = NAN
                         # unshape + untranspose from 2-d ((n_int * n_pol), n_output_channels)
                         #                       into 3-d (n_int, n_pol, n_ouput_channels)
                         return transpose_ch(numpy.ma.array(result.reshape((n_int, n_pol, -1)), mask=mask.reshape((n_int, n_pol, -1))))
@@ -3417,7 +3418,7 @@ class data_quantity_uvdist(plotbase):
                         mask = numpy.array(counts == 0, dtype=numpy.bool)
                         # set entries where counts==0 to NaN to make it explicit
                         # that, mathematically speaking, there is nothing there
-                        result[mask] = numpy.nan
+                        result[mask] = NAN
                         # unshape + untranspose from 2-d ((n_int * n_pol), n_output_channels)
                         #                       into 3-d (n_int, n_pol, n_ouput_channels)
                         return transpose_ch(numpy.ma.array(result.reshape((n_int, n_pol, -1)), mask=mask.reshape((n_int, n_pol, -1))))
