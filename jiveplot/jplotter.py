@@ -884,7 +884,7 @@ class jplotter:
             return errf("No MS loaded yet")
 
         sel_ = self.selection
-        map_ = self.mappings
+        mps_ = self.mappings
 
         if args:
             if "none" in args:
@@ -940,14 +940,15 @@ class jplotter:
 
                 # now build the list of selectors, based on comma-separated source selections
                 # and run all of them against the sourcelist
-                sel_.sources = selector([(x, False) for x in map_.fieldMap.getFields()], map(mkselector, args))
+                sel_.sources = selector([(x, False) for x in mps_.fieldMap.getFields()], map(mkselector, args))
 
                 # set the TaQL accordingly - if necessary
-                if len(sel_.sources)==len(map_.fieldMap.getFields()):
-                    # all sources selected - no need for TaQL
-                    sel_.sourcesTaql = ""
+                if set(sel_.sources) != set(mps_.fieldMap.getFields()):
+                    sel_.sourcesTaql = "(FIELD_ID IN {0})".format( map_(mps_.fieldMap.unfield,
+                                                                        sel_.sources) )
                 else:
-                    sel_.sourcesTaql = "(FIELD_ID IN {0})".format( map(map_.fieldMap.unfield, sel_.sources) )
+                    # all sources selected - no need for TaQL
+                    sel_.sourcesTaql = None
             self.dirty   = True
             # new source selection overrides scan selection
             sel_.scanSel = []
