@@ -889,7 +889,7 @@ def makeSpectralMap(nm, **kwargs):
                     # numpy.unique( tbl.getcol('DATA_DESC_ID') )              takes  0.64s  (   ..  )
                     #
                     # Looks like we have a winner!
-                    spmap = reduce(reductor, numpy.unique( tbl.getcol('DATA_DESC_ID') ), {})
+                    spmap = reduce(reductor, map(int, numpy.unique(tbl.getcol('DATA_DESC_ID'))), {})
                 # do not forget to sort all subbands by frequency
                 sort_order = kwargs.get('spw_order', 'by_frequency').lower()
 

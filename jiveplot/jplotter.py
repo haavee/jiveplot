@@ -1277,9 +1277,14 @@ class jplotter:
 
                 # Must update the TaQL to select the current DDIds
                 # fspl = (f, s, p, l)
-                sel_.ddSelectionTaql = "(DATA_DESC_ID in {0})".format( \
-                        map_(lambda fspl: spMap.datadescriptionIdOfFREQ_SB_POL(fspl[0], fspl[1], fspl[2]), \
-                             sel_.ddSelection))
+                unmap_f = spMap.datadescriptionIdOfFREQ_SB_POL
+                DDIDs   = set(map_(lambda fspl: unmap_f(fspl[0], fspl[1], fspl[2]),
+                                   sel_.ddSelection))
+                # if user selected all DDiDs no point in adding to TaQL
+                if DDIDs != set(spMap.datadescriptionIDs()):
+                    sel_.ddSelectionTaql = "(DATA_DESC_ID in {0})".format( list(DDIDs) )
+                else:
+                    sel_.ddSelectionTaql = None
 
             self.dirty = True
 
