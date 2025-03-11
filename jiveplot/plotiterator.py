@@ -212,6 +212,12 @@ INF        = numpy.inf if hasattr(numpy, 'inf') else numpy.Inf
 INT        = numpy.int if hasattr(numpy, 'int') else int
 NAN        = numpy.nan if hasattr(numpy, 'nan') else numpy.NaN
 
+# transparent Py2/3 dict .keys()/.iterkeys() selection: we want to avoid
+# making a copy of the dict's keys at all costs; we do not rely on the dynamicality
+# of the "view" that Py3 offers, in here it's all about efficiency: we need to iterate
+# over the keys as fast as possibly in one go and that's it.
+KEYITER    = operator.methodcaller('iterkeys' if hasattr(dict, 'iterkeys') else 'keys')
+
 # Useful simple functions
 
 # take the current channel selection, and produce a list of the sorted unique channels
@@ -916,8 +922,8 @@ class dataset_solint_array:
         # the <time> axis in <quantity> versus time datasets
         if self.a is None:
             raise RuntimeError("solint dataset has not been averaged yet")
-        self.x  = numpy.fromiter(self.a.iterkeys(), dtype=numpy.float64, count=len(self.a))
-        self.y  = MARRAY(self.a.values())
+        self.x  = numpy.fromiter(KEYITER(self.a), dtype=numpy.float64, count=len(self.a))
+        self.y  = MARRAY(functional.List(self.a.values()))
         return self
 
     def __str__(self):
@@ -985,7 +991,7 @@ class dataset_solint_scalar:
         # the <time> axis in <quantity> versus time datasets
         if self.a is None:
             raise RuntimeError("solint dataset has not been averaged yet")
-        self.x  = numpy.fromiter(self.a.iterkeys(), dtype=numpy.float64, count=len(self.a))
+        self.x  = numpy.fromiter(KEYITER(self.a), dtype=numpy.float64, count=len(self.a))
         self.y  = MARRAY(self.a.values())
         return self
 
