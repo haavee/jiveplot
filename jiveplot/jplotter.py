@@ -969,13 +969,17 @@ class jplotter:
 
         sel_   = self.selection
         if args:
-            # remember current TaQL for the baselines so we can detect if the
-            # selection changed
-            oldTaql = copy.deepcopy(sel_.baselinesTaql)
-            pr      = parsers.parse_baseline_expr(args[0], self.mappings.baselineMap)
-            sel_.baselines     = map_(GetA('BL'), pr.baselines)
-            sel_.baselinesTaql = copy.deepcopy(pr.taql)
-            self.dirty = self.dirty or oldTaql!=sel_.baselinesTaql
+            # "args" now includes the "bl" command token so we should check
+            # if we did get a selection at all. If it was just the "bl" token we get None
+            # as ParseResult
+            pr = parsers.parse_baseline_expr(args[0], self.mappings.baselineMap)
+            if pr is not None:
+                # remember current TaQL for the baselines so we can detect if the
+                # selection changed
+                oldTaql = copy.deepcopy(sel_.baselinesTaql)
+                sel_.baselines     = map_(GetA('BL'), pr.baselines)
+                sel_.baselinesTaql = copy.deepcopy(pr.taql)
+                self.dirty = self.dirty or oldTaql!=sel_.baselinesTaql
         blstr = ["No baselines selected yet"]
         if sel_.baselines:
             blstr = sel_.baselines

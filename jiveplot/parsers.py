@@ -17,8 +17,9 @@ from   functools  import reduce
 import numpy
 
 # own stuff
-from .           import (hvutil, plotutil, plotiterator)
-from .functional import *
+from .                import (hvutil, plotutil, plotiterator)
+from .functional      import *
+from .semanticversion import Version
 
 haveQuanta = False
 try:
@@ -49,6 +50,32 @@ def DD(x):
         print(x,y)
         return y
     return do_it
+
+COPY = copy.deepcopy
+
+#### GRRRRRRRR
+# numpy v1.14 and later have 
+#   https://numpy.org/doc/1.14/reference/generated/numpy.set_printoptions.html
+# which function supports this kwarg:
+# 'legacy: string | False
+#   If set to '1.25' approximates printing of 1.25 which mainly means that numeric
+#   scalars are printed without their type information, e.g. as 3.0 rather than np.float64(3.0).'
+#
+#  Read below and weep - this non-legacy behaviour wreaks havoc in creating e.q. TaQL
+#  query strings where the variables come from a numpy array:
+#  See e.g. https://github.com/haavee/jiveplot/issues/25
+#
+# >>> import numpy
+# >>> x = numpy.array([1,2,3])
+# >>> x[1]
+# numpy.int64(2)
+# >>> numpy.set_printoptions(legacy='1.25')
+# >>> x[1]
+# 2
+#
+if hasattr(numpy, 'set_printoptions') and Version(version_string=numpy.version.version) >= Version('1.25.0'):
+    numpy.set_printoptions(legacy='1.25')
+
 
 def mk_tokenizer(tokens, **env):
     # run all the token regexps against the text at postion p
@@ -2741,7 +2768,7 @@ def parse_animate_expr(qry, **kwargs):
 #    input      = 'bl' {<selectors>} EOF
 #    selectors  = <selector> { <selectors> }
 #    selector   =  {<add_or_remove>} <pattern>
-#    pattern    = 'auto' | 'cross' | <match>
+#    pattern    = 'auto' | 'cross' | 'all' | 'none' | <match>
 #    match      = <ant><ant>
 #    ant        = '*' | <expression>
 #    expression = <part> | '(' <part> ['|' <part>] ')'
@@ -2795,14 +2822,14 @@ def mk_select_action(expression, f, op, taqlop):
         # with taql == 'FALSE' (the result of parsing the 'none' token)
         if not selected and taql != 'FALSE':
             print("WARN: your expression '{0}' did not match anything".format(expression))
-        #print("\tselected=",selected,"\n\ttaql=",taql)
+        #print("\n\tselected=",selected,"\n\ttaql=",taql)
         pr_acc.baselines = op(set() if pr_acc.baselines is None else pr_acc.baselines, selected)
 
         # if by now all baselines are selected, there's really no point
         # in adding more to the TaQL, we might as well remove it
-        if pr_acc.baselines >= set(blm):
-            pr_acc.taql = ''
-            return pr_acc
+        #if pr_acc.baselines >= set(blm):
+        #    pr_acc.taql = ''
+        #    return pr_acc
         # only modify taql if
         # 1) if this expression selected anything at all, and
         # 2) if any taql associated with the expression
@@ -2932,16 +2959,17 @@ def mk_match(blmatch):
 # a specific field from a baseline tuple, all match functions can be run against it in one go
 xtract_f   = Map_(GetN(1))
 
+# This does an OR of the match functions
 # tup = (field-idx, [(field-idx, match-fn), (field-idx, match-fn), ...])
-def mk_match_fn(tup):
+def mk_match_fn_or(tup):
     get_f     = field_xform(tup[0])
     match_fns = xtract_f(tup[1])
     def do_it(bl):
         return any(map(ylppa(get_f(bl)), match_fns))
     return do_it
 
-mk_field_f_= compose(Map_(mk_match_fn), GroupBy(GetN(0)), Sorted(GetN(0)), set,
-                     Reduce(operator.__add__), Map(lambda t: [(i, t[1]) for i in t[0]]))
+mk_field_f_or = compose(Map_(mk_match_fn_or), GroupBy(GetN(0)), Sorted(GetN(0)), set,
+                        Reduce(operator.__add__), Map(lambda t: [(i, t[1]) for i in t[0]]))
 
 # Given list of [ (set{field_ids}, match_fn, antid), (set{field_ids}, match_fn, antid), ... ]
 # return boolean True or False depending on there being a match_fn equal to None in there
@@ -2954,8 +2982,8 @@ get_ant_ids= compose(list, set, Map(GetN(2)))
 # given conditions for ant1 and possibly ant2, generate filter function which
 # will, well, filter baselines matching both (if appropriate)
 def mk_field_f(ant1, ant2):
-    (a1, a1f) = (None, None) if not ant1 or dont_care(ant1) else (get_ant_ids(ant1), mk_field_f_(ant1))
-    (a2, a2f) = (None, None) if not ant2 or dont_care(ant2) else (get_ant_ids(ant2), mk_field_f_(ant2))
+    (a1, a1f) = (None, None) if not ant1 or dont_care(ant1) else (get_ant_ids(ant1), mk_field_f_or(ant1))
+    (a2, a2f) = (None, None) if not ant2 or dont_care(ant2) else (get_ant_ids(ant2), mk_field_f_or(ant2))
     if a1f is None and a2f is None:
         # match function is simple, no TaQL
         return ("", [const(True)])
@@ -2975,6 +3003,19 @@ def mk_field_f(ant1, ant2):
     taql = "(({0}) OR ({1}))".format(bl_taql2ant(a1, a2), bl_taql2ant(a2, a1))
     return (taql, [do_it])
 
+# special baseline that has the same constraint at both ends (single auto baseline?)
+def mk_field_f_single(ant):
+    (a1, a1f) = (None, None) if not ant or dont_care(ant) else (get_ant_ids(ant), mk_field_f_or(ant))
+    if a1f is None:
+        # match function is simple, no TaQL
+        return ("", [const(True)])
+    def do_it(bl):
+        m_bl = Map(ylppa(bl))
+        return all(m_bl(a1f))
+    # The taql here is strict, has constraint on both ends of the baseline
+    taql = "{0}".format(bl_taql2ant(a1, a1))
+    return (taql, [do_it])
+
 # given dict of "XAnt" (name) -> xant (nr) entries,
 # transform into case insensitive tokens. The reverse length sort is to have the longer names
 # before the shorter ones to handle the case of shorter name being prefix of longer name
@@ -2983,24 +3024,32 @@ ant_tokens = compose(Map_(lambda ant: (re.compile(r""+ant, re.I), value_t('anten
 
 class selector_parser:
     _tokens_ = [
-            token_def(r"-|\+|\*",                   keyword_t()),
+            token_def(r"-|\+",                      value_t('action')),
+            token_def(r"\*",                        simple_t('any')),
             token_def(r"\(",                        simple_t('lparen')),
             token_def(r"\)",                        simple_t('rparen')),
             token_def(r"\|",                        simple_t('or')),
             token_def(r"'",                         simple_t('quote')),
             int_token(),
-            token_def(r"\b(all|auto|cross|none)\b", keyword_t()),
+            token_def(r"\b(all|auto|cross|none)\b", value_t('cooked')),
         ]
 
-    # parse the expression
-    def __call__(self, expr, blmap, antmap):
-        #print("START PARSING EXPR=", expr)
+    # Initialize from a given baseline map and antenna mapping
+    def __init__(self, blmap, antmap):
         # add the individual antenna names as tokens!
         # remember: blmap = [(xant, yant, "XAnt", "YAnt", "XAntYAnt", "YAntXAnt"), ....]
         # so extract all unique "XAnt"/"YAnt"s and transform those into tokens
-        tokenizer = mk_tokenizer(selector_parser._tokens_ + ant_tokens(antmap))
-        state     = p_state_type(tokenizer(expr), expression=expr)
-        result    = self.parse_expr(state, blmap, antmap)
+        self.blmap     = COPY(blmap)
+        self.antmap    = COPY(antmap)
+        self.tokenizer = mk_tokenizer(selector_parser._tokens_ + ant_tokens(self.antmap))
+        self.name_f    = {aname.lower() : partial(eq, aname.lower()) for aname in antmap.keys()}
+        self.num_f     = {anum : partial(eq, anum) for anum in antmap.values()}
+
+    # parse the expression
+    def __call__(self, expr):
+        #print("START PARSING EXPR=", expr)
+        state     = p_state_type(self.tokenizer(expr), expression=expr)
+        result    = self.parse_expr(state)
         # the only token left should be 'eof' AND, after consuming it,
         # the stream should be empty. Anything else is a syntax error
         try:
@@ -3013,44 +3062,49 @@ class selector_parser:
 
 
     # entry point
-    def parse_expr(self, s, blmap, antmap):
+    def parse_expr(self, s):
         # default action is to add to the current set
         action = '+'
         # if the user specified a specific action, save it and eat the token
-        if p_tok(s).type in "+-":
-            action = p_tok(s).type
+        if p_tok(s).type == 'action':
+            action = p_tok(s).value#type
+            #print("FOUND ACTION: ", action)
             next(s)
         # we now expect ant1 selector
         # if we see a cooked entry, no ant2 possible
-        if p_tok(s).type in ['all', 'none', 'auto', 'cross']:
-            cooked = p_tok(s).type
+        if p_tok(s).type == 'cooked':
+            cooked = p_tok(s).value
             #print("Got cooked=", cooked)
             next(s)
             return mk_select_action(s.expression, cookmap.get(cooked), setoperatormap.get(action), taqlmap.get(action))
         # Now we get to 'normal' ant1 selection
-        ant1cond = self.parse_selector(s, blmap, antmap, True)
+        ant1cond = self.parse_selector(s, True)
         if not ant1cond:
             raise SyntaxError("At least one antenna selection criterion required")
-        ant2cond = self.parse_selector(s, blmap, antmap, False)
+        ant2cond = self.parse_selector(s, False)
         #print("Got ant1cond=", ant1cond)
         #print("    ant2cond=", ant2cond)
+        if ant1cond == ant2cond:
+            # first and second constraint are identical so only need to match once
+            #print("===> very specific baseline!")
+            return mk_select_action(s.expression, mk_match(mk_field_f_single(ant1cond)),
+                                    setoperatormap.get(action), taqlmap.get(action))
         return mk_select_action(s.expression, mk_match(mk_field_f(ant1cond, ant2cond)),
                                 setoperatormap.get(action), taqlmap.get(action))
 
-    def parse_selector(self, s, blmap, antmap, require_item):
+    def parse_selector(self, s, require_item):
         options = list()
         # do we see lparen?
         if p_tok(s).type == 'lparen':
             s.depth = s.depth + 1
             next(s)
         # now we start collecting selections, they may be quoted
-        #require_item = False
         while True:
-            item = self.parse_item(s, blmap, antmap)
+            item = self.parse_item(s)
             if item is None:
                 if require_item:
                     raise SyntaxError("Expected a baseline selection item")
-                #break
+                break
             else:
                 options.append( item )
             # typically we only parse one item, unless
@@ -3080,7 +3134,7 @@ class selector_parser:
     # Note: field_numbers as in the named tuple BLMapEntry
     #       (xant, yant, "XAnt", "YAnt", "XAntYAnt", "YAntXAnt")
     #        0     1     2       3       4           5
-    def parse_item(self, s, blmap, antmap):
+    def parse_item(self, s):
         # we may see a quote now
         if p_tok(s).type == 'quote':
             s.inquote = not s.inquote
@@ -3093,10 +3147,10 @@ class selector_parser:
         if tp in ['text', 'antenna'] or s.inquote:
             # text match for all types on BLMapEntry fields #2 and #3 (XAnt, YAnt)
             aname   = str(p_tok(s).value if tp in ['text', 'int', 'antenna'] else p_tok(s).type).lower()
-            if aname not in antmap:
-                print("WARNING: There seems to be no antenna by the name of ", aname)
-            match_f = partial(eq, aname)
-            rv = (set([2,3]), match_f, antmap.get(aname, -42))
+            if aname not in self.antmap:
+                print("WARNING: There does not seem to be an antenna by the name of ", aname)
+            match_f = self.name_f.get(aname, partial(eq, aname))
+            rv = (set([2,3]), match_f, self.antmap.get(aname, -42))
             next(s)
         else:
             # numeric if number, "*" without quotes is anything
@@ -3104,12 +3158,17 @@ class selector_parser:
             if tp == 'int':
                 # numerical match on field xant, yant
                 anum = p_tok(s).value
-                rv   = (set([0, 1]), partial(eq, anum), anum)
+                rv   = (set([0, 1]), self.num_f.get(anum, partial(eq, anum)), anum)
                 next(s)
-            elif tp == '*':
+            elif tp == 'any':
                 # matches anything!
                 rv = (set(), None, -1)
                 next(s)
+            elif tp is None:
+                # don't do anything, succesfully
+                pass
+            else:
+                raise SyntaxError("illegal token {0}".format(p_tok(s)))
         # only eat the quote if we're expecting one
         if s.inquote and p_tok(s).type == 'quote':
             s.inquote = not s.inquote
@@ -3151,7 +3210,7 @@ def parse_baseline_expr(qry, blmap, **kwargs):
     antmap_ = dict(reduce(reductor, blmap.baselineIndices(), list()))
 
     # a subparser for the selector
-    selector_p =  selector_parser()
+    selector_p =  selector_parser(blmap_, antmap_)
 
     tok     = lambda s: s.token
     tok_tp  = lambda s: s.token.type
@@ -3176,6 +3235,9 @@ def parse_baseline_expr(qry, blmap, **kwargs):
             if tok(s).type is None:
                 next(s)
         except StopIteration:
+            # if there were no selections at all it means it was "just the bl command"
+            if not selections:
+                return None
             # the selections are a list of functions which
             # update the current selection
             # We add one specific function to the end to evaluate the final result
@@ -3190,7 +3252,7 @@ def parse_baseline_expr(qry, blmap, **kwargs):
 
         # we expect type 'selector' now!
         while tok(s).type == 'selector':
-            selectors.append( selector_p( tok(s).value, blmap_, antmap_ ) )
+            selectors.append( selector_p( tok(s).value ) )
             next(s)
         return selectors
 

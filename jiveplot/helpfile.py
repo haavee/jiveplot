@@ -726,7 +726,7 @@ channel.
     # bl
     ##################################################################
 	"bl":
-"""bl (none|[[+-][!]<blcode>]*)
+"""bl (none|[[+-]<blcode>]*)
    set/display current baseline selection
 
 Without arguments displays the current baseline selection and returns.
@@ -767,7 +767,7 @@ take several forms:
                 where either component matches id1 or id2 or ... or idN.
                 E.g. "-(wb|'12'|2)" removes baselines to antennas with names
                 "Wb", "12" and id 2.
-    auto|cross|none
+    auto|cross|all|none
                 Useful aliases that do what it sais on the tin. Irrespective of
                 the current data set they always select either the auto, cross
                 baselines present or no baselines at all (clear the selection).
