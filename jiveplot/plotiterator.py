@@ -189,6 +189,7 @@ NOW        = time.time
 CP         = copy.deepcopy
 AX         = jenums.Axes
 AVG        = jenums.Averaging
+LIST       = functional.List
 YTypes     = plotutil.YTypes
 Quantity   = collections.namedtuple('Quantity', ['quantity_name', 'quantity_fn'])
 # do not drag in all numpy.* names but by "resolving" them at this level
@@ -922,8 +923,8 @@ class dataset_solint_array:
         # the <time> axis in <quantity> versus time datasets
         if self.a is None:
             raise RuntimeError("solint dataset has not been averaged yet")
-        self.x  = numpy.fromiter(KEYITER(self.a), dtype=numpy.float64, count=len(self.a))
-        self.y  = MARRAY(functional.List(self.a.values()))
+        self.x  = numpy.fromiter(KEYITER(self.a), dtype=numpy.float64)
+        self.y  = MARRAY(LIST(self.a.values()))
         return self
 
     def __str__(self):
@@ -991,8 +992,8 @@ class dataset_solint_scalar:
         # the <time> axis in <quantity> versus time datasets
         if self.a is None:
             raise RuntimeError("solint dataset has not been averaged yet")
-        self.x  = numpy.fromiter(KEYITER(self.a), dtype=numpy.float64, count=len(self.a))
-        self.y  = MARRAY(self.a.values())
+        self.x  = numpy.fromiter(KEYITER(self.a), dtype=numpy.float64)
+        self.y  = MARRAY(LIST(self.a.values()))
         return self
 
     def __str__(self):
