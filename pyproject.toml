@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jiveplot"
-version = "2.0.1"
+version = "2.1.0"
 description = "Python based visualization tool for AIPS++/CASA MeasurementSet version 2 data"
 readme = "README.md"
 requires-python = ">=3.8"
