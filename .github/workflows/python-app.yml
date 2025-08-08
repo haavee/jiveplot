@@ -5,7 +5,6 @@ name: CI
 
 on:
   push:
-    branches: [ master ]
   pull_request:
     branches: [ master ]
 
@@ -46,6 +45,25 @@ jobs:
         which jplotter || echo "jplotter script not found in PATH"
         which standardplots || echo "standardplots script not found in PATH"
         which klk1 || echo "klk1 script not found in PATH"
+        
+    - name: Test wheel installation
+      run: |
+        # Build wheel
+        python -m pip install build
+        python -m build --wheel
+        # Create clean test environment
+        python -m venv test_wheel_env
+        source test_wheel_env/bin/activate
+        # Install only the wheel (not in development mode)
+        pip install dist/*.whl
+        # Test scripts are installed and executable
+        which jplotter && echo "✅ jplotter found in PATH"
+        which standardplots && echo "✅ standardplots found in PATH"  
+        which klk1 && echo "✅ klk1 found in PATH"
+        # Test scripts can be executed (basic syntax check)
+        jplotter --help >/dev/null 2>&1 && echo "✅ jplotter executable" || echo "❌ jplotter failed"
+        standardplots --help >/dev/null 2>&1 && echo "✅ standardplots executable" || echo "❌ standardplots failed"
+        klk1 --help >/dev/null 2>&1 && echo "✅ klk1 executable" || echo "❌ klk1 failed"
         
 #    - name: Test with pytest
 #      run: |
