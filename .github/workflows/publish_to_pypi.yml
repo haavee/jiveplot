@@ -1,0 +1,92 @@
+name: Build and Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:  # Manual trigger for testing
+    inputs:
+      dry_run:
+        description: 'Dry run (skip actual PyPI upload)'
+        required: false
+        default: 'true'
+        type: boolean
+
+jobs:
+  build_package:
+    name: Build universal wheel and sdist
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: jiveplot-wheel
+          path: dist/*.whl
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: jiveplot-sdist
+          path: dist/*.tar.gz
+
+  publish_pypi:
+    name: Publish to PyPI
+    needs: build_package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: Flatten artifacts
+        run: |
+          find dist/ -name "*.whl" -exec mv {} dist/ \;
+          find dist/ -name "*.tar.gz" -exec mv {} dist/ \;
+          find dist/ -mindepth 1 -type d -exec rm -rf {} + || true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Twine
+        run: pip install twine
+
+      - name: Verify distributions
+        run: |
+          ls -la dist/
+          twine check dist/*
+
+      - name: Publish to PyPI
+        if: ${{ !inputs.dry_run }}
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload dist/*
+
+      - name: Dry run - show what would be uploaded
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "DRY RUN: Would upload the following files to PyPI:"
+          ls -la dist/
+          echo "Files passed twine check - ready for upload!"
