@@ -30,7 +30,7 @@ classifiers = [
 dependencies = [
     "numpy",
     "python-casacore",
-    "ppgplot",
+    "python-pgplot",
     "six",
 ]
 
