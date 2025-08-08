@@ -14,6 +14,15 @@ previous latest Py2-only master was tagged as
 [v1.1](https://github.com/haavee/jiveplot/releases/tag/v1.1) and
 [last-python2-only-master](https://github.com/haavee/jiveplot/releases/tag/last-python2-only-master).
 
+Since Aug 2025 the module can be installed using `pip` - the project was restructured to adhere to modern Python packaging.
+After cloning the repository it is possible to do
+```bash
+$ cd /path/to/clone
+$ pip install [-e] .
+```
+Starting from *v2.1.0* the package is now also published on PyPI.
+
+
 ## 5 second workflow
 
 After downloading and having the
