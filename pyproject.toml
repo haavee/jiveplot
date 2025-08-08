@@ -1,6 +1,48 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "jiveplot"
+version = "2.0.1"
+description = "Python based visualization tool for AIPS++/CASA MeasurementSet version 2 data"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "GPL-3.0"}
+authors = [
+    {name = "Marjolein Verkouter", email = "verkouter@jive.eu"},
+]
+keywords = ["astronomy", "astrophysics", "VLBI"]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+dependencies = [
+    "numpy",
+    "python-casacore",
+    "ppgplot",
+    "six",
+]
+
+[project.urls]
+Homepage = "https://github.com/haavee/jiveplot"
+
+# Scripts are standalone files in bin/ directory
+# Note: pyproject.toml doesn't directly support script files like setup.cfg
+# We'll need to keep a minimal setup.cfg for the scripts
+
+[tool.setuptools]
+packages = ["jiveplot", "jiveplot.postprocessing"]
 
 [tool.isort]
 profile = "black"
