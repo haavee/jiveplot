@@ -1,6 +1,5 @@
-[![https://www.singularity-hub.org/static/img/hosted-singularity--hub-%23e32929.svg](https://www.singularity-hub.org/static/img/hosted-singularity--hub-%23e32929.svg)](https://singularity-hub.org/collections/1847)
-
 # jplotter / jiveplot
+
 Python based visualization tool for AIPS++/CASA MeasurementSet data
 
 The jplotter command line tool allows the user to quickly visualize the
@@ -14,13 +13,40 @@ previous latest Py2-only master was tagged as
 [v1.1](https://github.com/haavee/jiveplot/releases/tag/v1.1) and
 [last-python2-only-master](https://github.com/haavee/jiveplot/releases/tag/last-python2-only-master).
 
+## Installation
+
+### Option 1: PyPI (Recommended for jiveplot)
+
+Starting from *v2.1.0* the package is published on PyPI:
+
+```bash
+$ pip install jiveplot
+```
+
+### Option 2: From Source
+
 Since Aug 2025 the module can be installed using `pip` - the project was restructured to adhere to modern Python packaging.
-After cloning the repository it is possible to do
+After cloning the repository it is possible to do:
 ```bash
 $ cd /path/to/clone
 $ pip install [-e] .
 ```
-Starting from *v2.1.0* the package is now also published on PyPI.
+
+### For Conda Users
+
+If you're using conda, we recommend installing the binary dependency via conda-forge and jiveplot via pip:
+
+```bash
+# Install the binary extension with system dependencies via conda-forge
+$ conda install -c conda-forge python-pgplot
+
+# Install jiveplot (pure Python) via pip
+$ pip install jiveplot
+```
+
+This hybrid approach gives you the best of both worlds:
+- Automatic system dependency management for the complex binary extension
+- Simple, fast installation for the pure Python jiveplot package
 
 
 ## 5 second workflow
