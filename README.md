@@ -48,6 +48,23 @@ This hybrid approach gives you the best of both worlds:
 - Automatic system dependency management for the complex binary extension
 - Simple, fast installation for the pure Python jiveplot package
 
+**NOTE**
+
+Whilst waiting for `conda-forge` to accept the recipes into its channel, it is possible to do a local conda build of the package(s):
+
+```bash
+$> conda install conda-build
+# for the binary dependency
+$> cd /path/to/clone-of-ppgplot-rep
+$> conda build conda-recipe/
+$> conda install --use-local python-pgplot
+
+$> cd /path/to/clone-of-this-repo
+$> conda build conda-recipe/ [-c conda-forge]
+$> conda install --use-local jiveplot [-c conda-forge]
+```
+_note: the `-c conda-forge` may or may not be necessary; for me it was,
+probably on account of being on `osx-arm64`_
 
 ## 5 second workflow
 

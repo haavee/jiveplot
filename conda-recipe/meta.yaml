@@ -1,0 +1,51 @@
+{% set name = "jiveplot" %}
+{% set version = "2.1.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  url: https://pypi.org/packages/source/j/jiveplot/jiveplot-{{ version }}.tar.gz
+  sha256: 12a8b847dcdcb450b463dcea0c10160daa421db0ef7b7d97fdb40c9a09df7629
+
+build:
+  noarch: python
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv --no-deps
+
+requirements:
+  host:
+    - python >=3.8
+    - pip
+    - setuptools >=45
+    - wheel
+  run:
+    - python >=3.8
+    - numpy >=1.19
+    - python-casacore  # [not win]
+    - python-pgplot
+    - six
+
+test:
+  imports:
+    - jiveplot
+  commands:
+    - python -c "import jiveplot; print('jiveplot basic import OK')"
+    # Full functionality test requires python-casacore which may not be available during build
+    # - python -c "import jiveplot; jiveplot.test_functionality()"
+
+about:
+  home: https://github.com/haavee/jiveplot
+  license: GPL-3.0-or-later
+  license_family: GPL
+  summary: Python based visualization tool for AIPS++/CASA MeasurementSet version 2 data
+  description: |
+    jiveplot (aka jplotter) is a Python-based visualization tool for AIPS++/CASA MeasurementSet data.
+    It leverages python-casacore for data access and python-pgplot for plotting.
+  doc_url: https://github.com/haavee/jiveplot
+  dev_url: https://github.com/haavee/jiveplot
+
+extra:
+  recipe-maintainers:
+    - haavee
